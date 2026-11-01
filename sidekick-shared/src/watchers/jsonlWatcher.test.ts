@@ -354,3 +354,69 @@ describe('JsonlSessionWatcher task-notification attachments', () => {
     ]);
   });
 });
+
+describe('JsonlSessionWatcher background-agent settling lines', () => {
+  const line = (value: unknown) => JSON.stringify(value) + '\n';
+  const lines = Buffer.from(
+    [
+      line({
+        type: 'attachment',
+        timestamp: '2026-10-12T22:35:58.442Z',
+        attachment: {
+          type: 'queued_command',
+          prompt: '2 background agents were stopped by the user: "A", "B".',
+          commandMode: 'task-notification',
+        },
+      }),
+      line({
+        type: 'system',
+        subtype: 'agents_killed',
+        timestamp: '2026-10-12T22:35:58.442Z',
+      }),
+      line({
+        type: 'attachment',
+        timestamp: '2026-10-12T22:36:00.000Z',
+        attachment: {
+          type: 'task_status',
+          taskId: 'abc',
+          taskType: 'local_agent',
+          description: 'C',
+          status: 'completed',
+        },
+      }),
+      line({
+        type: 'attachment',
+        timestamp: '2026-10-12T22:36:01.000Z',
+        attachment: {
+          type: 'task_status',
+          taskId: 'abc',
+          taskType: 'local_agent',
+          status: 'running',
+        },
+      }),
+      line({ type: 'system', subtype: 'turn_duration', timestamp: '2026-10-12T22:36:02.000Z' }),
+    ].join(''),
+  );
+
+  it('emits a system event for each only when asked for task notifications', () => {
+    const filename = file(lines);
+    const plain: FollowEvent[] = [];
+    create(filename, plain).start(true);
+    expect(plain).toEqual([]);
+
+    const opted: FollowEvent[] = [];
+    const watcher = new JsonlSessionWatcher(
+      'claude-code',
+      filename,
+      { onEvent: (followEvent) => opted.push(followEvent) },
+      { includeTaskNotifications: true },
+    );
+    watchers.push(watcher);
+    watcher.start(true);
+    expect(opted.map(({ type, summary }) => ({ type, summary }))).toEqual([
+      { type: 'system', summary: 'Background agents stopped by the user (2)' },
+      { type: 'system', summary: 'Background agents stopped by the user' },
+      { type: 'system', summary: 'Background agent "C" completed' },
+    ]);
+  });
+});

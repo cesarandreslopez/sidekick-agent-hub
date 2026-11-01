@@ -166,9 +166,24 @@ export interface BurnRateInfo {
 /** How a subagent ended: a failed spawn, or a background agent's notification status. */
 export type SubagentOutcome = 'completed' | 'failed' | 'killed' | 'stopped';
 
+/**
+ * What settled a background subagent, when something other than its spawn's
+ * own tool result did:
+ *
+ * - `notification`: its final task notification (Claude Code), or a Codex
+ *   `SubAgentActivity` `completed` record or `FINAL_ANSWER` report.
+ * - `meta`: the host's evidence from Claude Code's `agent-<id>.meta.json`
+ *   (`finished`, `stoppedByUser`), via `EventAggregator.applySubagentEvidence()`.
+ * - `stop-marker`: an in-stream stop: Claude Code's `agents_killed` system
+ *   line or its "background agents were stopped by the user" notice, or a
+ *   Codex `interrupt_agent` record.
+ * - `task-status`: a Claude Code `task_status` attachment with a final status.
+ */
+export type SubagentSettledBy = 'notification' | 'meta' | 'stop-marker' | 'task-status';
+
 /** Subagent lifecycle info (for tracking spawn/completion from tool events). */
 export interface SubagentLifecycle {
-  /** The spawning tool_use id (`Agent` / `Task`). */
+  /** The spawning tool_use id (`Agent` / `Task`, or Codex `spawn_agent`). */
   id: string;
   description: string;
   subagentType: string;
@@ -180,12 +195,22 @@ export interface SubagentLifecycle {
    */
   status: 'running' | 'completed';
   durationMs?: number;
-  /** Claude Code's agent id (the `agent-<id>.jsonl` transcript name), once known. */
+  /**
+   * The agent's id, once known: Claude Code's agent id (the `agent-<id>.jsonl`
+   * transcript name), or the Codex child thread id (its rollout's session id).
+   */
   agentId?: string;
+  /** Codex: the child's agent path (e.g. `/root/review_builder`), once known. */
+  agentPath?: string;
   /** The agent was launched in the background (its spawn returned at once). */
   background?: boolean;
   /** How the agent ended, once `status` is `completed`. */
   outcome?: SubagentOutcome;
+  /**
+   * What settled a background agent (see {@link SubagentSettledBy}); absent
+   * while it runs and when its spawn's own result settled it.
+   */
+  settledBy?: SubagentSettledBy;
 }
 
 /** Frequency entry for tool/word frequency tracking. */
@@ -234,7 +259,7 @@ export interface AggregatedMetrics {
   subagents: SubagentLifecycle[];
   plan: PlanState | null;
 
-  /** Current permission mode (default | acceptEdits | bypassPermissions | plan) */
+  /** Current permission mode (default | acceptEdits | bypassPermissions | plan | auto | dontAsk) */
   permissionMode: PermissionMode | null;
   /** History of permission mode changes */
   permissionModeHistory: PermissionModeChange[];

@@ -15,7 +15,10 @@
  * tagged with the subagent, and their sizes and mtimes join the fingerprint.
  * (Codex spawned subagents and forks are top-level rollouts, already listed
  * as sessions of their own; their events are tagged with the parent read
- * from the rollout's first line.)
+ * from the rollout's first line; the parent history a forked child embeds
+ * is not counted (it carries no token usage). Compressed rollouts
+ * (`….jsonl.zst`) are read when a Codex provider was created with
+ * `includeCompressedRollouts`.)
  *
  * Each event also carries the ordinal of the human prompt it answered, from
  * the same scanner as `collectPromptHistory()`, so usage joins prompt history

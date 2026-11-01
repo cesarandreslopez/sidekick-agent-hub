@@ -119,13 +119,40 @@ export type {
 
 export {
   SUBAGENT_SPAWN_TOOL_NAMES,
+  agentsStoppedNoticeFromEvent,
+  isAgentsKilledSystemEvent,
+  isCodexSubagentSpawnTool,
   isSubagentSpawnTool,
   isTaskNotificationSystemEvent,
+  isTaskStatusSystemEvent,
+  parseAgentsStoppedNotice,
+  parseCodexSpawnLaunch,
   parseTaskNotification,
   taskNotificationFromEvent,
+  taskStatusFromAttachment,
+  taskStatusFromEvent,
 } from './subagentSpawn';
-export type { TaskNotification } from './subagentSpawn';
-export type { SubagentOutcome } from './aggregation/types';
+export type {
+  AgentsStoppedNotice,
+  CodexSpawnLaunch,
+  SubagentTaskStatus,
+  TaskNotification,
+} from './subagentSpawn';
+export {
+  SUBAGENT_PARENT_IDLE_ENDED_MS,
+  SUBAGENT_UNREPORTED_QUIET_MS,
+  resolveSubagentDisplayState,
+  subagentDisplayLabel,
+} from './subagentDisplayState';
+export type {
+  SubagentDisplayLifecycle,
+  SubagentDisplayOptions,
+  SubagentDisplayReason,
+  SubagentDisplayState,
+  SubagentDisplayStateName,
+  SubagentDisplayTrace,
+} from './subagentDisplayState';
+export type { SubagentOutcome, SubagentSettledBy } from './aggregation/types';
 
 export {
   assistantTurnEventsFromSessionEvents,
@@ -373,6 +400,19 @@ export type {
 } from './parsers/codexParser';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
+export {
+  SUBAGENT_ACTIVITY_BLOCK_TYPE,
+  SUBAGENT_ACTIVITY_ORIGIN_KIND,
+  describeSubagentActivity,
+  isSubagentActivitySystemEvent,
+  parseCodexAgentMessageText,
+  subagentActivityFromEvent,
+} from './subagentActivity';
+export type {
+  CodexAgentMessageText,
+  SubagentActivity,
+  SubagentActivityKind,
+} from './subagentActivity';
 
 export {
   HUMAN_CLAUDE_ENTRYPOINTS,

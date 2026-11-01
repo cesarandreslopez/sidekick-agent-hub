@@ -19,6 +19,7 @@
  */
 
 import * as fs from 'fs';
+import { isCompressedRolloutPath, readRolloutHead } from './providers/compressedRollouts';
 import type {
   ProviderId,
   SessionFileInfo,
@@ -563,6 +564,16 @@ function scanPrefix(sessionPath: string, maxPrefixBytes: number): PrefixScan {
 
   let content: string;
   let sawWholeFile: boolean;
+  if (isCompressedRolloutPath(sessionPath)) {
+    // A compressed Codex rollout: scan its decompressed prefix.
+    const head = readRolloutHead(sessionPath, Math.max(1, maxPrefixBytes) + 1);
+    parsePrefixInto(
+      result,
+      head.subarray(0, Math.max(1, maxPrefixBytes)).toString('utf8'),
+      head.length <= maxPrefixBytes,
+    );
+    return result;
+  }
   try {
     const descriptor = fs.openSync(sessionPath, 'r');
     try {
@@ -616,6 +627,7 @@ function scanPrefix(sessionPath: string, maxPrefixBytes: number): PrefixScan {
 
 async function scanPrefixAsync(sessionPath: string, maxPrefixBytes: number): Promise<PrefixScan> {
   const result: PrefixScan = { firstTimestamp: null, workspacePath: null };
+  if (isCompressedRolloutPath(sessionPath)) return scanPrefix(sessionPath, maxPrefixBytes);
   let handle: fs.promises.FileHandle | null = null;
   try {
     handle = await fs.promises.open(sessionPath, 'r');

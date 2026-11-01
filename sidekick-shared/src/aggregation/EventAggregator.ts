@@ -44,6 +44,8 @@ import type {
   ModelUsageStats,
   BurnRateInfo,
   SubagentLifecycle,
+  SubagentOutcome,
+  SubagentSettledBy,
   AggregatedMetrics,
   ErrorRollup,
   ErrorRollupEntry,
@@ -59,14 +61,33 @@ import type { SerializedPatternState } from './PatternExtractor';
 import { categorizeError, type ErrorCategory } from '../extractors/errorTaxonomy';
 import { estimateTextTokens } from '../tokenEstimation';
 import {
+  describeSubagentActivity,
+  isSubagentActivitySystemEvent,
+  subagentActivityFromEvent,
+  type SubagentActivity,
+} from '../subagentActivity';
+import {
+  agentsStoppedNoticeFromEvent,
+  describeAgentsStopped,
+  describeTaskStatus,
+  isAgentsKilledSystemEvent,
+  isCodexSubagentSpawnTool,
+  isFinalTaskStatus,
   isSubagentSpawnTool,
   isTaskNotificationSystemEvent,
+  isTaskStatusSystemEvent,
+  parseAgentsStoppedNotice,
   parseAsyncAgentLaunch,
+  parseCodexSpawnLaunch,
   parseTaskNotification,
   taskNotificationFromEvent,
   taskNotificationOutcome,
   taskNotificationPromptFromAttachment,
+  taskStatusFromAttachment,
+  taskStatusFromEvent,
+  type AgentsStoppedNotice,
   type AsyncAgentLaunch,
+  type SubagentTaskStatus,
   type TaskNotification,
 } from '../subagentSpawn';
 import {
@@ -85,8 +106,28 @@ const DEFAULT_BURN_WINDOW_MS = 5 * 60_000;
 const DEFAULT_BURN_SAMPLE_MS = 10_000;
 const COMPACTION_DROP_THRESHOLD = 0.8; // >20% drop
 
-/** Schema version for serialized snapshots. v6: token totals count each Claude response and Codex call once. */
-export const SNAPSHOT_SCHEMA_VERSION = 6;
+/**
+ * Schema version for serialized snapshots. v6: token totals count each Claude
+ * response and Codex call once. v7: subagent lifecycles track Codex spawns and
+ * record what settled a background agent (`settledBy`).
+ */
+export const SNAPSHOT_SCHEMA_VERSION = 7;
+
+// Checked without the schema module so this file stays free of Zod.
+const PERMISSION_MODES: ReadonlySet<string> = new Set<PermissionMode>([
+  'default',
+  'acceptEdits',
+  'bypassPermissions',
+  'plan',
+  'auto',
+  'dontAsk',
+]);
+
+function asPermissionMode(value: unknown): PermissionMode | null {
+  return typeof value === 'string' && PERMISSION_MODES.has(value)
+    ? (value as PermissionMode)
+    : null;
+}
 
 /**
  * JSON-serializable snapshot of EventAggregator state.
@@ -199,6 +240,91 @@ function taskNotificationFromAttachmentFollowEvent(event: FollowEvent): TaskNoti
   if (prompt !== null) return parseTaskNotification(prompt);
   const asEvent = raw as unknown as SessionEvent;
   return isTaskNotificationSystemEvent(asEvent) ? taskNotificationFromEvent(asEvent) : null;
+}
+
+/**
+ * Host-supplied evidence about how a subagent ended, for
+ * {@link EventAggregator.applySubagentEvidence}: Claude Code's
+ * `agent-<id>.meta.json` flags, matched by agent id or spawning tool_use id.
+ */
+export interface SubagentEvidence {
+  /** The agent id (Claude Code's `agent-<id>` name, or a Codex child thread id). */
+  agentId?: string;
+  /** The spawning tool_use id (meta `toolUseId`). */
+  toolUseId?: string;
+  /** Meta `finished`: the background agent is done. `false` reopens an agent `meta` settled. */
+  finished?: boolean;
+  /** Meta `stoppedByUser`: the user stopped the agent. */
+  stoppedByUser?: boolean;
+}
+
+/** The bookkeeping a `system` FollowEvent stands for, read from its `raw`. */
+type SubagentFollowRecord =
+  | { kind: 'notification'; notification: TaskNotification }
+  | { kind: 'stopped'; notice: AgentsStoppedNotice }
+  | { kind: 'task-status'; status: SubagentTaskStatus }
+  | { kind: 'activity'; activity: SubagentActivity }
+  | { kind: 'agents-killed' }
+  /** Bookkeeping this release cannot read (e.g. an unparseable notification). */
+  | { kind: 'unreadable' };
+
+function subagentRecordFromFollowEvent(event: FollowEvent): SubagentFollowRecord | null {
+  const raw = event.raw as Record<string, unknown> | undefined;
+  if (!raw || typeof raw !== 'object') return null;
+  const notification = taskNotificationFromAttachmentFollowEvent(event);
+  if (notification) return { kind: 'notification', notification };
+  const asEvent = raw as unknown as SessionEvent;
+  const prompt = taskNotificationPromptFromAttachment(raw);
+  const notice =
+    prompt !== null ? parseAgentsStoppedNotice(prompt) : agentsStoppedNoticeFromEvent(asEvent);
+  if (notice) return { kind: 'stopped', notice };
+  if (prompt !== null || isTaskNotificationSystemEvent(asEvent)) {
+    // A notification this release cannot read: still bookkeeping.
+    return { kind: 'unreadable' };
+  }
+  const status = taskStatusFromAttachment(raw) ?? taskStatusFromEvent(asEvent);
+  if (status) return { kind: 'task-status', status };
+  if (isSubagentActivitySystemEvent(asEvent)) {
+    const activity = subagentActivityFromEvent(asEvent);
+    return activity ? { kind: 'activity', activity } : { kind: 'unreadable' };
+  }
+  if (isAgentsKilledSystemEvent(raw)) return { kind: 'agents-killed' };
+  return null;
+}
+
+// ── Subagent spawn input ──
+
+/**
+ * Description and type of a spawn: Claude Code's `description` /
+ * `subagent_type`, or Codex `spawn_agent`'s `task_name` / `agent_type`.
+ */
+function spawnFields(input: Record<string, unknown>): {
+  description?: string;
+  subagentType?: string;
+} {
+  const text = (value: unknown): string | undefined =>
+    typeof value === 'string' && value ? value : undefined;
+  const description = text(input.description) ?? text(input.task_name);
+  const subagentType =
+    text(input.subagent_type) ?? text(input.subagentType) ?? text(input.agent_type);
+  return {
+    ...(description ? { description } : {}),
+    ...(subagentType ? { subagentType } : {}),
+  };
+}
+
+/**
+ * Whether a spawn's tool result launched the agent in the background or
+ * ended it. A Codex `spawn_agent` result is always a launch unless it failed
+ * ("collab spawn failed: …"); its `{"task_name": …}` output is a launch even
+ * when the output's text looked like an error to the parser (an agent path
+ * such as `/root/fix_failed_tests`).
+ */
+function spawnResultKind(codex: boolean, content: unknown, isError: boolean): 'launch' | 'end' {
+  // Read first: the `codex` hint does not survive a snapshot boundary.
+  if (parseCodexSpawnLaunch(content)) return 'launch';
+  if (codex) return isError ? 'end' : 'launch';
+  return !isError && parseAsyncAgentLaunch(content) ? 'launch' : 'end';
 }
 
 // ── Pending task create input ──
@@ -329,6 +455,8 @@ export class EventAggregator {
   // Subagent lifecycle
   private subagents: SubagentLifecycle[] = [];
   private pendingSubagents = new Map<string, number>(); // toolUseId -> index
+  /** Codex `spawn_agent` calls still waiting for their result (always a background launch). */
+  private pendingCodexSpawns = new Set<string>();
 
   // Plan state
   private planExtractor!: PlanExtractor;
@@ -401,9 +529,28 @@ export class EventAggregator {
       if (notification) {
         this.applyTaskNotification(notification, event.timestamp);
         this.addTaskNotificationTimeline(event.timestamp, notification);
+      } else {
+        // The plain-text "background agents were stopped by the user" notice.
+        const notice = agentsStoppedNoticeFromEvent(event);
+        if (notice) this.applyAgentsStopped(notice, event.timestamp);
       }
       return;
     }
+    // So are a background agent's final `task_status` (same opt-in) and the
+    // opt-in Codex subagent lifecycle records (`subagentActivityFromEvent`).
+    if (isTaskStatusSystemEvent(event)) {
+      const status = taskStatusFromEvent(event);
+      if (status) this.applyTaskStatus(status, event.timestamp);
+      return;
+    }
+    if (isSubagentActivitySystemEvent(event)) {
+      const activity = subagentActivityFromEvent(event);
+      if (activity) this.applySubagentActivity(activity, event.timestamp);
+      return;
+    }
+    // The user killed every running background agent. The line itself is
+    // counted below as before.
+    if (isAgentsKilledSystemEvent(event)) this.applyAgentsKilled(event.timestamp);
 
     // 1. Increment counters, capture timestamps
     this.eventCount++;
@@ -497,12 +644,13 @@ export class EventAggregator {
   // ═══════════════════════════════════════════════════════════════════════
 
   processFollowEvent(event: FollowEvent): void {
-    // A mid-turn task-notification attachment, like its SessionEvent form above.
+    // Subagent bookkeeping (a mid-turn task-notification or task-status
+    // attachment, a stop notice or `agents_killed` line, a Codex lifecycle
+    // record), like its SessionEvent form above: not counted as activity.
     if (event.type === 'system') {
-      const notification = taskNotificationFromAttachmentFollowEvent(event);
-      if (notification) {
-        this.applyTaskNotification(notification, event.timestamp);
-        this.addTaskNotificationTimeline(event.timestamp, notification);
+      const record = subagentRecordFromFollowEvent(event);
+      if (record) {
+        this.applySubagentFollowRecord(record, event.timestamp);
         return;
       }
     }
@@ -513,6 +661,9 @@ export class EventAggregator {
       this.sessionStartTime = event.timestamp;
     }
     this.lastEventTime = event.timestamp;
+
+    // Followed events carry the mode as a plain string.
+    this.trackPermissionMode(event);
 
     // Provider
     if (!this._providerId && event.providerId) {
@@ -678,6 +829,11 @@ export class EventAggregator {
     return [...this.subagents];
   }
 
+  /** Timestamp of the last counted event (`getMetrics().lastEventTime`), without building the metrics. */
+  getLastEventTime(): string | null {
+    return this.lastEventTime;
+  }
+
   getPlan(): PlanState | null {
     return this.planState
       ? { ...this.planState, steps: this.planState.steps.map((step) => ({ ...step })) }
@@ -789,6 +945,7 @@ export class EventAggregator {
     this.activeTaskId = null;
     this.subagents = [];
     this.pendingSubagents.clear();
+    this.pendingCodexSpawns.clear();
     this.planExtractor.reset();
     this.planState = null;
     this.planEnteredAt = undefined;
@@ -932,7 +1089,7 @@ export class EventAggregator {
     this.tasks = new Map(state.tasks);
     this.activeTaskId = state.activeTaskId;
     this.subagents = [...state.subagents];
-    this.currentPermissionMode = state.permissionMode ?? null;
+    this.currentPermissionMode = asPermissionMode(state.permissionMode) ?? null;
     this.permissionModeHistory = state.permissionModeHistory
       ? [...state.permissionModeHistory]
       : [];
@@ -958,6 +1115,7 @@ export class EventAggregator {
     this.pendingToolCalls.clear();
     this.pendingTaskCreates.clear();
     this.pendingSubagents.clear();
+    this.pendingCodexSpawns.clear();
     // A spawn still waiting for its tool_result is resolved by that result,
     // which can land after the snapshot boundary. Background agents need no
     // entry: their notifications are matched against every subagent.
@@ -1500,7 +1658,7 @@ export class EventAggregator {
           this.handleTodoWrite(input, new Date(event.timestamp));
         } else if (name === 'UpdatePlan') {
           this.handleUpdatePlan(input, new Date(event.timestamp));
-        } else if (isSubagentSpawnTool(name) && toolUseId) {
+        } else if (isSubagentSpawnTool(name, input) && toolUseId) {
           this.handleAgentSpawn(toolUseId, input, new Date(event.timestamp));
         }
       } else if (block.type === 'tool_result') {
@@ -1541,7 +1699,7 @@ export class EventAggregator {
         this.handleTodoWrite(input, new Date(event.timestamp));
       } else if (event.toolName === 'UpdatePlan') {
         this.handleUpdatePlan(input, new Date(event.timestamp));
-      } else if (isSubagentSpawnTool(event.toolName) && toolUseId) {
+      } else if (isSubagentSpawnTool(event.toolName, input) && toolUseId) {
         this.handleAgentSpawn(toolUseId, input, new Date(event.timestamp));
       }
     } else if (event.type === 'tool_result') {
@@ -1852,9 +2010,9 @@ export class EventAggregator {
 
   private handleAgentSpawn(toolUseId: string, input: Record<string, unknown>, now: Date): void {
     const agentTaskId = `agent-${toolUseId}`;
-    const description = input.description ? String(input.description) : 'Subagent';
-    const subagentType =
-      (input.subagent_type as string) || (input.subagentType as string) || undefined;
+    const spawn = spawnFields(input);
+    const description = spawn.description ?? 'Subagent';
+    const subagentType = spawn.subagentType;
 
     const task: TrackedTask = {
       taskId: agentTaskId,
@@ -1884,7 +2042,9 @@ export class EventAggregator {
     const agentTask = this.tasks.get(agentTaskId);
     if (!agentTask) return;
     // A background launch returns at once; its task notification finishes it.
-    if (!isError && parseAsyncAgentLaunch(content)) return;
+    if (spawnResultKind(this.pendingCodexSpawns.has(toolUseId), content, isError) === 'launch') {
+      return;
+    }
 
     agentTask.status = isError ? 'deleted' : 'completed';
     agentTask.updatedAt = new Date(timestamp);
@@ -1913,11 +2073,16 @@ export class EventAggregator {
     if (!Array.isArray(content)) return;
 
     for (const block of content as Array<Record<string, unknown>>) {
-      if (block.type === 'tool_use' && isSubagentSpawnTool(block.name as string)) {
+      if (block.type === 'tool_use' && isSubagentSpawnTool(block.name as string, block.input)) {
         const input = block.input as Record<string, unknown> | undefined;
         const toolUseId = block.id as string;
         if (!input || !toolUseId) continue;
-        this.trackSubagentSpawn(toolUseId, input, event.timestamp);
+        this.trackSubagentSpawn(
+          toolUseId,
+          input,
+          event.timestamp,
+          isCodexSubagentSpawnTool(block.name as string, input),
+        );
       } else if (block.type === 'tool_result') {
         const toolUseId = block.tool_use_id as string;
         if (!toolUseId) continue;
@@ -1938,12 +2103,13 @@ export class EventAggregator {
   private extractSubagentFromFollowEvent(event: FollowEvent): void {
     const raw = event.raw as Record<string, unknown> | undefined;
 
-    if (event.type === 'tool_use' && isSubagentSpawnTool(event.toolName)) {
+    if (event.type === 'tool_use' && isSubagentSpawnTool(event.toolName, raw?.input)) {
       if (!raw?.input) return;
       this.trackSubagentSpawn(
         (raw.id as string) || '',
         raw.input as Record<string, unknown>,
         event.timestamp,
+        isCodexSubagentSpawnTool(event.toolName, raw.input),
       );
     } else if (event.type === 'tool_result') {
       if (!raw) return;
@@ -1961,11 +2127,13 @@ export class EventAggregator {
     toolUseId: string,
     input: Record<string, unknown>,
     timestamp: string,
+    codex = false,
   ): void {
+    const spawn = spawnFields(input);
     const info: SubagentLifecycle = {
       id: toolUseId,
-      description: (input.description as string) || 'Unknown task',
-      subagentType: (input.subagent_type as string) || (input.subagentType as string) || 'general',
+      description: spawn.description ?? 'Unknown task',
+      subagentType: spawn.subagentType ?? (codex ? 'default' : 'general'),
       spawnTime: timestamp,
       status: 'running',
     };
@@ -1973,13 +2141,15 @@ export class EventAggregator {
     this.subagents.push(info);
     if (toolUseId) {
       this.pendingSubagents.set(toolUseId, idx);
+      if (codex) this.pendingCodexSpawns.add(toolUseId);
     }
   }
 
   /**
    * The spawning tool call's result. A foreground agent ends here; a
-   * background launch only reports the agent id, and the agent keeps running
-   * until its task notification arrives.
+   * background launch only reports the agent id (a Codex spawn, its agent
+   * path), and the agent keeps running until a notification or another
+   * record says it ended.
    */
   private resolveSubagentResult(
     toolUseId: string,
@@ -1989,19 +2159,25 @@ export class EventAggregator {
   ): void {
     const idx = this.pendingSubagents.get(toolUseId);
     if (idx === undefined) return;
-    const launch = isError ? null : parseAsyncAgentLaunch(content);
-    if (launch) {
+    const codex = this.pendingCodexSpawns.delete(toolUseId);
+    if (spawnResultKind(codex, content, isError) === 'launch') {
+      const launch: AsyncAgentLaunch & { agentPath?: string } =
+        parseCodexSpawnLaunch(content) ?? parseAsyncAgentLaunch(content) ?? {};
       this.markBackgroundLaunch(idx, launch);
       return;
     }
     this.completeSubagent(toolUseId, timestamp, isError ? 'failed' : 'completed');
   }
 
-  private markBackgroundLaunch(idx: number, launch: AsyncAgentLaunch): void {
+  private markBackgroundLaunch(
+    idx: number,
+    launch: AsyncAgentLaunch & { agentPath?: string },
+  ): void {
     const agent = this.subagents[idx];
     this.pendingSubagents.delete(agent.id);
     agent.background = true;
     if (launch.agentId) agent.agentId = launch.agentId;
+    if (launch.agentPath && !agent.agentPath) agent.agentPath = launch.agentPath;
   }
 
   private completeSubagent(
@@ -2018,16 +2194,66 @@ export class EventAggregator {
     agent: SubagentLifecycle,
     timestamp: string,
     outcome: SubagentLifecycle['outcome'],
+    settledBy?: SubagentSettledBy,
   ): void {
     this.pendingSubagents.delete(agent.id);
+    this.pendingCodexSpawns.delete(agent.id);
     agent.status = 'completed';
     agent.completionTime = timestamp;
     agent.outcome = outcome;
+    if (settledBy) agent.settledBy = settledBy;
+    else delete agent.settledBy;
     const start = new Date(agent.spawnTime).getTime();
     const end = new Date(timestamp).getTime();
     if (!isNaN(start) && !isNaN(end) && end >= start) {
       agent.durationMs = end - start;
+    } else {
+      delete agent.durationMs;
     }
+  }
+
+  /** Puts a settled agent back to running (it resumed). */
+  private reopenSubagent(agent: SubagentLifecycle, timestamp: string): void {
+    this.pendingSubagents.delete(agent.id);
+    agent.status = 'running';
+    delete agent.completionTime;
+    delete agent.durationMs;
+    delete agent.outcome;
+    delete agent.settledBy;
+    this.settleAgentTask(agent.id, null, timestamp);
+  }
+
+  /**
+   * Settles a lifecycle that is still running (and its task card). Agents
+   * already settled are left alone: a stop notice or status can name agents
+   * that finished earlier.
+   */
+  private settleRunningSubagent(
+    agent: SubagentLifecycle,
+    timestamp: string,
+    outcome: SubagentOutcome,
+    settledBy: SubagentSettledBy,
+  ): boolean {
+    if (agent.status !== 'running') return false;
+    this.finishSubagent(agent, timestamp, outcome, settledBy);
+    this.settleAgentTask(agent.id, outcome, timestamp);
+    return true;
+  }
+
+  /**
+   * Moves an agent's task card with its lifecycle: `null` back to in
+   * progress, a failure to deleted, any other outcome to completed.
+   */
+  private settleAgentTask(
+    toolUseId: string | undefined,
+    outcome: SubagentOutcome | null,
+    timestamp: string,
+  ): void {
+    const agentTask = toolUseId ? this.tasks.get(`agent-${toolUseId}`) : undefined;
+    if (!agentTask?.isSubagent) return;
+    agentTask.status =
+      outcome === null ? 'in_progress' : outcome === 'failed' ? 'deleted' : 'completed';
+    agentTask.updatedAt = new Date(timestamp);
   }
 
   /**
@@ -2051,20 +2277,13 @@ export class EventAggregator {
         delete agent.completionTime;
         delete agent.durationMs;
         delete agent.outcome;
+        delete agent.settledBy;
       } else {
-        this.finishSubagent(agent, timestamp, outcome);
+        this.finishSubagent(agent, timestamp, outcome, 'notification');
       }
     }
 
-    const agentTask = toolUseId ? this.tasks.get(`agent-${toolUseId}`) : undefined;
-    if (agentTask?.isSubagent) {
-      agentTask.status = notification.interim
-        ? 'in_progress'
-        : outcome === 'failed'
-          ? 'deleted'
-          : 'completed';
-      agentTask.updatedAt = new Date(timestamp);
-    }
+    this.settleAgentTask(toolUseId, notification.interim ? null : outcome, timestamp);
   }
 
   private findNotifiedSubagent(notification: TaskNotification): SubagentLifecycle | undefined {
@@ -2076,6 +2295,212 @@ export class EventAggregator {
       if (this.subagents[i].agentId === taskId) return this.subagents[i];
     }
     return undefined;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Subagent settling: evidence, stop markers, task statuses, Codex records
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Applies host evidence about a subagent (Claude Code's meta flags):
+   * `stoppedByUser` settles a running agent as `stopped`, `finished` as
+   * `completed` (`settledBy: 'meta'`). Agents already settled some other way
+   * keep their outcome; `finished: false` reopens an agent that only meta
+   * settled. Matches by `toolUseId`, then `agentId` (the newest such agent),
+   * and records the agent id when matched by tool_use id.
+   *
+   * @param timestamp ISO time to record as the completion (the agent's last
+   *   activity, when the host knows it)
+   * @returns Whether a lifecycle changed
+   */
+  applySubagentEvidence(evidence: SubagentEvidence, timestamp: string): boolean {
+    const agent = this.findSubagent(evidence.toolUseId, evidence.agentId);
+    if (!agent) return false;
+    let changed = false;
+    if (evidence.agentId && !agent.agentId) {
+      agent.agentId = evidence.agentId;
+      changed = true;
+    }
+    if (agent.status === 'running') {
+      const outcome: SubagentOutcome | null = evidence.stoppedByUser
+        ? 'stopped'
+        : evidence.finished
+          ? 'completed'
+          : null;
+      if (outcome)
+        changed = this.settleRunningSubagent(agent, timestamp, outcome, 'meta') || changed;
+    } else if (
+      agent.settledBy === 'meta' &&
+      evidence.finished === false &&
+      evidence.stoppedByUser !== true
+    ) {
+      this.reopenSubagent(agent, timestamp);
+      changed = true;
+    }
+    return changed;
+  }
+
+  /** The newest lifecycle with this spawning tool_use id, else with this agent id. */
+  private findSubagent(
+    toolUseId: string | undefined,
+    agentId: string | undefined,
+  ): SubagentLifecycle | undefined {
+    if (toolUseId) {
+      for (let i = this.subagents.length - 1; i >= 0; i--) {
+        if (this.subagents[i].id === toolUseId) return this.subagents[i];
+      }
+    }
+    if (agentId) {
+      for (let i = this.subagents.length - 1; i >= 0; i--) {
+        if (this.subagents[i].agentId === agentId) return this.subagents[i];
+      }
+    }
+    return undefined;
+  }
+
+  /** `agents_killed`: the user killed every running background agent. */
+  private applyAgentsKilled(timestamp: string): void {
+    let settled = 0;
+    for (const agent of this.subagents) {
+      if (!agent.background) continue;
+      if (this.settleRunningSubagent(agent, timestamp, 'stopped', 'stop-marker')) settled++;
+    }
+    if (settled > 0) this.addSubagentTimeline(timestamp, describeAgentsStopped(null));
+  }
+
+  /**
+   * "N background agents were stopped by the user: "A", "B"": settles the
+   * running agents with those descriptions, the newest first for repeats.
+   */
+  private applyAgentsStopped(notice: AgentsStoppedNotice, timestamp: string): void {
+    const taken = new Set<SubagentLifecycle>();
+    for (const description of notice.descriptions) {
+      for (let i = this.subagents.length - 1; i >= 0; i--) {
+        const agent = this.subagents[i];
+        if (taken.has(agent) || agent.status !== 'running') continue;
+        if (agent.description.trim() !== description) continue;
+        taken.add(agent);
+        this.settleRunningSubagent(agent, timestamp, 'stopped', 'stop-marker');
+        break;
+      }
+    }
+    this.addSubagentTimeline(timestamp, describeAgentsStopped(notice));
+  }
+
+  /** A background agent's final `task_status` attachment, matched by agent id. */
+  private applyTaskStatus(status: SubagentTaskStatus, timestamp: string): void {
+    if (!isFinalTaskStatus(status.status)) return;
+    const agent = this.findSubagent(undefined, status.taskId);
+    if (!agent) return;
+    if (
+      this.settleRunningSubagent(
+        agent,
+        timestamp,
+        taskNotificationOutcome(status.status),
+        'task-status',
+      )
+    ) {
+      this.addSubagentTimeline(timestamp, describeTaskStatus(status), agent.id);
+    }
+  }
+
+  /**
+   * A Codex subagent lifecycle record: `started` links the spawn to its child
+   * thread; `completed` (a child turn finished) and `final-answer` (the
+   * child's report, matched by its agent path) complete it; `interacted`
+   * after `followup_task` puts it back to running (a `send_message` does
+   * not: it does not start a turn); `interrupted` (`interrupt_agent`) settles
+   * it as `stopped`, since the child keeps its thread and a follow-up can
+   * run it again, like a user stop rather than a kill.
+   */
+  private applySubagentActivity(activity: SubagentActivity, timestamp: string): void {
+    const byThread = (): SubagentLifecycle | undefined =>
+      this.findSubagent(undefined, activity.agentThreadId) ??
+      this.findSubagentByPath(activity.agentPath);
+    let agent: SubagentLifecycle | undefined;
+    switch (activity.kind) {
+      case 'started': {
+        agent = this.findSubagent(activity.callId, undefined);
+        if (!agent) break;
+        agent.background = true;
+        if (activity.agentThreadId) agent.agentId = activity.agentThreadId;
+        if (activity.agentPath) agent.agentPath = activity.agentPath;
+        break;
+      }
+      case 'completed':
+        agent = byThread();
+        if (agent) this.settleRunningSubagent(agent, timestamp, 'completed', 'notification');
+        break;
+      case 'final-answer':
+        agent = this.findSubagentByPath(activity.agentPath, true);
+        if (agent) this.settleRunningSubagent(agent, timestamp, 'completed', 'notification');
+        break;
+      case 'interacted':
+        agent = byThread();
+        if (agent && activity.tool === 'followup_task' && agent.status === 'completed') {
+          this.reopenSubagent(agent, timestamp);
+        }
+        break;
+      case 'interrupted':
+        agent = byThread();
+        if (agent) this.settleRunningSubagent(agent, timestamp, 'stopped', 'stop-marker');
+        break;
+    }
+    this.addSubagentTimeline(timestamp, describeSubagentActivity(activity), agent?.id);
+  }
+
+  /** The newest lifecycle with this Codex agent path (with `runningFirst`, a running one first). */
+  private findSubagentByPath(
+    agentPath: string | undefined,
+    runningFirst = false,
+  ): SubagentLifecycle | undefined {
+    if (!agentPath) return undefined;
+    let fallback: SubagentLifecycle | undefined;
+    for (let i = this.subagents.length - 1; i >= 0; i--) {
+      const agent = this.subagents[i];
+      if (agent.agentPath !== agentPath) continue;
+      if (!runningFirst || agent.status === 'running') return agent;
+      fallback ??= agent;
+    }
+    return fallback;
+  }
+
+  private applySubagentFollowRecord(record: SubagentFollowRecord, timestamp: string): void {
+    switch (record.kind) {
+      case 'notification':
+        this.applyTaskNotification(record.notification, timestamp);
+        this.addTaskNotificationTimeline(timestamp, record.notification);
+        break;
+      case 'stopped':
+        this.applyAgentsStopped(record.notice, timestamp);
+        break;
+      case 'task-status':
+        this.applyTaskStatus(record.status, timestamp);
+        break;
+      case 'activity':
+        this.applySubagentActivity(record.activity, timestamp);
+        break;
+      case 'agents-killed':
+        this.applyAgentsKilled(timestamp);
+        break;
+      case 'unreadable':
+        break;
+    }
+  }
+
+  private addSubagentTimeline(timestamp: string, description: string, toolUseId?: string): void {
+    const text = description.length > 200 ? description.substring(0, 197) + '...' : description;
+    this.timeline.push({
+      type: 'tool_result',
+      timestamp,
+      description: text,
+      noiseLevel: 'system',
+      messageClassification: 'system',
+      ...(toolUseId ? { metadata: { toolUseId } } : {}),
+    });
+    if (this.timeline.length > this.timelineCap) {
+      this.timeline.shift();
+    }
   }
 
   private addTaskNotificationTimeline(timestamp: string, notification: TaskNotification): void {
@@ -2352,9 +2777,9 @@ export class EventAggregator {
   // Private: Permission Mode
   // ═══════════════════════════════════════════════════════════════════════
 
-  private trackPermissionMode(event: SessionEvent): void {
-    if (!event.permissionMode) return;
-    const mode = event.permissionMode;
+  private trackPermissionMode(event: { permissionMode?: string; timestamp: string }): void {
+    const mode = asPermissionMode(event.permissionMode);
+    if (!mode) return;
     if (mode !== this.currentPermissionMode) {
       this.permissionModeHistory.push({
         timestamp: event.timestamp,

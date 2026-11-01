@@ -25,6 +25,7 @@ import type { MessageClassification } from '../formatters/noiseClassifier';
 import { ClaudeUsageDeduper, dedupedRawClaudeUsage } from '../usage/claudeUsageDedupe';
 import { addUsageToSubagent } from '../usage/subagentUsage';
 import { readAgentMeta } from './subagentScanner';
+import { SubagentEndTracker } from './subagentEndState';
 import { isSubagentSpawnTool } from '../subagentSpawn';
 import { ownValue } from '../ownKey';
 
@@ -77,6 +78,14 @@ export interface SubagentTrace {
   finished?: boolean;
   /** The user stopped the agent (meta `stoppedByUser`). */
   stoppedByUser?: boolean;
+  /** Time of the transcript's last record (the same as `stats.endTime`). */
+  lastActivityAt?: Date;
+  /**
+   * The transcript ended cleanly: its last assistant turn stopped with
+   * `end_turn` / `stop_sequence` and no tool call is unanswered. A resumed
+   * agent's next prompt clears it.
+   */
+  endedCleanly?: boolean;
 }
 
 // ── Constants ──
@@ -135,6 +144,7 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
     let description: string | undefined;
     const tokens: SubagentStats = { agentId, toolCalls: [], inputTokens: 0, outputTokens: 0 };
     const usageDeduper = new ClaudeUsageDeduper();
+    const endTracker = new SubagentEndTracker();
     let startTime: Date | undefined;
     let endTime: Date | undefined;
 
@@ -144,6 +154,7 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
         const timestamp = new Date(raw.timestamp || Date.now());
         if (!startTime) startTime = timestamp;
         endTime = timestamp;
+        endTracker.observe(raw);
 
         // Build SessionEvent from raw JSONL
         const sessionEvent = rawToSessionEvent(raw);
@@ -255,6 +266,8 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
       ...(meta.requestShape ? { background: meta.requestShape === 'background' } : {}),
       ...(meta.finished !== undefined ? { finished: meta.finished } : {}),
       ...(meta.stoppedByUser !== undefined ? { stoppedByUser: meta.stoppedByUser } : {}),
+      ...(endTime ? { lastActivityAt: endTime } : {}),
+      endedCleanly: endTracker.endedCleanly(),
       events,
       children: [],
       stats: {
@@ -271,6 +284,7 @@ function parseAgentTrace(filePath: string, agentId: string): SubagentTrace | nul
         startTime,
         endTime,
         durationMs,
+        endedCleanly: endTracker.endedCleanly(),
       },
     };
   } catch {

@@ -19,6 +19,12 @@ export interface CodexRolloutLine {
   timestamp: string;
   /** Discriminator for the payload type */
   type: 'session_meta' | 'response_item' | 'compacted' | 'turn_context' | 'event_msg';
+  /**
+   * Zero-based position of the record in its rollout (recent Codex versions).
+   * In a forked subagent rollout, records before the child's
+   * `session_meta.subagent_history_start_ordinal` are the parent's history.
+   */
+  ordinal?: number;
   /** Type-specific payload */
   payload: CodexSessionMeta | CodexResponseItem | CodexCompacted | CodexTurnContext | CodexEventMsg;
 }
@@ -37,6 +43,25 @@ export interface CodexSessionMeta {
   base_instructions?: { text?: string };
   git?: { branch?: string; commit?: string; dirty?: boolean };
   forked_from_id?: string;
+  /** The root session of a subagent tree (recent Codex versions). */
+  session_id?: string;
+  /** Subagents: the thread that spawned this one. */
+  parent_thread_id?: string;
+  /** `user`, `subagent`, … (recent Codex versions). */
+  thread_source?: string;
+  /** Subagents: display nickname, e.g. `Banach`. */
+  agent_nickname?: string | null;
+  /** Subagents: agent path, e.g. `/root/review_builder`. */
+  agent_path?: string | null;
+  /** Subagents: requested role (`agent_type`), when one was given. */
+  agent_role?: string | null;
+  /**
+   * Forked subagents: the ordinal of the first record that is the child's
+   * own; earlier records are the parent's history the fork embeds.
+   */
+  subagent_history_start_ordinal?: number;
+  history_mode?: string;
+  multi_agent_version?: string;
 }
 
 // --- response_item ---
@@ -48,6 +73,7 @@ export interface CodexSessionMeta {
  */
 export type CodexResponseItem =
   | CodexMessageItem
+  | CodexAgentMessageItem
   | CodexReasoningItem
   | CodexFunctionCallItem
   | CodexFunctionCallOutputItem
@@ -64,6 +90,20 @@ export interface CodexMessageItem {
   content: CodexContentPart[] | string;
   status?: string;
   phase?: string;
+}
+
+/**
+ * A message between agents of a multi-agent session (`author` and
+ * `recipient` are agent paths such as `/root/review_builder` and `/root`).
+ * Its first text part starts `Message Type: MESSAGE | NEW_TASK |
+ * FINAL_ANSWER`, followed by `Task name:`, `Sender:`, and `Payload:` lines.
+ */
+export interface CodexAgentMessageItem {
+  type: 'agent_message';
+  id?: string;
+  author?: string;
+  recipient?: string;
+  content: Array<CodexContentPart | { type: 'encrypted_content'; encrypted_content?: string }>;
 }
 
 /** Content part within a message. */
@@ -95,6 +135,8 @@ export interface CodexFunctionCallItem {
   name: string;
   arguments: string;
   status?: string;
+  /** Tool namespace, e.g. `collaboration` for the multi-agent tools. */
+  namespace?: string;
 }
 
 /** Result of a function call. */
@@ -188,6 +230,7 @@ export type CodexEvent =
   | CodexErrorEvent
   | CodexContextCompactedEvent
   | CodexPatchAppliedEvent
+  | CodexItemCompletedEvent
   | CodexBackgroundEvent
   | CodexGenericEvent;
 
@@ -327,6 +370,29 @@ export interface CodexPatchAppliedEvent {
   deletions?: number;
 }
 
+/**
+ * A completed turn item. `SubAgentActivity` items record the multi-agent
+ * lifecycle: `kind` `started` (id = the spawn call), `completed` (id =
+ * `subagent-completed-<child turn id>`), `interacted` (id = a
+ * `followup_task` / `send_message` call), `interrupted` (id = an
+ * `interrupt_agent` call).
+ */
+export interface CodexItemCompletedEvent {
+  type: 'item_completed';
+  thread_id?: string;
+  turn_id?: string;
+  item?: {
+    type?: string;
+    id?: string;
+    kind?: string;
+    agent_thread_id?: string;
+    agent_path?: string;
+    model?: string | null;
+    reasoning_effort?: string | null;
+    [key: string]: unknown;
+  };
+}
+
 export interface CodexBackgroundEvent {
   type: 'background';
   message?: string;
@@ -358,6 +424,10 @@ export interface CodexDbThread {
   source?: string;
   agent_nickname?: string | null;
   agent_role?: string | null;
+  /** Subagents: agent path, e.g. `/root/review_builder` (recent schemas). */
+  agent_path?: string | null;
+  /** `user`, `subagent`, … (recent schemas). */
+  thread_source?: string | null;
   /** 1 once the thread is archived; Codex then moves its rollout to `archived_sessions/`. */
   archived?: number;
   /** Unix seconds when the thread was archived. */

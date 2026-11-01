@@ -84,7 +84,7 @@ describe('sessionMessageSchema', () => {
 });
 
 describe('permissionModeSchema', () => {
-  it.each(['default', 'acceptEdits', 'bypassPermissions', 'plan'] as const)(
+  it.each(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'auto', 'dontAsk'] as const)(
     'accepts "%s"',
     (mode) => {
       expect(permissionModeSchema.safeParse(mode).success).toBe(true);
@@ -95,12 +95,24 @@ describe('permissionModeSchema', () => {
     expect(permissionModeSchema.safeParse('admin').success).toBe(false);
   });
 
+  it('accepts the auto and dontAsk modes', () => {
+    for (const mode of ['auto', 'dontAsk']) {
+      const [event] = extractSessionEvents({
+        type: 'user',
+        timestamp: '2026-11-01T10:00:00Z',
+        permissionMode: mode,
+        message: { role: 'user', content: 'x' },
+      });
+      expect(event.permissionMode).toBe(mode);
+    }
+  });
+
   it('keeps an event whose permission mode is unknown and drops only the mode', () => {
-    // Claude Code writes `auto` on every user line in auto mode.
+    // A mode added by a later Claude Code release.
     const events = extractSessionEvents({
       type: 'user',
       timestamp: '2026-11-01T10:00:00Z',
-      permissionMode: 'auto',
+      permissionMode: 'someFutureMode',
       message: { role: 'user', content: 'run the tests' },
     });
     expect(events).toHaveLength(1);
@@ -378,5 +390,113 @@ describe('extractSessionEvents task-notification attachments', () => {
     expect(extractSessionEvents(user, { includeTaskNotifications: true })).toEqual(
       extractSessionEvents(user),
     );
+  });
+});
+
+describe('extractSessionEvents background-agent settling records', () => {
+  const options = { includeTaskNotifications: true };
+  // Redacted from real Claude Code 2.1.296–2.1.305 lines.
+  const agentsKilled = {
+    parentUuid: '9c7aedaa-67c9-41fc-9409-2b67813f30f9',
+    isSidechain: false,
+    type: 'system',
+    subtype: 'agents_killed',
+    timestamp: '2026-10-21T04:01:56.057Z',
+    uuid: '1a8027cc-afdc-4b60-b292-3939b98f4588',
+    isMeta: false,
+    entrypoint: 'cli',
+    cwd: '/work/repo',
+    gitBranch: 'main',
+  };
+  const taskStatusLine = (status: string, taskType = 'local_agent') => ({
+    parentUuid: '0bb9e329-4b47-48ea-8694-732f36f70846',
+    isSidechain: false,
+    type: 'attachment',
+    uuid: 'e837ec3d-86c6-4dc1-8bac-894a2f05dae3',
+    timestamp: '2026-10-08T17:11:21.085Z',
+    cwd: '/work/repo',
+    attachment: {
+      type: 'task_status',
+      taskId: 'a8022858222a8d9b1',
+      taskType,
+      description: 'Second-pass grep engine fixes',
+      status,
+      deltaSummary: null,
+      outputFilePath: '/tmp/tasks/a8022858222a8d9b1.output',
+      canContinueAgent: true,
+    },
+  });
+
+  it('keeps the subtype of system lines, with or without the opt-in', () => {
+    const expected = [
+      {
+        type: 'system',
+        subtype: 'agents_killed',
+        timestamp: '2026-10-21T04:01:56.057Z',
+        isSidechain: false,
+        isMeta: false,
+        entrypoint: 'cli',
+        cwd: '/work/repo',
+        gitBranch: 'main',
+      },
+    ];
+    expect(extractSessionEvents(agentsKilled)).toEqual(expected);
+    expect(extractSessionEvents(agentsKilled, options)).toEqual(expected);
+  });
+
+  it('drops a malformed subtype instead of the line', () => {
+    expect(extractSessionEvents({ ...agentsKilled, subtype: 7 })).toEqual([
+      expect.not.objectContaining({ subtype: expect.anything() }),
+    ]);
+    expect(extractSessionEvents({ ...agentsKilled, subtype: 7 })).toHaveLength(1);
+  });
+
+  it('turns a final background-agent task_status into a system event when opted in', () => {
+    expect(extractSessionEvents(taskStatusLine('completed'))).toEqual([]);
+    expect(extractSessionEvents(taskStatusLine('completed'), options)).toEqual([
+      {
+        type: 'system',
+        timestamp: '2026-10-08T17:11:21.085Z',
+        isSidechain: false,
+        cwd: '/work/repo',
+        origin: { kind: 'task-status' },
+        message: {
+          role: 'system',
+          sourceLabel: 'task status',
+          content: [
+            {
+              type: 'task_status',
+              taskId: 'a8022858222a8d9b1',
+              taskType: 'local_agent',
+              status: 'completed',
+              description: 'Second-pass grep engine fixes',
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it('ignores running statuses and background shell tasks', () => {
+    expect(extractSessionEvents(taskStatusLine('running'), options)).toEqual([]);
+    expect(extractSessionEvents(taskStatusLine('completed', 'local_bash'), options)).toEqual([]);
+  });
+
+  it('turns the plain-text stop notice into a task-notification system event', () => {
+    const prompt =
+      '2 background agents were stopped by the user: "Fact-check draft proposal claims", "Infra: hosted Hub DB roles and rollout".';
+    const [event] = extractSessionEvents(
+      {
+        type: 'attachment',
+        timestamp: '2026-10-12T22:35:58.442Z',
+        attachment: { type: 'queued_command', prompt, commandMode: 'task-notification' },
+      },
+      options,
+    );
+    expect(event).toMatchObject({
+      type: 'system',
+      origin: { kind: 'task-notification' },
+      message: { content: prompt },
+    });
   });
 });

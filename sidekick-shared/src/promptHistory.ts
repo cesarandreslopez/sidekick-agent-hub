@@ -25,11 +25,17 @@
  */
 
 import { createHash } from 'crypto';
-import * as fs from 'fs';
 import * as path from 'path';
 import { HUMAN_CODEX_SOURCES, humanPromptText, type HumanPromptProvider } from './humanPrompt';
 import { listClaudeSessionFilesAsync } from './providers/claudeListing';
 import { listCodexSessionFilesAsync } from './providers/codexRollouts';
+import {
+  canReadCompressedRollouts,
+  openRolloutReadHandle,
+  statRolloutContent,
+  type RolloutContentStat,
+  type RolloutReadHandle,
+} from './providers/compressedRollouts';
 import { DirectoryListingCache } from './providers/directoryListingCache';
 import type { SessionFileInfo } from './providers/types';
 import type { CanonicalTranscriptBlock, CanonicalTranscriptMessage } from './transcript';
@@ -263,6 +269,14 @@ export interface CollectPromptHistoryOptions {
    * both modes, so a cursor written in one mode resumes in the other.
    */
   includeText?: boolean;
+  /**
+   * Codex: also scan compressed rollouts (`….jsonl.zst`, decompressed when
+   * the runtime has `zlib.zstdDecompressSync`; skipped otherwise). Offsets
+   * and sizes in the cursor are then those of the decompressed content, so
+   * a session whose rollout Codex compressed continues where it stopped.
+   * Default false.
+   */
+  includeCompressedRollouts?: boolean;
 }
 
 export interface PromptHistoryResult {
@@ -441,7 +455,12 @@ export async function collectPromptHistory(
 
   const sinceMs = options.since ? options.since.getTime() : null;
   const providers = options.providers ?? ALL_PROVIDERS;
-  const candidates = rotate(await listCandidates(providers, listingRoots, sinceMs), previousNext);
+  const candidates = rotate(
+    await listCandidates(providers, listingRoots, sinceMs, {
+      includeCompressedRollouts: options.includeCompressedRollouts,
+    }),
+    previousNext,
+  );
   const moved = movedSessionKeys(previous, candidates);
 
   const context: ScanContext = {
@@ -478,9 +497,10 @@ export async function collectPromptHistory(
       break;
     }
 
-    let stat: fs.Stats;
+    let stat: RolloutContentStat;
     try {
-      stat = await fs.promises.stat(candidate.filePath);
+      // A compressed rollout's size is its decompressed content's.
+      stat = await statRolloutContent(candidate.filePath);
     } catch {
       continue;
     }
@@ -594,7 +614,7 @@ export async function readPromptOrdinalMarks(
   filePath: string,
 ): Promise<PromptOrdinalMark[]> {
   const marks: PromptOrdinalMark[] = [];
-  const stat = await fs.promises.stat(filePath);
+  const stat = await statRolloutContent(filePath);
   const unbounded = Number.MAX_SAFE_INTEGER;
   const context: ScanContext = {
     roots: [],
@@ -818,19 +838,29 @@ export async function listCandidates(
   providers: PromptHistoryProvider[],
   listingRoots: string[],
   sinceMs: number | null,
+  options: { includeCompressedRollouts?: boolean } = {},
 ): Promise<Candidate[]> {
   const byPath = new Map<string, Candidate>();
   const listOptions = sinceMs !== null ? { since: sinceMs } : {};
   for (const provider of [...new Set(providers)]) {
     if (!ALL_PROVIDERS.includes(provider)) continue;
     // Listings are only candidate supersets; scope is re-checked per prompt.
-    const list =
-      provider === 'claude-code' ? listClaudeSessionFilesAsync : listCodexSessionFilesAsync;
     const cache = new DirectoryListingCache();
     for (const root of listingRoots) {
       let files: SessionFileInfo[];
       try {
-        files = await list(root, listOptions, cache);
+        files =
+          provider === 'claude-code'
+            ? await listClaudeSessionFilesAsync(root, listOptions, cache)
+            : await listCodexSessionFilesAsync(
+                root,
+                {
+                  ...listOptions,
+                  includeCompressed:
+                    options.includeCompressedRollouts === true && canReadCompressedRollouts(),
+                },
+                cache,
+              );
       } catch {
         files = [];
       }
@@ -854,11 +884,11 @@ export async function listCandidates(
   );
 }
 
-/** True when the file's first bytes still match a recorded head. */
+/** True when the file's first bytes (a compressed rollout's content) still match a recorded head. */
 async function fileStartsWith(filePath: string, head: FileHead): Promise<boolean> {
-  let handle: fs.promises.FileHandle | undefined;
+  let handle: RolloutReadHandle | undefined;
   try {
-    handle = await fs.promises.open(filePath, 'r');
+    ({ handle } = await openRolloutReadHandle(filePath));
     return headMatches(head, await readAt(handle, 0, Math.min(HEAD_BYTES, head.bytes)));
   } catch {
     return false;
@@ -894,11 +924,7 @@ function hashPath(filePath: string): string {
   return createHash('sha256').update(filePath).digest('hex').slice(0, 12);
 }
 
-async function readAt(
-  handle: fs.promises.FileHandle,
-  offset: number,
-  length: number,
-): Promise<Buffer> {
+async function readAt(handle: RolloutReadHandle, offset: number, length: number): Promise<Buffer> {
   const buffer = Buffer.alloc(length);
   let read = 0;
   while (read < length) {
@@ -918,7 +944,7 @@ function yieldToEventLoop(): Promise<void> {
  * Returns the head to store, or null when the file was truncated or rewritten.
  */
 async function verifyFile(
-  handle: fs.promises.FileHandle,
+  handle: RolloutReadHandle,
   size: number,
   session: PromptHistoryCursorSession | undefined,
 ): Promise<{ head: { bytes: number; hash: string }; bytesRead: number } | null> {
@@ -942,12 +968,16 @@ async function verifyFile(
 /** @internal */
 export async function scanFile(
   candidate: Candidate,
-  stat: fs.Stats,
+  fileStat: RolloutContentStat,
   prior: PromptHistoryCursorSession | undefined,
   budget: FileBudget,
   context: ScanContext,
 ): Promise<FileOutcome> {
-  const handle = await fs.promises.open(candidate.filePath, 'r');
+  // A compressed rollout is scanned over its decompressed content.
+  const opened = await openRolloutReadHandle(candidate.filePath);
+  const handle = opened.handle;
+  const stat: RolloutContentStat =
+    opened.size === null ? fileStat : { size: opened.size, mtimeMs: fileStat.mtimeMs };
   try {
     let bytesRead = 0;
     const verified = await verifyFile(handle, stat.size, prior);
@@ -1098,7 +1128,7 @@ interface StreamResult {
  * A line longer than `maxRecordBytes` is dropped as it streams past.
  */
 async function streamLines(
-  handle: fs.promises.FileHandle,
+  handle: RolloutReadHandle,
   start: number,
   end: number,
   resumeSkipping: boolean,
@@ -1395,7 +1425,7 @@ abstract class LineScanner {
    * The carried prompt returned again when its metadata changed in this pass.
    * Its text is re-read from its own line, which must still match exactly.
    */
-  async carriedUpdate(handle: fs.promises.FileHandle): Promise<CarriedUpdate> {
+  async carriedUpdate(handle: RolloutReadHandle): Promise<CarriedUpdate> {
     const carried = this.closedCarried ?? (this.open?.carried ? this.open : null);
     if (!carried?.carried) return { bytesRead: 0, rewritten: false };
     const entry = carried.entry;

@@ -15,14 +15,27 @@ import type { CodexTokenUsage } from '../types/codex';
 import { formatToolSummary } from '../formatters/toolSummary';
 import { ClaudeUsageDeduper, normalizeClaudeUsage } from '../usage/claudeUsageDedupe';
 import type { SessionEvent } from '../types/sessionEvent';
-import { parseTaskNotification, taskNotificationPromptFromAttachment } from '../subagentSpawn';
+import {
+  describeAgentsStopped,
+  describeTaskStatus,
+  isAgentsKilledSystemEvent,
+  isFinalTaskStatus,
+  parseAgentsStoppedNotice,
+  parseTaskNotification,
+  taskNotificationPromptFromAttachment,
+  taskStatusFromAttachment,
+} from '../subagentSpawn';
 import type { FollowEvent, SessionWatcher, SessionWatcherCallbacks } from './types';
 
 /** Options for {@link JsonlSessionWatcher}. */
 export interface JsonlSessionWatcherOptions {
   /**
    * Emit a `system` event (summary from the notification, `raw` the line) for
-   * each Claude Code mid-turn task-notification attachment. Default `false`.
+   * each Claude Code mid-turn task-notification attachment, and for the other
+   * lines that settle background agents: the plain-text "background agents
+   * were stopped by the user" notice, a background agent's final
+   * `task_status` attachment, and an `agents_killed` system line. Default
+   * `false`.
    */
   includeTaskNotifications?: boolean;
 }
@@ -162,15 +175,22 @@ function normalizeClaudeCodeEvent(
       });
     } else if (includeTaskNotifications) {
       // A task notification that landed mid-turn is only an attachment line.
-      const notification = parseTaskNotification(taskNotificationPromptFromAttachment(raw));
+      const prompt = taskNotificationPromptFromAttachment(raw);
+      const notification = parseTaskNotification(prompt);
+      const stopped = notification ? null : parseAgentsStoppedNotice(prompt);
+      const taskStatus = taskStatusFromAttachment(raw);
+      let summary: string | null = null;
       if (notification) {
-        events.push({
-          providerId: 'claude-code',
-          type: 'system',
-          timestamp: ts,
-          summary: notification.summary ?? `Background task ${notification.status ?? 'finished'}`,
-          raw,
-        });
+        summary = notification.summary ?? `Background task ${notification.status ?? 'finished'}`;
+      } else if (stopped) {
+        summary = describeAgentsStopped(stopped);
+      } else if (taskStatus && isFinalTaskStatus(taskStatus.status)) {
+        summary = describeTaskStatus(taskStatus);
+      } else if (isAgentsKilledSystemEvent(raw)) {
+        summary = describeAgentsStopped(null);
+      }
+      if (summary !== null) {
+        events.push({ providerId: 'claude-code', type: 'system', timestamp: ts, summary, raw });
       }
     }
   }

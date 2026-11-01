@@ -18,6 +18,8 @@ import type {
   SessionContextSnapshot,
 } from '../context/sessionContext';
 import { JsonlParser } from '../parsers/jsonl';
+import { FileContinuity } from '../fileContinuity';
+import type { JsonlTailResetReason } from '../watchers/jsonlTail';
 import {
   ClaudeUsageDeduper,
   normalizeClaudeUsage,
@@ -29,6 +31,7 @@ import type {
   ListSessionFilesOptions,
   SessionProviderBase,
   SessionReader,
+  SessionReaderReset,
   SessionFileInfo,
   SessionFileStats,
   SearchHit,
@@ -145,7 +148,10 @@ class ClaudeCodeReader implements SessionReader {
   /** Cursor after the last complete line, safe to persist across restarts. */
   private committedPosition = 0;
   private events: SessionEvent[] = [];
-  private _wasTruncated = false;
+  /** Why the last `readNew()` started over from offset 0, if it did. */
+  private _lastReset: SessionReaderReset | null = null;
+  /** Whether the file is still the one the positions refer to. */
+  private readonly continuity = new FileContinuity();
   private decoder = new StringDecoder('utf8');
   /** Split lines of one response repeat its usage; count each response once. */
   private readonly usageDeduper: ClaudeUsageDeduper;
@@ -170,41 +176,30 @@ class ClaudeCodeReader implements SessionReader {
 
   readNew(): SessionEvent[] {
     this.events = [];
-    this._wasTruncated = false;
+    this._lastReset = null;
 
+    let fd: number | null = null;
     try {
-      if (!fs.existsSync(this.sessionPath)) {
-        return [];
-      }
+      // Open first and stat the descriptor: the size and identity checked
+      // are those of the file actually read, even if the path is replaced.
+      fd = fs.openSync(this.sessionPath, 'r');
+      const stats = fs.fstatSync(fd);
+      const reason = this.continuity.check(fd, stats, this.filePosition, this.committedPosition);
+      // Truncated, rewritten, or replaced: what was read no longer describes
+      // the file, so start over from its beginning.
+      if (reason !== null) this.restart(reason);
+      this.continuity.adopt(stats);
 
-      const stats = fs.statSync(this.sessionPath);
       const currentSize = stats.size;
-
-      // Handle truncation
-      if (currentSize < this.filePosition) {
-        this._wasTruncated = true;
-        this.filePosition = 0;
-        this.committedPosition = 0;
-        this.parser.reset();
-        this.decoder = new StringDecoder('utf8');
-        this.usageDeduper.reset();
-      }
-
       // No new content
       if (currentSize <= this.filePosition) {
-        return [];
+        return this.events;
       }
 
       // Read new bytes from last position
-      const fd = fs.openSync(this.sessionPath, 'r');
       const bufferSize = currentSize - this.filePosition;
       const buffer = Buffer.alloc(bufferSize);
-      let bytesRead = 0;
-      try {
-        bytesRead = fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
-      } finally {
-        fs.closeSync(fd);
-      }
+      const bytesRead = fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
 
       const bytes = buffer.subarray(0, bytesRead);
       const newline = bytes.lastIndexOf(0x0a);
@@ -213,10 +208,30 @@ class ClaudeCodeReader implements SessionReader {
       this.parser.processChunk(chunk);
       this.filePosition += bytesRead;
     } catch (error) {
-      console.error(`ClaudeCodeReader: error reading ${this.sessionPath}: ${error}`);
+      if ((error as NodeJS.ErrnoException | null)?.code !== 'ENOENT') {
+        console.error(`ClaudeCodeReader: error reading ${this.sessionPath}: ${error}`);
+      }
+    } finally {
+      if (fd !== null) {
+        try {
+          fs.closeSync(fd);
+        } catch {
+          // Ignore close errors.
+        }
+      }
     }
 
     return this.events;
+  }
+
+  /** Starts over from offset 0 of a file that was truncated, rewritten, or replaced. */
+  private restart(reason: JsonlTailResetReason): void {
+    this._lastReset = { reason, previousPosition: this.committedPosition };
+    this.filePosition = 0;
+    this.committedPosition = 0;
+    this.parser.reset();
+    this.decoder = new StringDecoder('utf8');
+    this.usageDeduper.reset();
   }
 
   readAll(): SessionEvent[] {
@@ -230,7 +245,8 @@ class ClaudeCodeReader implements SessionReader {
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
     this.usageDeduper.reset();
-    this._wasTruncated = false;
+    this._lastReset = null;
+    this.continuity.forget();
   }
 
   exists(): boolean {
@@ -253,10 +269,17 @@ class ClaudeCodeReader implements SessionReader {
     this.committedPosition = position;
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
+    // The position comes from elsewhere (a snapshot): adopt the file the next
+    // read finds rather than compare it with one read before.
+    this.continuity.forget();
   }
 
   wasTruncated(): boolean {
-    return this._wasTruncated;
+    return this._lastReset !== null;
+  }
+
+  lastReset(): SessionReaderReset | null {
+    return this._lastReset ? { ...this._lastReset } : null;
   }
 
   /** The usage deduper's recent message ids, so a resumed reader does not recount a split response. */

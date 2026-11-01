@@ -12,7 +12,16 @@ import type { SessionEvent } from '../types/sessionEvent';
 import type { ProviderId } from '../providers/types';
 import type { FollowEvent } from './types';
 import { formatToolSummary } from '../formatters/toolSummary';
-import { isTaskNotificationSystemEvent, taskNotificationFromEvent } from '../subagentSpawn';
+import {
+  agentsStoppedNoticeFromEvent,
+  describeAgentsStopped,
+  describeTaskStatus,
+  isAgentsKilledSystemEvent,
+  isTaskNotificationSystemEvent,
+  taskNotificationFromEvent,
+  taskStatusFromEvent,
+} from '../subagentSpawn';
+import { describeSubagentActivity, subagentActivityFromEvent } from '../subagentActivity';
 
 /**
  * Converts a single SessionEvent to one or more FollowEvents.
@@ -170,6 +179,35 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
           type: 'system',
           timestamp: ts,
           summary: notification.summary ?? `Background task ${notification.status ?? 'finished'}`,
+          raw: event,
+        });
+        break;
+      }
+      // The user stopping background agents, or a background agent's final status.
+      const stopped = agentsStoppedNoticeFromEvent(event);
+      const taskStatus = stopped ? null : taskStatusFromEvent(event);
+      if (stopped || taskStatus || isAgentsKilledSystemEvent(event)) {
+        events.push({
+          providerId,
+          type: 'system',
+          timestamp: ts,
+          summary: stopped
+            ? describeAgentsStopped(stopped)
+            : taskStatus
+              ? describeTaskStatus(taskStatus)
+              : describeAgentsStopped(null),
+          raw: event,
+        });
+        break;
+      }
+      // A subagent lifecycle record (opt-in Codex parser event): a content-free summary.
+      const activity = subagentActivityFromEvent(event);
+      if (activity) {
+        events.push({
+          providerId,
+          type: 'system',
+          timestamp: ts,
+          summary: describeSubagentActivity(activity),
           raw: event,
         });
         break;

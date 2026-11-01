@@ -22,6 +22,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
+import { Readable } from 'stream';
+import {
+  isCompressedRolloutPath,
+  readRolloutBufferAsync,
+  readRolloutHeadAsync,
+} from './providers/compressedRollouts';
 import {
   listCandidates,
   readPromptOrdinalMarks,
@@ -46,6 +52,11 @@ export interface FindToolCallOriginsOptions {
   providers?: PromptHistoryProvider[];
   /** Stops between files and lines; the promise rejects with the signal's reason. */
   signal?: AbortSignal;
+  /**
+   * Codex: also search compressed rollouts (`….jsonl.zst`), as for
+   * `collectPromptHistory()`. Default false.
+   */
+  includeCompressedRollouts?: boolean;
 }
 
 export interface ToolCallOrigin {
@@ -110,7 +121,9 @@ export async function findToolCallOrigins(
   if (roots.length === 0) return found;
   const providers = options.providers ?? ['claude-code', 'codex'];
   const sinceMs = options.since ? options.since.getTime() : null;
-  const candidates = await listCandidates(providers, listingRoots, sinceMs);
+  const candidates = await listCandidates(providers, listingRoots, sinceMs, {
+    includeCompressedRollouts: options.includeCompressedRollouts,
+  });
   const byProviderSession = new Map<string, Candidate>();
   for (const candidate of candidates) {
     byProviderSession.set(`${candidate.provider}:${candidate.sessionId}`, candidate);
@@ -237,18 +250,13 @@ function claudeSubagentTranscripts(
 }
 
 async function readFirstRecord(filePath: string): Promise<unknown> {
-  let handle: fs.promises.FileHandle | undefined;
   try {
-    handle = await fs.promises.open(filePath, 'r');
-    const buffer = Buffer.alloc(256 * 1024);
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    const text = buffer.subarray(0, bytesRead).toString('utf8');
+    // A compressed rollout's head is decompressed.
+    const text = (await readRolloutHeadAsync(filePath, 256 * 1024)).toString('utf8');
     const newline = text.indexOf('\n');
     return JSON.parse(newline === -1 ? text : text.slice(0, newline));
   } catch {
     return undefined;
-  } finally {
-    await handle?.close();
   }
 }
 
@@ -275,9 +283,16 @@ async function scanForIds(
   signal: AbortSignal | undefined,
 ): Promise<Hit[]> {
   const hits: Hit[] = [];
-  let stream: fs.ReadStream;
+  let stream: Readable;
   try {
-    stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    if (isCompressedRolloutPath(filePath)) {
+      // Compressed rollouts are complete; search their decompressed content.
+      const content = await readRolloutBufferAsync(filePath);
+      if (!content) return hits;
+      stream = Readable.from([content.toString('utf8')]);
+    } else {
+      stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    }
   } catch {
     return hits;
   }

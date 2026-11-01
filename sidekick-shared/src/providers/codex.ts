@@ -4,7 +4,9 @@
  * Implements SessionProviderBase for monitoring Codex CLI sessions.
  * Codex stores sessions as JSONL rollout files in:
  *   ~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
- * with an optional SQLite index at ~/.codex/state.sqlite.
+ * with an optional SQLite index at ~/.codex/state.sqlite. Older rollouts are
+ * compressed in place to `….jsonl.zst`; those are read only with the
+ * `includeCompressedRollouts` option (see `providers/compressedRollouts`).
  *
  * Ported from sidekick-vscode/src/services/providers/CodexSessionProvider.ts
  */
@@ -19,14 +21,24 @@ import type {
   SessionContextSnapshot,
 } from '../context/sessionContext';
 import { CodexRolloutParser, type CodexRolloutResumeState } from '../parsers/codexParser';
-import { CodexDatabase, spawnParentFromSource } from './codexDatabase';
-import { cachedSubagentStats } from '../parsers/subagentStatsCache';
+import { CodexDatabase } from './codexDatabase';
 import {
   DEFAULT_ROLLOUT_WALK_MAX_DEPTH,
   extractRolloutSessionId as extractSessionId,
+  isCompressedRolloutFile,
   isRolloutFile,
   walkRolloutFiles,
 } from './rolloutWalker';
+import {
+  canReadCompressedRollouts,
+  isCompressedRolloutPath,
+  readRolloutHeadAsync,
+  readRolloutText,
+  resolveRolloutPath,
+} from './compressedRollouts';
+import { CompressedCodexRolloutReader } from './codexCompressedReader';
+import { discoverCodexSubagents } from './codexSubagents';
+import { codexRolloutOrigin } from '../parsers/codexRolloutOrigin';
 import type { RolloutFileInfo } from './rolloutWalker';
 import { getCodexSessionsDirs } from '../codexPaths';
 import {
@@ -41,10 +53,13 @@ import {
   readSessionMeta,
 } from './codexRollouts';
 import { DirectoryListingCache, splitWatchedPath } from './directoryListingCache';
+import { FileContinuity } from '../fileContinuity';
+import type { JsonlTailResetReason } from '../watchers/jsonlTail';
 import type {
   ListSessionFilesOptions,
   SessionProviderBase,
   SessionReader,
+  SessionReaderReset,
   ProjectFolderInfo,
   SearchHit,
   SessionFileInfo,
@@ -60,8 +75,7 @@ import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEv
 import type { CodexRolloutLine, CodexRateLimits, CodexSessionMeta } from '../types/codex';
 import { getModelContextWindowSize } from '../modelContext';
 import { recordObservedContextWindow } from '../observedContextWindows';
-import { extractNormalizedUsage, normalizeProviderUsage } from '../usageNormalization';
-import { addUsageToSubagent } from '../usage/subagentUsage';
+import { normalizeProviderUsage } from '../usageNormalization';
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -77,8 +91,8 @@ function truncate(text: string, maxLen: number): string {
 }
 
 /** Every rollout under a directory, newest first (one capped walk). */
-function findRolloutFiles(dir: string): RolloutFileInfo[] {
-  return walkRolloutFiles([dir]);
+function findRolloutFiles(dir: string, includeCompressed = false): RolloutFileInfo[] {
+  return walkRolloutFiles([dir], { includeCompressed });
 }
 
 function hasRolloutFile(dir: string): boolean {
@@ -86,8 +100,15 @@ function hasRolloutFile(dir: string): boolean {
 }
 
 /** Every rollout across the monitored homes, newest first, deduplicated by path. */
-function findRolloutFilesInConfiguredHomes(options: { limit?: number } = {}): RolloutFileInfo[] {
+function findRolloutFilesInConfiguredHomes(
+  options: { limit?: number; includeCompressed?: boolean } = {},
+): RolloutFileInfo[] {
   return walkRolloutFiles(getSessionsDirs(), options);
+}
+
+/** Whether a rollout's session_meta says a subagent wrote it. */
+function isSubagentRollout(rolloutPath: string): boolean {
+  return codexRolloutOrigin(readSessionMeta(rolloutPath)).isSubagent;
 }
 
 export { findCodexRolloutFile };
@@ -174,18 +195,13 @@ function extractFirstUserMessageFromLines(lines: readonly string[]): string | nu
 }
 
 async function extractFirstUserMessageAsync(rolloutPath: string): Promise<string | null> {
-  let handle: fs.promises.FileHandle | null = null;
   try {
-    handle = await fs.promises.open(rolloutPath, 'r');
-    const buffer = Buffer.alloc(256 * 1024);
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    return extractFirstUserMessageFromLines(
-      buffer.toString('utf8', 0, bytesRead).split('\n').slice(0, 20),
-    );
+    // A compressed rollout's head is decompressed; a plain one is read as is.
+    const head = await readRolloutHeadAsync(rolloutPath, 256 * 1024);
+    if (head.length === 0) return null;
+    return extractFirstUserMessageFromLines(head.toString('utf8').split('\n').slice(0, 20));
   } catch {
     return null;
-  } finally {
-    await handle?.close().catch(() => undefined);
   }
 }
 
@@ -307,7 +323,15 @@ class CodexReader implements SessionReader {
   /** Cursor after the last complete line, safe to persist across restarts. */
   private committedPosition = 0;
   private lineBuffer = '';
-  private _wasTruncated = false;
+  /** Why the last `readNew()` started over from offset 0, if it did. */
+  private _lastReset: SessionReaderReset | null = null;
+  /**
+   * A restart found while settling a seek (the file is now shorter than the
+   * position sought); the next `readNew()` reports it.
+   */
+  private pendingRestart: SessionReaderReset | null = null;
+  /** Whether the rollout is still the one the positions refer to. */
+  private readonly continuity = new FileContinuity();
   private decoder = new StringDecoder('utf8');
   /**
    * Position from `seekTo()` whose prefix still has to be parsed for model,
@@ -322,7 +346,7 @@ class CodexReader implements SessionReader {
     private readonly onRateLimits?: (limits: CodexRateLimits) => void,
     private readonly onTokenUsage?: (usage: TokenUsage) => void,
   ) {
-    this.parser = new CodexRolloutParser();
+    this.parser = new CodexRolloutParser({ includeSubagentActivity: true });
   }
 
   /** Get the parser's session metadata. */
@@ -333,38 +357,34 @@ class CodexReader implements SessionReader {
 
   readNew(endPosition?: number): SessionEvent[] {
     this.settleSeek();
-    this._wasTruncated = false;
+    this._lastReset = null;
     const events: SessionEvent[] = [];
 
+    let fd: number | null = null;
     try {
-      if (!fs.existsSync(this.rolloutPath)) return [];
+      // Open first and stat the descriptor: the size and identity checked
+      // are those of the file actually read, even if the path is replaced.
+      fd = fs.openSync(this.rolloutPath, 'r');
+      const stats = fs.fstatSync(fd);
+      if (this.pendingRestart) {
+        this._lastReset = this.pendingRestart;
+        this.pendingRestart = null;
+      }
+      const reason = this.continuity.check(fd, stats, this.filePosition, this.committedPosition);
+      // Truncated, rewritten, or replaced: what was read no longer describes
+      // the rollout, so start over from its beginning.
+      if (reason !== null) this.restart(reason);
+      this.continuity.adopt(stats);
 
-      const stats = fs.statSync(this.rolloutPath);
       const currentSize = Math.min(stats.size, endPosition ?? stats.size);
 
-      // Handle truncation
-      if (currentSize < this.filePosition) {
-        this._wasTruncated = true;
-        this.filePosition = 0;
-        this.committedPosition = 0;
-        this.lineBuffer = '';
-        this.parser.reset();
-        this.decoder = new StringDecoder('utf8');
-      }
-
       // No new content
-      if (currentSize <= this.filePosition) return [];
+      if (currentSize <= this.filePosition) return events;
 
       // Read new bytes
-      const fd = fs.openSync(this.rolloutPath, 'r');
       const bufferSize = currentSize - this.filePosition;
       const buffer = Buffer.alloc(bufferSize);
-      let bytesRead = 0;
-      try {
-        bytesRead = fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
-      } finally {
-        fs.closeSync(fd);
-      }
+      const bytesRead = fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
 
       const bytes = buffer.subarray(0, bytesRead);
       const newline = bytes.lastIndexOf(0x0a);
@@ -393,10 +413,29 @@ class CodexReader implements SessionReader {
 
       this.propagateParserState();
     } catch {
-      // Skip read errors
+      // Skip read errors (a missing rollout reads as no events)
+    } finally {
+      if (fd !== null) {
+        try {
+          fs.closeSync(fd);
+        } catch {
+          // Ignore close errors.
+        }
+      }
     }
 
     return events;
+  }
+
+  /** Starts over from offset 0 of a rollout that was truncated, rewritten, or replaced. */
+  private restart(reason: JsonlTailResetReason): void {
+    this._lastReset = { reason, previousPosition: this.committedPosition };
+    this.filePosition = 0;
+    this.committedPosition = 0;
+    this.lineBuffer = '';
+    this.parser.reset();
+    this.decoder = new StringDecoder('utf8');
+    this.pendingSeek = null;
   }
 
   /** Hands the parser's context window, rate limits, and last usage to the provider. */
@@ -451,8 +490,11 @@ class CodexReader implements SessionReader {
     this.lineBuffer = '';
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
-    this._wasTruncated = false;
+    this._lastReset = null;
+    this.pendingRestart = null;
     this.pendingSeek = null;
+    // The next read adopts whatever rollout has the path.
+    this.continuity.forget();
   }
 
   exists(): boolean {
@@ -488,7 +530,11 @@ class CodexReader implements SessionReader {
   }
 
   wasTruncated(): boolean {
-    return this._wasTruncated;
+    return this._lastReset !== null;
+  }
+
+  lastReset(): SessionReaderReset | null {
+    return this._lastReset ? { ...this._lastReset } : null;
   }
 
   /** The parser's continuation state (see `CodexRolloutParser.exportResumeState`). */
@@ -518,12 +564,32 @@ class CodexReader implements SessionReader {
     if (position === null) return;
     this.reset();
     this.readNew(position);
+    if (this.filePosition < position) {
+      // The rollout no longer reaches the position sought: it was truncated
+      // or replaced since. The next read starts over and reports it.
+      this.reset();
+      this.pendingRestart = { reason: 'truncated', previousPosition: position };
+    }
   }
 }
 
 // ---------------------------------------------------------------------------
 // CodexProvider — full SessionProviderBase implementation
 // ---------------------------------------------------------------------------
+
+/** Options for {@link CodexProvider}; every field is optional and additive. */
+export interface CodexProviderOptions extends SessionProviderOptions {
+  /**
+   * Also discover and read compressed rollouts (`rollout-….jsonl.zst`,
+   * which Codex writes for older sessions). Listings, session lookups,
+   * labels, `createReader()` (a whole-file reader; live tailing stays
+   * `.jsonl`-only), search, and subagent stats then include them. Reading
+   * needs `zlib.zstdDecompressSync` (Node 22.15+); without it they are
+   * skipped and reported once through `onDiagnostic`. Default false, so
+   * session and history counts are unchanged.
+   */
+  includeCompressedRollouts?: boolean;
+}
 
 /**
  * Session provider for Codex CLI.
@@ -546,8 +612,31 @@ export class CodexProvider implements SessionProviderBase {
   /** Dated rollout-directory listings reused across async enumerations. */
   private readonly directoryCache = new DirectoryListingCache();
 
-  constructor(options: SessionProviderOptions = {}) {
+  /** See {@link CodexProviderOptions.includeCompressedRollouts}. */
+  private readonly compressedRequested: boolean;
+  private readonly onDiagnostic: SessionProviderOptions['onDiagnostic'];
+
+  constructor(options: CodexProviderOptions = {}) {
     this.diagnostics = new ProviderDiagnosticTracker(this.id, options);
+    this.compressedRequested = options.includeCompressedRollouts === true;
+    this.onDiagnostic = options.onDiagnostic;
+  }
+
+  /**
+   * Whether compressed rollouts are discovered and read: requested, and the
+   * runtime can decompress them (otherwise reported once, on first use).
+   */
+  private get includeCompressed(): boolean {
+    return (
+      this.compressedRequested && canReadCompressedRollouts({ onDiagnostic: this.onDiagnostic })
+    );
+  }
+
+  /** A stored rollout path as it exists now (its `.zst` when compressed and enabled). */
+  private resolveRollout(rolloutPath: string | undefined | null): string | null {
+    return rolloutPath
+      ? resolveRolloutPath(rolloutPath, { includeCompressed: this.includeCompressed })
+      : null;
   }
 
   // --- Database ---
@@ -658,10 +747,11 @@ export class CodexProvider implements SessionProviderBase {
       }
     }
 
-    // File scan fallback (newest first; cwd reads are cached per path)
+    // File scan fallback (newest first; cwd reads are cached per path).
+    // Subagent rollouts share their parent's cwd but are not the session.
     for (const file of findRolloutFilesInConfiguredHomes()) {
       const cwd = readSessionCwd(file.path);
-      if (cwd && cwdMatches(cwd, workspacePath)) {
+      if (cwd && cwdMatches(cwd, workspacePath) && !isSubagentRollout(file.path)) {
         this.recordDatabaseFallback('findActiveSession', true);
         return file.path;
       }
@@ -677,8 +767,8 @@ export class CodexProvider implements SessionProviderBase {
     if (db) {
       const threads = db.getThreadsByCwd(workspacePath);
       const dbPaths = threads
-        .filter((t) => t.rollout_path && fs.existsSync(t.rollout_path))
-        .map((t) => t.rollout_path);
+        .map((t) => this.resolveRollout(t.rollout_path))
+        .filter((rolloutPath): rolloutPath is string => rolloutPath !== null);
       if (dbPaths.length > 0) {
         this.recordDatabaseFallback('findAllSessions', true);
         return dbPaths;
@@ -686,7 +776,9 @@ export class CodexProvider implements SessionProviderBase {
     }
 
     // File scan (newest first; cwd reads are cached per path)
-    const sessions = findRolloutFilesInConfiguredHomes()
+    const sessions = findRolloutFilesInConfiguredHomes({
+      includeCompressed: this.includeCompressed,
+    })
       .filter((f) => {
         const cwd = readSessionCwd(f.path);
         return cwd !== null && cwdMatches(cwd, workspacePath);
@@ -698,7 +790,7 @@ export class CodexProvider implements SessionProviderBase {
 
   findSessionById(_workspacePath: string, sessionId: string): string | null {
     try {
-      const found = findCodexRolloutFile(sessionId);
+      const found = findCodexRolloutFile(sessionId, { includeCompressed: this.includeCompressed });
       this.recordDatabaseFallback('findSessionById', true);
       return found;
     } catch {
@@ -713,11 +805,11 @@ export class CodexProvider implements SessionProviderBase {
   }
 
   findSessionsInDirectory(dir: string): string[] {
-    return findRolloutFiles(dir).map((f) => f.path);
+    return findRolloutFiles(dir, this.includeCompressed).map((f) => f.path);
   }
 
   listAllSessionFiles(): SessionFileInfo[] {
-    const files = findRolloutFilesInConfiguredHomes();
+    const files = findRolloutFilesInConfiguredHomes({ includeCompressed: this.includeCompressed });
     this.recordDatabaseFallback('listAllSessionFiles', true);
     return files;
   }
@@ -726,7 +818,11 @@ export class CodexProvider implements SessionProviderBase {
     workspacePath?: string,
     options: ListSessionFilesOptions = {},
   ): Promise<SessionFileInfo[]> {
-    const results = await listCodexSessionFilesAsync(workspacePath, options, this.directoryCache);
+    const results = await listCodexSessionFilesAsync(
+      workspacePath,
+      { ...options, includeCompressed: this.includeCompressed },
+      this.directoryCache,
+    );
     // Filesystem enumeration bypasses the database, so record that here as
     // the sync listing paths do; otherwise `getLastOperationStatus()` keeps
     // describing whichever operation ran before this one.
@@ -749,7 +845,7 @@ export class CodexProvider implements SessionProviderBase {
     const fullPath = path.join(root, ...segments);
     const name = segments[segments.length - 1];
     if (segments.length - 1 > DEFAULT_ROLLOUT_WALK_MAX_DEPTH) return { status: 'ignored' };
-    if (!isRolloutFile(name)) {
+    if (!this.isSessionFile(name)) {
       this.directoryCache.invalidate(fullPath);
       try {
         const stat = await fs.promises.stat(fullPath);
@@ -799,7 +895,9 @@ export class CodexProvider implements SessionProviderBase {
     // after its last update can be missing from it, so older files are not
     // opened; the cwd read itself is cached per path either way.
     const indexedUpTo = db ? db.getDbMtime() : 0;
-    for (const file of findRolloutFilesInConfiguredHomes()) {
+    for (const file of findRolloutFilesInConfiguredHomes({
+      includeCompressed: this.includeCompressed,
+    })) {
       if (db && indexedUpTo > 0 && file.mtime.getTime() <= indexedUpTo) continue;
       const cwd = readSessionCwd(file.path);
       if (!cwd) continue;
@@ -842,7 +940,7 @@ export class CodexProvider implements SessionProviderBase {
   // --- File identification ---
 
   isSessionFile(filename: string): boolean {
-    return isRolloutFile(filename);
+    return isRolloutFile(filename) || (this.includeCompressed && isCompressedRolloutFile(filename));
   }
 
   getSessionId(sessionPath: string): string {
@@ -912,6 +1010,16 @@ export class CodexProvider implements SessionProviderBase {
   // --- Data reading ---
 
   createReader(sessionPath: string): SessionReader {
+    if (isCompressedRolloutPath(sessionPath)) {
+      // Compressed rollouts are complete: read whole, never tailed.
+      return new CompressedCodexRolloutReader(sessionPath, {
+        onContextWindowLimit: (limit) => {
+          // Historical content: keep the live limit, do not persist it again.
+          if (this.dynamicContextWindowLimit === null) this.dynamicContextWindowLimit = limit;
+        },
+        onDiagnostic: this.onDiagnostic,
+      });
+    }
     return new CodexReader(
       sessionPath,
       (limit, modelId) => {
@@ -935,130 +1043,29 @@ export class CodexProvider implements SessionProviderBase {
 
   // --- Subagent support ---
 
-  scanSubagents(_sessionDir: string, sessionId: string): SubagentStats[] {
-    // Codex tracks forked sessions via forked_from_id in session_meta.
-    // Use DB when available, fall back to filesystem scanning.
-    const subagents: SubagentStats[] = [];
-
-    // DB approach: spawned subagents (parent recorded in `threads.source`),
-    // plus forked children on older schemas that carry `forked_from_id`.
-    const db = this.ensureDb();
-    if (db) {
-      const seen = new Set<string>();
-      const children = [
-        ...db.getSpawnedChildThreads(sessionId),
-        ...db.getThreadsByForkedFromId(sessionId),
-      ].filter((thread) => !seen.has(thread.id) && seen.add(thread.id));
-      for (const thread of children) {
-        const built = cachedSubagentStats(thread.rollout_path, () =>
-          this.buildSubagentStats(
-            thread.id,
-            thread.rollout_path,
-            thread.title || thread.agent_nickname,
-          ),
-        );
-        if (built) {
-          subagents.push(
-            thread.agent_role && !built.agentType
-              ? { ...built, agentType: thread.agent_role }
-              : built,
-          );
-        }
-      }
-      if (children.length > 0) return subagents;
-    }
-
-    // Filesystem fallback: scan recent rollout files for a matching
-    // forked_from_id. The walk stops after the 50 newest-dated files instead
-    // of enumerating the whole history and slicing afterwards.
-    for (const file of findRolloutFilesInConfiguredHomes({ limit: 50 })) {
-      const meta = readSessionMeta(file.path);
-      if (
-        meta &&
-        (meta.forked_from_id === sessionId || spawnParentFromSource(meta.source) === sessionId)
-      ) {
-        const childId = extractSessionId(path.basename(file.path));
-        // `source` is a plain string for top-level sessions but an object
-        // (`{ subagent: { thread_spawn: … } }`) for spawned children.
-        const description = typeof meta.source === 'string' ? meta.source : undefined;
-        const stats = cachedSubagentStats(file.path, () =>
-          this.buildSubagentStats(childId, file.path, description),
-        );
-        if (stats) subagents.push(stats);
-      }
-    }
-
-    return subagents;
-  }
-
   /**
-   * Builds SubagentStats for a forked session by reading its rollout file.
+   * Every subagent below the session, any depth: spawned threads (the
+   * database's `threads.source`, else the newest rollouts' session_meta)
+   * and, on older schemas, forks (`forked_from_id`). Each carries its
+   * rollout (`filePath`), the parent's spawn call (`spawnToolUseId`),
+   * `agentNickname`, `agentPath`, `parentAgentId`, and `depth`; tool calls
+   * and tokens come from the child's own records, not the parent history a
+   * forked child embeds.
    */
-  private buildSubagentStats(
-    agentId: string,
-    rolloutPath: string,
-    description?: string | null,
-  ): SubagentStats | null {
-    if (!rolloutPath || !fs.existsSync(rolloutPath)) return null;
-
-    const stats: SubagentStats = {
-      agentId,
-      description: description || undefined,
-      toolCalls: [],
-      inputTokens: 0,
-      outputTokens: 0,
-    };
-
-    try {
-      const parser = new CodexRolloutParser();
-      const content = fs.readFileSync(rolloutPath, 'utf8');
-      const lines = content.split('\n');
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const parsed = JSON.parse(trimmed) as CodexRolloutLine;
-
-          // Track timestamps
-          if (parsed.timestamp) {
-            const ts = new Date(parsed.timestamp);
-            if (!stats.startTime || ts < stats.startTime) stats.startTime = ts;
-            if (!stats.endTime || ts > stats.endTime) stats.endTime = ts;
-          }
-
-          const events = parser.convertLine(parsed);
-          for (const event of events) {
-            // Collect tool calls
-            if (event.type === 'assistant' && Array.isArray(event.message.content)) {
-              for (const block of event.message.content as Array<Record<string, unknown>>) {
-                if (block.type === 'tool_use' && typeof block.name === 'string') {
-                  stats.toolCalls.push({
-                    name: block.name as string,
-                    input: (block.input as Record<string, unknown>) || {},
-                    timestamp: new Date(event.timestamp),
-                  });
-                }
-              }
-            }
-            // Accumulate tokens from usage events (duplicate token_count events
-            // are already dropped by the parser).
-            const usage = extractNormalizedUsage(event);
-            if (usage) addUsageToSubagent(stats, usage);
-          }
-        } catch {
-          /* skip malformed lines */
-        }
-      }
-
-      if (stats.startTime && stats.endTime) {
-        stats.durationMs = stats.endTime.getTime() - stats.startTime.getTime();
-      }
-    } catch {
-      /* skip unreadable files */
-    }
-
-    return stats;
+  scanSubagents(_sessionDir: string, sessionId: string): SubagentStats[] {
+    const db = this.ensureDb();
+    return discoverCodexSubagents(sessionId, {
+      db,
+      includeCompressed: this.includeCompressed,
+      onDiagnostic: this.onDiagnostic,
+      sessionRolloutPath: () =>
+        this.resolveRollout(db?.getThread(sessionId)?.rollout_path) ??
+        findCodexRolloutFile(sessionId, { includeCompressed: this.includeCompressed }),
+      // The walk stops after the 50 newest-dated files instead of
+      // enumerating the whole history and slicing afterwards.
+      fallbackFiles: () =>
+        findRolloutFilesInConfiguredHomes({ limit: 50, includeCompressed: this.includeCompressed }),
+    });
   }
 
   // --- Cross-session search ---
@@ -1068,7 +1075,8 @@ export class CodexProvider implements SessionProviderBase {
     const queryLower = query.toLowerCase();
 
     try {
-      const content = fs.readFileSync(sessionPath, 'utf8');
+      const content = readRolloutText(sessionPath, { onDiagnostic: this.onDiagnostic });
+      if (content === null) return results;
       const lines = content.split('\n');
 
       for (const line of lines) {

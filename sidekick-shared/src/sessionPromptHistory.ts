@@ -14,7 +14,7 @@
  * and replies or signals that belong to an out-of-scope prompt are dropped.
  */
 
-import * as fs from 'fs';
+import { statRolloutContent, type RolloutContentStat } from './providers/compressedRollouts';
 import {
   DEFAULT_BOUNDS,
   PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
@@ -87,6 +87,11 @@ export interface CollectSessionPromptHistoryOptions {
   include?: SessionPromptHistoryInclude;
   bounds?: SessionPromptHistoryBounds;
   signal?: AbortSignal;
+  /**
+   * Codex: also read compressed rollouts (`….jsonl.zst`), as for
+   * `collectPromptHistory()`. Default false.
+   */
+  includeCompressedRollouts?: boolean;
 }
 
 export interface PromptHistorySessionPrompt extends Omit<
@@ -179,7 +184,8 @@ const MAX_EXCLUSIONS = 1000;
 
 interface StatedCandidate {
   candidate: Candidate;
-  stat: fs.Stats;
+  /** For a compressed rollout, its decompressed size. */
+  stat: RolloutContentStat;
 }
 
 /** Collect every human prompt of each matching session, grouped by session. */
@@ -374,7 +380,9 @@ async function selectCandidates(
 ): Promise<StatedCandidate[]> {
   const sinceMs = options.since ? options.since.getTime() : null;
   const providers = options.providers ?? ['claude-code', 'codex'];
-  let candidates = await listCandidates(providers, listingRoots, sinceMs);
+  let candidates = await listCandidates(providers, listingRoots, sinceMs, {
+    includeCompressedRollouts: options.includeCompressedRollouts,
+  });
   if (options.sessionIds || options.sessionRefs) {
     const ids = new Set(options.sessionIds ?? []);
     const keys = new Set<string>();
@@ -393,7 +401,7 @@ async function selectCandidates(
   const selected: StatedCandidate[] = [];
   for (const candidate of candidates) {
     try {
-      selected.push({ candidate, stat: await fs.promises.stat(candidate.filePath) });
+      selected.push({ candidate, stat: await statRolloutContent(candidate.filePath) });
     } catch {
       // Gone since it was listed.
     }

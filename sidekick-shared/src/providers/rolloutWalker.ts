@@ -15,6 +15,10 @@
  * order over the whole history omit both (the `maxFiles` cap still applies);
  * a live session missed this way is picked up by its next watch event.
  *
+ * Codex compresses older rollouts to `rollout-…jsonl.zst`. Those are skipped
+ * unless `includeCompressed` is set; a compressed rollout whose `.jsonl` is
+ * still beside it is skipped either way (the `.jsonl` is the one to read).
+ *
  * The async walker accepts a {@link DirectoryListingCache}: unchanged
  * directories are then one stat each instead of a readdir plus a stat per
  * file, which is what makes repeated discovery over a large history cheap.
@@ -50,6 +54,13 @@ export interface WalkRolloutFilesOptions {
   sessionId?: string;
   /** Include zero-byte files (default false). */
   includeEmpty?: boolean;
+  /**
+   * Also return compressed rollouts (`rollout-…jsonl.zst`; default false).
+   * Reading them needs `zlib.zstdDecompressSync` (see
+   * `providers/compressedRollouts`). A `cache` remembers which names a walk
+   * accepted, so do not share one between walks that differ in this option.
+   */
+  includeCompressed?: boolean;
   /** Reuse directory listings across walks (async walker only). */
   cache?: DirectoryListingCache;
   /** With `cache`: re-stat recently modified files even in unchanged directories. */
@@ -61,17 +72,25 @@ export interface WalkRolloutFilesOptions {
 export const DEFAULT_ROLLOUT_WALK_MAX_DEPTH = 6;
 export const DEFAULT_ROLLOUT_WALK_MAX_FILES = 20_000;
 
-/** Test if a filename is a Codex rollout file. */
+/** Test if a filename is a Codex rollout file (`rollout-….jsonl`; not compressed ones). */
 export function isRolloutFile(filename: string): boolean {
   return filename.startsWith('rollout-') && filename.endsWith('.jsonl');
 }
 
+/** Test if a filename is a compressed Codex rollout (`rollout-….jsonl.zst`). */
+export function isCompressedRolloutFile(filename: string): boolean {
+  return filename.startsWith('rollout-') && filename.endsWith('.jsonl.zst');
+}
+
 /**
  * Extract the session UUID from a rollout filename.
- * Format: rollout-<timestamp>-<uuid>.jsonl -> <uuid>
+ * Format: rollout-<timestamp>-<uuid>.jsonl (or .jsonl.zst) -> <uuid>
  */
 export function extractRolloutSessionId(filename: string): string {
-  const base = path.basename(filename, '.jsonl');
+  const name = path.basename(filename);
+  const base = name.endsWith('.jsonl.zst')
+    ? name.slice(0, -'.jsonl.zst'.length)
+    : path.basename(name, '.jsonl');
   // rollout-YYYYMMDD-HHMMSS-<uuid> or rollout-<timestamp>-<uuid>
   const parts = base.split('-');
   // The UUID is typically the last 5 segments (8-4-4-4-12)
@@ -93,6 +112,7 @@ interface WalkState {
   since: number | null;
   sessionId: string | null;
   includeEmpty: boolean;
+  includeCompressed: boolean;
   cache: DirectoryListingCache | null;
   revalidateRecent: boolean;
   stats: DirectoryListingCounters | undefined;
@@ -109,6 +129,7 @@ function walkState(options: WalkRolloutFilesOptions): WalkState {
     since: options.since !== undefined && Number.isFinite(options.since) ? options.since : null,
     sessionId: options.sessionId ? options.sessionId.trim().toLowerCase() : null,
     includeEmpty: options.includeEmpty ?? false,
+    includeCompressed: options.includeCompressed ?? false,
     cache: options.cache ?? null,
     revalidateRecent: options.revalidateRecent ?? false,
     stats: options.stats,
@@ -121,10 +142,17 @@ function byNameDescending(a: fs.Dirent, b: fs.Dirent): number {
 }
 
 function matchesFilter(state: WalkState, name: string): boolean {
-  if (!isRolloutFile(name)) return false;
+  if (!isRolloutFile(name) && !(state.includeCompressed && isCompressedRolloutFile(name))) {
+    return false;
+  }
   return (
     state.sessionId === null || extractRolloutSessionId(name).toLowerCase() === state.sessionId
   );
+}
+
+/** A compressed rollout whose uncompressed rollout is listed beside it. */
+function shadowedByPlain(name: string, has: (name: string) => boolean): boolean {
+  return isCompressedRolloutFile(name) && has(name.slice(0, -'.zst'.length));
 }
 
 function record(
@@ -184,10 +212,12 @@ function visitSync(state: WalkState, dir: string, depth: number, segments: strin
     return;
   }
   entries.sort(byNameDescending);
+  const names = state.includeCompressed ? new Set(entries.map((entry) => entry.name)) : null;
 
   for (const entry of entries) {
     if (state.results.length >= state.cap) return;
     if (!entry.isFile() || !matchesFilter(state, entry.name)) continue;
+    if (names && shadowedByPlain(entry.name, (name) => names.has(name))) continue;
     const fullPath = path.join(dir, entry.name);
     try {
       record(state, fullPath, entry.name, fs.statSync(fullPath));
@@ -244,6 +274,9 @@ async function visitCached(
     if (state.results.length >= state.cap) return;
     const stat = listing.files.get(name);
     if (!stat) continue;
+    // The listing may come from a walk with other options: filter again.
+    if (!matchesFilter(state, name)) continue;
+    if (shadowedByPlain(name, (other) => listing.files.has(other))) continue;
     record(state, path.join(dir, name), name, { size: stat.sizeBytes, mtimeMs: stat.mtimeMs });
   }
   await yieldToEventLoop();
@@ -269,11 +302,13 @@ async function visitAsync(
     return;
   }
   entries.sort(byNameDescending);
+  const names = state.includeCompressed ? new Set(entries.map((entry) => entry.name)) : null;
 
   let sinceYield = 0;
   for (const entry of entries) {
     if (state.results.length >= state.cap) return;
     if (!entry.isFile() || !matchesFilter(state, entry.name)) continue;
+    if (names && shadowedByPlain(entry.name, (name) => names.has(name))) continue;
     const fullPath = path.join(dir, entry.name);
     try {
       const stat = await fs.promises.stat(fullPath);

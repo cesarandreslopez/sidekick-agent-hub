@@ -11,6 +11,11 @@ import { getCodexSessionsDirs } from '../codexPaths';
 import type { CodexRolloutLine, CodexSessionMeta } from '../types/codex';
 import { DirectoryListingCache } from './directoryListingCache';
 import { walkRolloutFiles, walkRolloutFilesAsync } from './rolloutWalker';
+import {
+  isCompressedRolloutPath,
+  readRolloutFirstLines,
+  readRolloutHead,
+} from './compressedRollouts';
 import type { ListSessionFilesOptions, SessionFileInfo } from './types';
 
 /** Every directory across the monitored homes that may hold rollouts, archived ones included. */
@@ -20,13 +25,15 @@ export function getSessionsDirs(): string[] {
 
 /**
  * Read the first N complete lines from a file using chunked reads.
- * Handles arbitrarily long lines (Codex session_meta can be 10KB+).
+ * Handles arbitrarily long lines (Codex session_meta can be 10KB+), and
+ * compressed rollouts (`.jsonl.zst`, decompressed when the runtime can).
  */
 export function readFirstLines(
   filePath: string,
   maxLines: number,
   maxBytes = 256 * 1024,
 ): string[] {
+  if (isCompressedRolloutPath(filePath)) return readRolloutFirstLines(filePath, maxLines, maxBytes);
   const lines: string[] = [];
   let fd: number;
   try {
@@ -96,6 +103,13 @@ export async function readFirstLineAsync(
   // `instructions` and can far exceed a single chunk.
   const maxBytes = 256 * 1024;
   const chunkSize = 64 * 1024;
+  if (isCompressedRolloutPath(rolloutPath)) {
+    // Compressed rollouts are complete: their first line is final.
+    const head = readRolloutHead(rolloutPath, maxBytes);
+    if (head.length === 0) return { line: null, complete: false };
+    const firstLine = head.toString('utf8').split('\n', 1)[0]?.trim();
+    return { line: firstLine || null, complete: true };
+  }
   let handle: fs.promises.FileHandle | null = null;
   try {
     handle = await fs.promises.open(rolloutPath, 'r');
@@ -198,6 +212,15 @@ export function normalizePath(input: string): string {
   }
 }
 
+/** Options for {@link listCodexSessionFilesAsync}. */
+export interface ListCodexSessionFilesOptions extends ListSessionFilesOptions {
+  /**
+   * Also list compressed rollouts (`.jsonl.zst`; default false). Do not
+   * reuse one `cache` across calls that differ in this option.
+   */
+  includeCompressed?: boolean;
+}
+
 /**
  * List rollout files across the monitored Codex homes, newest first. With
  * `workspacePath`, keeps rollouts whose session_meta cwd equals, contains, or
@@ -205,7 +228,7 @@ export function normalizePath(input: string): string {
  */
 export async function listCodexSessionFilesAsync(
   workspacePath?: string,
-  options: ListSessionFilesOptions = {},
+  options: ListCodexSessionFilesOptions = {},
   cache: DirectoryListingCache = new DirectoryListingCache(),
 ): Promise<SessionFileInfo[]> {
   const results: SessionFileInfo[] = [];
@@ -219,6 +242,7 @@ export async function listCodexSessionFilesAsync(
     cache,
     revalidateRecent: options.revalidateRecent,
     stats: options.stats,
+    includeCompressed: options.includeCompressed,
   });
   for (const file of files) {
     if (options.limit !== undefined && results.length >= options.limit) break;
@@ -240,6 +264,11 @@ export interface FindCodexRolloutFileOptions {
    * profile homes that recorded sessions.
    */
   codexHome?: string;
+  /**
+   * Also match a compressed rollout (`.jsonl.zst`) when no `.jsonl` for the
+   * id exists (default false).
+   */
+  includeCompressed?: boolean;
 }
 
 /**
@@ -267,5 +296,10 @@ export function findCodexRolloutFile(
     : getSessionsDirs();
 
   // Name-only filter, one walk across the homes, newest modification first.
-  return walkRolloutFiles(sessionsDirs, { sessionId: normalizedId })[0]?.path ?? null;
+  const matches = walkRolloutFiles(sessionsDirs, {
+    sessionId: normalizedId,
+    includeCompressed: options.includeCompressed,
+  });
+  // A live `.jsonl` wins over a compressed copy found in another home.
+  return (matches.find((file) => !isCompressedRolloutPath(file.path)) ?? matches[0])?.path ?? null;
 }

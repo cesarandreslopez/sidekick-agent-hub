@@ -17,7 +17,13 @@ import type {
   PermissionMode,
 } from '../types/sessionEvent';
 import { normalizedUsageSchema } from './usageNormalization';
-import { taskNotificationPromptFromAttachment } from '../subagentSpawn';
+import {
+  TASK_STATUS_BLOCK_TYPE,
+  TASK_STATUS_ORIGIN_KIND,
+  isFinalTaskStatus,
+  taskNotificationPromptFromAttachment,
+  taskStatusFromAttachment,
+} from '../subagentSpawn';
 
 // ── MessageUsage ──
 
@@ -56,6 +62,8 @@ export const permissionModeSchema = z.enum([
   'acceptEdits',
   'bypassPermissions',
   'plan',
+  'auto',
+  'dontAsk',
 ]) satisfies z.ZodType<PermissionMode>;
 
 // ── SessionEvent ──
@@ -70,8 +78,8 @@ const eventBaseShape = {
   promptSource: z.string().optional(),
   cwd: z.string().optional(),
   gitBranch: z.string().optional(),
-  // A mode this release doesn't know (Claude Code added `auto`) is dropped
-  // rather than rejecting the whole line with its prompt or tool results.
+  // A mode this release doesn't know is dropped rather than rejecting the
+  // whole line with its prompt or tool results.
   permissionMode: permissionModeSchema.optional().catch(undefined),
   rateLimits: z
     .object({
@@ -169,6 +177,9 @@ export const systemSessionEventSchema = z.object({
   type: z.literal('system'),
   message: sessionMessageSchema.optional(),
   ...eventBaseShape,
+  // Claude Code's system-line subtype (`agents_killed`, `turn_duration`, …);
+  // a malformed one is dropped rather than rejecting the line.
+  subtype: z.string().optional().catch(undefined),
 });
 
 export const toolUseSessionEventSchema = z.object({
@@ -211,8 +222,19 @@ export interface ExtractSessionEventsOptions {
    * commandMode: 'task-notification', prompt } }`) into one `system` event
    * with `origin: { kind: 'task-notification' }`, `message: { role: 'user',
    * sourceLabel: 'task notification', content: <prompt> }`, and the line's
-   * timestamp. They report background agents finishing. Default `false`:
-   * attachment lines yield no events.
+   * timestamp. They report background agents finishing (or, as plain text,
+   * the user stopping them: see `parseAgentsStoppedNotice`).
+   *
+   * Also turns a background agent's `task_status` attachment with a final
+   * status (`{ type: 'attachment', attachment: { type: 'task_status',
+   * taskType: 'local_agent', taskId, status: 'completed', … } }`) into a
+   * `system` event with `origin: { kind: 'task-status' }` and `message: {
+   * role: 'system', sourceLabel: 'task status', content: [{ type:
+   * 'task_status', taskId, taskType, status, description }] }` (read it with
+   * `taskStatusFromEvent`). Default `false`: attachment lines yield no events.
+   *
+   * System lines (`agents_killed` among them) parse either way and keep
+   * their `subtype`.
    */
   includeTaskNotifications?: boolean;
 }
@@ -259,7 +281,7 @@ function extractSessionEventsWithProvenance(
   if (direct.success) return [{ ...inherited, ...direct.data }];
 
   if (options.includeTaskNotifications) {
-    const notification = taskNotificationAttachmentEvent(raw);
+    const notification = taskNotificationAttachmentEvent(raw) ?? taskStatusAttachmentEvent(raw);
     if (notification) return [{ ...inherited, ...notification }];
   }
 
@@ -287,6 +309,28 @@ function taskNotificationAttachmentEvent(raw: unknown): SessionEvent | null {
     timestamp: line.timestamp,
     origin: { kind: 'task-notification' },
     message: { role: 'user', sourceLabel: 'task notification', content: prompt },
+  };
+  for (const key of ['entrypoint', 'isSidechain', 'cwd', 'gitBranch']) {
+    if (line[key] !== undefined) candidate[key] = line[key];
+  }
+  const parsed = systemSessionEventSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+}
+
+/** The `system` event for a background agent's final `task_status` attachment, or `null`. */
+function taskStatusAttachmentEvent(raw: unknown): SessionEvent | null {
+  const status = taskStatusFromAttachment(raw);
+  if (!status || !isFinalTaskStatus(status.status)) return null;
+  const line = raw as Record<string, unknown>;
+  const candidate: Record<string, unknown> = {
+    type: 'system',
+    timestamp: line.timestamp,
+    origin: { kind: TASK_STATUS_ORIGIN_KIND },
+    message: {
+      role: 'system',
+      sourceLabel: 'task status',
+      content: [{ type: TASK_STATUS_BLOCK_TYPE, ...status }],
+    },
   };
   for (const key of ['entrypoint', 'isSidechain', 'cwd', 'gitBranch']) {
     if (line[key] !== undefined) candidate[key] = line[key];

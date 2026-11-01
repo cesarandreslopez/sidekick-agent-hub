@@ -6,7 +6,8 @@ import {
   type NormalizedUsage,
   type NormalizedUsageCost,
 } from './usageNormalization';
-import { isTaskNotificationSystemEvent } from './subagentSpawn';
+import { isTaskNotificationSystemEvent, isTaskStatusSystemEvent } from './subagentSpawn';
+import { isSubagentActivitySystemEvent } from './subagentActivity';
 
 export type TranscriptFidelity = 'snippet' | 'full';
 
@@ -160,7 +161,9 @@ export function projectSessionTranscript(
 
   events.forEach((event, eventIndex) => {
     // A reader's synthetic notice that a background task finished, not a message.
-    if (isTaskNotificationSystemEvent(event)) return;
+    if (isTaskNotificationSystemEvent(event) || isTaskStatusSystemEvent(event)) return;
+    // Likewise a subagent lifecycle record (opt-in Codex parser event).
+    if (isSubagentActivitySystemEvent(event)) return;
     if (nonEmpty(event.cwd)) cwd = event.cwd;
     if (nonEmpty(event.gitBranch)) gitBranch = event.gitBranch;
     const message = event.message;

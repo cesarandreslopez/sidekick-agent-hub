@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   SUBAGENT_SPAWN_TOOL_NAMES,
+  agentsStoppedNoticeFromEvent,
   contentText,
+  isAgentsKilledSystemEvent,
+  isCodexSubagentSpawnTool,
   isSubagentSpawnTool,
+  isTaskStatusSystemEvent,
+  parseAgentsStoppedNotice,
+  parseCodexSpawnLaunch,
+  taskStatusFromAttachment,
+  taskStatusFromEvent,
   isTaskNotificationSystemEvent,
   parseAsyncAgentLaunch,
   parseTaskNotification,
@@ -56,20 +64,169 @@ const BASH_NOTIFICATION = [
 ].join('\n');
 
 describe('isSubagentSpawnTool', () => {
-  it('accepts Agent and its earlier name Task only', () => {
+  it('accepts Agent, its earlier name Task, and Codex spawn_agent', () => {
     expect(SUBAGENT_SPAWN_TOOL_NAMES).toEqual(['Agent', 'Task']);
     expect(isSubagentSpawnTool('Agent')).toBe(true);
     expect(isSubagentSpawnTool('Task')).toBe(true);
+    expect(isSubagentSpawnTool('Spawn_agent')).toBe(true);
+    expect(isSubagentSpawnTool('spawn_agent')).toBe(true);
     for (const name of ['TaskCreate', 'TaskUpdate', 'agent', 'task', 'Bash', '', undefined, null]) {
       expect(isSubagentSpawnTool(name)).toBe(false);
     }
   });
 
-  it('backs isAssistantTurnSubagentTool', () => {
+  it('recognizes Codex spawn_agent by its raw name in the input', () => {
+    expect(isCodexSubagentSpawnTool('Renamed', { _sidekickRawToolName: 'spawn_agent' })).toBe(true);
+    expect(isSubagentSpawnTool('Renamed', { _sidekickRawToolName: 'spawn_agent' })).toBe(true);
+    expect(isCodexSubagentSpawnTool('Agent')).toBe(false);
+    expect(
+      isCodexSubagentSpawnTool('Followup_task', { _sidekickRawToolName: 'followup_task' }),
+    ).toBe(false);
+  });
+
+  it('backs isAssistantTurnSubagentTool with the Claude names only', () => {
     expect(isAssistantTurnSubagentTool('Agent')).toBe(true);
     expect(isAssistantTurnSubagentTool('Task')).toBe(true);
+    expect(isAssistantTurnSubagentTool('Spawn_agent')).toBe(false);
     expect(isAssistantTurnSubagentTool('Read')).toBe(false);
     expect(isAssistantTurnSubagentTool(undefined)).toBe(false);
+  });
+});
+
+describe('parseCodexSpawnLaunch', () => {
+  it('reads the agent path from a spawn_agent result', () => {
+    expect(parseCodexSpawnLaunch('{"task_name":"/root/review_builder"}')).toEqual({
+      agentPath: '/root/review_builder',
+    });
+    expect(parseCodexSpawnLaunch({ task_name: '/root/x' })).toEqual({ agentPath: '/root/x' });
+    expect(parseCodexSpawnLaunch([{ type: 'text', text: '{"task_name":"/root/y"}' }])).toEqual({
+      agentPath: '/root/y',
+    });
+  });
+
+  it('rejects anything else', () => {
+    for (const value of [
+      '',
+      'collab spawn failed: agent thread limit reached',
+      '{"other":1}',
+      '{not json',
+      '["task_name"]',
+      null,
+      42,
+    ]) {
+      expect(parseCodexSpawnLaunch(value)).toBeNull();
+    }
+  });
+});
+
+describe('parseAgentsStoppedNotice', () => {
+  it('parses the plural queued-command notice', () => {
+    expect(
+      parseAgentsStoppedNotice(
+        '2 background agents were stopped by the user: "Fact-check draft proposal claims", "Infra: hosted Hub DB roles and rollout".',
+      ),
+    ).toEqual({
+      descriptions: ['Fact-check draft proposal claims', 'Infra: hosted Hub DB roles and rollout'],
+    });
+  });
+
+  it('parses the singular queue-operation notice', () => {
+    expect(
+      parseAgentsStoppedNotice(
+        'Background agent "MCP client repo identity at upload" was stopped by the user.',
+      ),
+    ).toEqual({ descriptions: ['MCP client repo identity at upload'] });
+    expect(parseAgentsStoppedNotice('1 background agent was stopped by the user: "Solo".')).toEqual(
+      {
+        descriptions: ['Solo'],
+      },
+    );
+  });
+
+  it('rejects other text', () => {
+    for (const text of [
+      'The user stopped the build.',
+      '<task-notification><task-id>a</task-id></task-notification>',
+      '2 background agents were stopped by the user:',
+      undefined,
+    ]) {
+      expect(parseAgentsStoppedNotice(text)).toBeNull();
+    }
+  });
+
+  it('reads the notice from an opt-in task-notification system event only', () => {
+    const event: SessionEvent = {
+      type: 'system',
+      timestamp: '2026-10-12T22:35:58.442Z',
+      origin: { kind: 'task-notification' },
+      message: {
+        role: 'user',
+        sourceLabel: 'task notification',
+        content: '1 background agent was stopped by the user: "Solo".',
+      },
+    };
+    expect(agentsStoppedNoticeFromEvent(event)).toEqual({ descriptions: ['Solo'] });
+    expect(agentsStoppedNoticeFromEvent({ ...event, origin: undefined })).toBeNull();
+  });
+});
+
+describe('agents_killed and task_status records', () => {
+  it('recognizes agents_killed system lines and events', () => {
+    expect(isAgentsKilledSystemEvent({ type: 'system', subtype: 'agents_killed' })).toBe(true);
+    expect(isAgentsKilledSystemEvent({ type: 'system', subtype: 'turn_duration' })).toBe(false);
+    expect(isAgentsKilledSystemEvent({ type: 'user', subtype: 'agents_killed' })).toBe(false);
+    expect(isAgentsKilledSystemEvent(null)).toBe(false);
+  });
+
+  it('reads background-agent task_status attachments, not shell tasks', () => {
+    const line = {
+      type: 'attachment',
+      timestamp: '2026-10-08T17:11:21.085Z',
+      attachment: {
+        type: 'task_status',
+        taskId: 'a8022858222a8d9b1',
+        taskType: 'local_agent',
+        description: 'Second-pass grep engine fixes',
+        status: 'completed',
+        deltaSummary: null,
+        canContinueAgent: true,
+      },
+    };
+    expect(taskStatusFromAttachment(line)).toEqual({
+      taskId: 'a8022858222a8d9b1',
+      taskType: 'local_agent',
+      status: 'completed',
+      description: 'Second-pass grep engine fixes',
+    });
+    expect(
+      taskStatusFromAttachment({
+        ...line,
+        attachment: { ...line.attachment, taskType: 'local_bash' },
+      }),
+    ).toBeNull();
+    expect(taskStatusFromAttachment({ ...line, type: 'user' })).toBeNull();
+  });
+
+  it('reads the opt-in task-status system event', () => {
+    const event: SessionEvent = {
+      type: 'system',
+      timestamp: '2026-10-08T17:11:21.085Z',
+      origin: { kind: 'task-status' },
+      message: {
+        role: 'system',
+        sourceLabel: 'task status',
+        content: [
+          { type: 'task_status', taskId: 'abc', taskType: 'local_agent', status: 'killed' },
+        ],
+      },
+    };
+    expect(isTaskStatusSystemEvent(event)).toBe(true);
+    expect(taskStatusFromEvent(event)).toEqual({
+      taskId: 'abc',
+      taskType: 'local_agent',
+      status: 'killed',
+    });
+    expect(taskStatusFromEvent({ ...event, origin: { kind: 'task-notification' } })).toBeNull();
   });
 });
 

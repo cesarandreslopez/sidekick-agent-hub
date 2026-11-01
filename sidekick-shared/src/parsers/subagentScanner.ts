@@ -21,6 +21,7 @@ import { ClaudeUsageDeduper, dedupedRawClaudeUsage } from '../usage/claudeUsageD
 import { addUsageToSubagent } from '../usage/subagentUsage';
 import { cachedSubagentStats } from './subagentStatsCache';
 import { isSubagentSpawnTool } from '../subagentSpawn';
+import { SubagentEndTracker } from './subagentEndState';
 
 /**
  * Pattern for matching subagent JSONL files.
@@ -202,6 +203,7 @@ function parseAgentFile(
     let description: string | undefined;
     const tokens: SubagentStats = { agentId, toolCalls: [], inputTokens: 0, outputTokens: 0 };
     const usageDeduper = new ClaudeUsageDeduper();
+    const endTracker = new SubagentEndTracker();
     let startTime: Date | undefined;
     let endTime: Date | undefined;
 
@@ -228,6 +230,7 @@ function parseAgentFile(
         // Track start/end times
         if (!startTime) startTime = eventTimestamp;
         endTime = eventTimestamp;
+        endTracker.observe(event);
 
         // Extract token usage from assistant messages. Split lines of one
         // response repeat its usage, so count each response once.
@@ -373,6 +376,7 @@ function parseAgentFile(
         startTime,
         endTime,
         durationMs,
+        endedCleanly: endTracker.endedCleanly(),
       };
     }
 

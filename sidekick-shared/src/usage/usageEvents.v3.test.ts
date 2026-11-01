@@ -35,6 +35,7 @@ vi.mock('../providers/codexDatabase', async () => {
 });
 
 import { getModelPricing } from '../modelInfo';
+import { CHILD_ID, PARENT_ID, childRollout } from '../testing/codexSubagentFixtures';
 import { collectPromptHistory, type PromptHistoryEntry } from '../promptHistory';
 import { ClaudeCodeProvider } from '../providers/claudeCode';
 import { CodexProvider } from '../providers/codex';
@@ -345,6 +346,14 @@ describe('subagent attribution', () => {
     expect(bySession.get(parentId)?.promptOrdinal).toBe(0);
     expect(bySession.get(spawnedId)?.promptOrdinal).toBeNull();
     expect(bySession.get(forkId)?.promptOrdinal).toBeNull();
+  });
+
+  it("counts only a forked child's own records", async () => {
+    codexRollout(CHILD_ID, childRollout({ cwd: repo }));
+    const first = await collectUsageEvents({ providers: [codex()] });
+    // 300 + 200 of its own; the 5000 in the parent history the fork embeds is not counted.
+    expect(first.events.map((event) => event.tokens.inputTokens)).toEqual([300, 200]);
+    expect(first.events[0].subagent).toEqual({ agentId: CHILD_ID, parentSessionId: PARENT_ID });
   });
 });
 

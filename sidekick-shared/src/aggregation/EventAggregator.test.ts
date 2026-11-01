@@ -962,6 +962,39 @@ describe('EventAggregator', () => {
       expect(agg.getMetrics().permissionMode).toBeNull();
       expect(agg.getMetrics().permissionModeHistory).toHaveLength(0);
     });
+
+    it('follows a session through auto and back to bypass', () => {
+      for (const permissionMode of ['plan', 'auto', 'bypassPermissions', 'dontAsk'] as const) {
+        agg.processEvent(
+          makeSessionEvent({
+            type: 'user',
+            message: { role: 'user', content: 'go' },
+            permissionMode,
+          }),
+        );
+      }
+      expect(agg.getMetrics().permissionModeHistory.map((change) => change.mode)).toEqual([
+        'plan',
+        'auto',
+        'bypassPermissions',
+        'dontAsk',
+      ]);
+    });
+
+    it('tracks the mode carried by followed events and ignores unknown ones', () => {
+      agg.processFollowEvent(makeFollowEvent({ type: 'user', permissionMode: 'auto' }));
+      agg.processFollowEvent(makeFollowEvent({ type: 'user', permissionMode: 'someFutureMode' }));
+      expect(agg.getMetrics().permissionMode).toBe('auto');
+      expect(agg.getMetrics().permissionModeHistory).toHaveLength(1);
+    });
+
+    it('drops an unknown mode from restored state', () => {
+      const snapshot = agg.serialize();
+      snapshot.permissionMode = 'someFutureMode' as unknown as typeof snapshot.permissionMode;
+      const restored = new EventAggregator();
+      expect(restored.restore(snapshot)).toBe(true);
+      expect(restored.getMetrics().permissionMode).toBeNull();
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════

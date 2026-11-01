@@ -166,6 +166,15 @@ export { findCodexRolloutFile } from './providers/codex';
 export { walkRolloutFiles, walkRolloutFilesAsync } from './providers/rolloutWalker';
 export type { RolloutFileInfo, WalkRolloutFilesOptions } from './providers/rolloutWalker';
 export type { FindCodexRolloutFileOptions } from './providers/codex';
+export {
+  COMPRESSED_ROLLOUT_SUFFIX,
+  isCompressedRolloutPath,
+  isZstdDecompressionAvailable,
+  readRolloutBuffer,
+  readRolloutText,
+  resolveRolloutPath,
+} from './providers/compressedRollouts';
+export type { ReadRolloutOptions } from './providers/compressedRollouts';
 export { readCodexHistory } from './parsers/codexHistory';
 export type { CodexHistoryEntry, ReadCodexHistoryOptions } from './parsers/codexHistory';
 export {
@@ -286,6 +295,19 @@ export { parseClaudeAuthStatus, parseCodexLoginStatus } from './authStatus';
 export type { ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
+export {
+  SUBAGENT_ACTIVITY_BLOCK_TYPE,
+  SUBAGENT_ACTIVITY_ORIGIN_KIND,
+  describeSubagentActivity,
+  isSubagentActivitySystemEvent,
+  parseCodexAgentMessageText,
+  subagentActivityFromEvent,
+} from './subagentActivity';
+export type {
+  CodexAgentMessageText,
+  SubagentActivity,
+  SubagentActivityKind,
+} from './subagentActivity';
 export {
   getPricingCatalogInfo,
   registerModelPricing,

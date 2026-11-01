@@ -7,6 +7,11 @@ import type { ProviderId, SessionProviderBase, SessionProviderDiagnostic } from 
 export interface CreateSessionProvidersOptions {
   providerIds?: readonly ProviderId[];
   onDiagnostic?: (diagnostic: SessionProviderDiagnostic) => void;
+  /**
+   * Codex: also discover and read compressed rollouts (`….jsonl.zst`); see
+   * `CodexProviderOptions.includeCompressedRollouts`. Default false.
+   */
+  includeCompressedRollouts?: boolean;
 }
 
 export interface CreateSessionProvidersResult {
@@ -56,7 +61,10 @@ export function createSessionProviders(
           ? new ClaudeCodeProvider(providerOptions)
           : providerId === 'opencode'
             ? new OpenCodeProvider(providerOptions)
-            : new CodexProvider(providerOptions),
+            : new CodexProvider({
+                ...providerOptions,
+                includeCompressedRollouts: options.includeCompressedRollouts === true,
+              }),
       );
     } catch {
       const diagnostic: SessionProviderDiagnostic = {

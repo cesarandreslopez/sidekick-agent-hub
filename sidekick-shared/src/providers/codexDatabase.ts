@@ -8,7 +8,10 @@ import * as path from 'path';
 import { execFile, execFileSync } from 'child_process';
 import type { CodexDbThread } from '../types/codex';
 import type { ProviderRuntimeStatus } from './types';
-import { codexSpawnParentFromSource as spawnParentFromSource } from '../parsers/codexRolloutOrigin';
+import {
+  codexRolloutOrigin,
+  codexSpawnParentFromSource as spawnParentFromSource,
+} from '../parsers/codexRolloutOrigin';
 
 /**
  * Ids per inlined `IN (…)` query. Values are passed inside a single argv
@@ -18,6 +21,29 @@ const SQL_ID_CHUNK_SIZE = 400;
 
 /** Parent thread id of a spawned subagent's `source`; one rule shared with rollout parsing. */
 export { spawnParentFromSource };
+
+/** Default levels {@link CodexDatabase.getSpawnedDescendantThreads} follows. */
+export const DEFAULT_SUBAGENT_TREE_MAX_DEPTH = 8;
+
+/** A spawned thread below a session, with the thread that spawned it. */
+export interface CodexSpawnedThread {
+  thread: CodexDbThread;
+  /** The thread that spawned it: the session for depth 1, else another descendant. */
+  parentId: string;
+  /** 1 for the session's own children, 2 for theirs, … */
+  depth: number;
+}
+
+/**
+ * Whether a thread row is a subagent's rather than a session a person
+ * started: `thread_source: 'subagent'`, or a `{ subagent: … }` source.
+ */
+export function isCodexSubagentThread(
+  thread: Pick<CodexDbThread, 'source' | 'thread_source'>,
+): boolean {
+  if (thread.thread_source === 'subagent') return true;
+  return codexRolloutOrigin({ source: thread.source }).isSubagent;
+}
 
 export class CodexDatabase {
   private readonly dbPath: string;
@@ -149,8 +175,12 @@ export class CodexDatabase {
     });
   }
 
+  /**
+   * The workspace's most recently updated thread that a person started:
+   * subagent threads (which share their parent's cwd) are skipped.
+   */
   getMostRecentThread(cwd: string): CodexDbThread | null {
-    return this.getThreadsByCwd(cwd)[0] ?? null;
+    return this.getThreadsByCwd(cwd).find((thread) => !isCodexSubagentThread(thread)) ?? null;
   }
 
   getAllDistinctCwds(): Array<{ cwd: string; count: number; lastUpdated: number }> {
@@ -219,6 +249,41 @@ export class CodexDatabase {
       [`%${parentId}%`],
     );
     return rows.filter((row) => spawnParentFromSource(row.source) === parentId);
+  }
+
+  /**
+   * Every subagent thread below a session, level by level (one query per
+   * level, in chunks of ids), oldest first within a level: its children,
+   * their children, and so on up to `maxDepth` levels.
+   */
+  getSpawnedDescendantThreads(
+    rootId: string,
+    maxDepth = DEFAULT_SUBAGENT_TREE_MAX_DEPTH,
+  ): CodexSpawnedThread[] {
+    if (!this.getThreadColumns().has('source')) return [];
+    const found: CodexSpawnedThread[] = [];
+    const seen = new Set<string>([rootId]);
+    let level = [rootId];
+    for (let depth = 1; depth <= maxDepth && level.length > 0; depth++) {
+      const parents = new Set(level);
+      const next: string[] = [];
+      for (let i = 0; i < level.length; i += SQL_ID_CHUNK_SIZE) {
+        const chunk = level.slice(i, i + SQL_ID_CHUNK_SIZE);
+        const rows = this.query<CodexDbThread>(
+          `SELECT * FROM threads WHERE ${chunk.map(() => 'source LIKE ?').join(' OR ')} ORDER BY created_at ASC`,
+          chunk.map((id) => `%${id}%`),
+        );
+        for (const row of rows) {
+          const parentId = spawnParentFromSource(row.source);
+          if (!parentId || !parents.has(parentId) || seen.has(row.id)) continue;
+          seen.add(row.id);
+          found.push({ thread: row, parentId, depth });
+          next.push(row.id);
+        }
+      }
+      level = next;
+    }
+    return found;
   }
 
   /** Get the database file's mtime (ms epoch). Returns 0 if unavailable. */

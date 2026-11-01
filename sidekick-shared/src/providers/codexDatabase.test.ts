@@ -15,7 +15,7 @@ vi.mock('child_process', async () => {
   };
 });
 
-import { CodexDatabase, spawnParentFromSource } from './codexDatabase';
+import { CodexDatabase, isCodexSubagentThread, spawnParentFromSource } from './codexDatabase';
 
 let tmpDir: string;
 
@@ -216,5 +216,69 @@ describe('CodexDatabase child threads', () => {
     const db = openWith(['id', 'rollout_path', 'source'], [child, lookalike]);
     expect(db.getSpawnedChildThreads('parent-1').map((t) => t.id)).toEqual(['child-1']);
     expect(db.getThreadsByForkedFromId('parent-1')).toEqual([]);
+  });
+
+  it('walks spawned descendants level by level with one query per level', () => {
+    const spawned = (id: string, parent: string) => ({
+      id,
+      rollout_path: `/tmp/${id}.jsonl`,
+      source: JSON.stringify({ subagent: { thread_spawn: { parent_thread_id: parent } } }),
+    });
+    const rows = [
+      spawned('child-a', 'root'),
+      spawned('child-b', 'root'),
+      spawned('grand-a1', 'child-a'),
+      spawned('great-a1x', 'grand-a1'),
+      spawned('stranger', 'root-other'),
+    ];
+    const db = openWith(['id', 'rollout_path', 'source'], rows);
+    mockExecFileSync.mockClear();
+    const found = db.getSpawnedDescendantThreads('root');
+    expect(found.map((entry) => [entry.thread.id, entry.parentId, entry.depth])).toEqual([
+      ['child-a', 'root', 1],
+      ['child-b', 'root', 1],
+      ['grand-a1', 'child-a', 2],
+      ['great-a1x', 'grand-a1', 3],
+    ]);
+    const queries = mockExecFileSync.mock.calls
+      .map((call) => String((call[1] as string[]).at(-1)))
+      .filter((sql) => sql.includes('source LIKE'));
+    // Levels 1-3 plus the empty fourth.
+    expect(queries).toHaveLength(4);
+    expect(queries[1]).toContain("source LIKE '%child-a%' OR source LIKE '%child-b%'");
+    expect(db.getSpawnedDescendantThreads('root', 1).map((entry) => entry.thread.id)).toEqual([
+      'child-a',
+      'child-b',
+    ]);
+  });
+
+  it('picks the most recent thread a person started, not a subagent', () => {
+    writeStateDatabase();
+    const rows = [
+      {
+        id: 'child',
+        rollout_path: '/tmp/child.jsonl',
+        cwd: '/work/repo',
+        source: JSON.stringify({ subagent: { thread_spawn: { parent_thread_id: 'parent' } } }),
+      },
+      {
+        id: 'guardian',
+        rollout_path: '/tmp/g.jsonl',
+        cwd: '/work/repo',
+        source: 'x',
+        thread_source: 'subagent',
+      },
+      { id: 'parent', rollout_path: '/tmp/parent.jsonl', cwd: '/work/repo', source: 'vscode' },
+    ];
+    mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[0] === '--version') return '3.45.0';
+      return JSON.stringify(rows);
+    });
+    const db = new CodexDatabase(tmpDir);
+    db.open();
+    expect(db.getMostRecentThread('/work/repo')?.id).toBe('parent');
+    expect(isCodexSubagentThread(rows[0])).toBe(true);
+    expect(isCodexSubagentThread(rows[1])).toBe(true);
+    expect(isCodexSubagentThread(rows[2])).toBe(false);
   });
 });

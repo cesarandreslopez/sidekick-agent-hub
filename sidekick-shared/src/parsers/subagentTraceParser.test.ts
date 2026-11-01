@@ -260,3 +260,75 @@ describe('scanSubagentTraces spawn metadata', () => {
     expect(traces).toHaveLength(2);
   });
 });
+
+describe('clean ends', () => {
+  const assistant = (
+    timestamp: string,
+    stopReason: string | null,
+    content: unknown[] = [{ type: 'text', text: 'Done.' }],
+  ) => ({
+    type: 'assistant',
+    timestamp,
+    message: {
+      role: 'assistant',
+      id: `msg_${timestamp}`,
+      stop_reason: stopReason,
+      usage: { input_tokens: 10, output_tokens: 5 },
+      content,
+    },
+  });
+  const toolUse = (timestamp: string, id: string) =>
+    assistant(timestamp, 'tool_use', [{ type: 'tool_use', id, name: 'Read', input: {} }]);
+  const toolResult = (timestamp: string, id: string) => ({
+    type: 'user',
+    timestamp,
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] },
+  });
+  const prompt = (timestamp: string) => ({
+    type: 'user',
+    timestamp,
+    message: { role: 'user', content: 'Keep going.' },
+  });
+
+  function endState(lines: unknown[]): { trace: SubagentTrace; stats: boolean | undefined } {
+    const root = tempRoot();
+    writeAgent(root, 'a1', lines);
+    const [trace] = scanSubagentTraces(root, 'session');
+    const [stats] = scanSubagentDir(root, 'session');
+    return { trace, stats: stats?.endedCleanly };
+  }
+
+  it('ends cleanly on a final end_turn with every tool call answered', () => {
+    const { trace, stats } = endState([
+      prompt('2026-10-12T20:00:00.000Z'),
+      toolUse('2026-10-12T20:00:01.000Z', 't1'),
+      toolResult('2026-10-12T20:00:02.000Z', 't1'),
+      assistant('2026-10-12T20:00:03.000Z', 'end_turn'),
+      { type: 'system', subtype: 'turn_duration', timestamp: '2026-10-12T20:00:04.000Z' },
+    ]);
+    expect(trace.endedCleanly).toBe(true);
+    expect(trace.lastActivityAt?.toISOString()).toBe('2026-10-12T20:00:04.000Z');
+    expect(trace.stats.endedCleanly).toBe(true);
+    expect(stats).toBe(true);
+  });
+
+  it('accepts stop_sequence', () => {
+    expect(
+      endState([assistant('2026-10-12T20:00:03.000Z', 'stop_sequence')]).trace.endedCleanly,
+    ).toBe(true);
+  });
+
+  it('is not clean mid-work, with a call unanswered, or after a resume prompt', () => {
+    expect(
+      endState([prompt('2026-10-12T20:00:00.000Z'), toolUse('2026-10-12T20:00:01.000Z', 't1')])
+        .trace.endedCleanly,
+    ).toBe(false);
+    expect(endState([assistant('2026-10-12T20:00:03.000Z', null)]).trace.endedCleanly).toBe(false);
+    const resumed = endState([
+      assistant('2026-10-12T20:00:03.000Z', 'end_turn'),
+      prompt('2026-10-12T20:10:00.000Z'),
+    ]);
+    expect(resumed.trace.endedCleanly).toBe(false);
+    expect(resumed.stats).toBe(false);
+  });
+});

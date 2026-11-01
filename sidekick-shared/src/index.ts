@@ -444,6 +444,7 @@ export type {
   SearchHit,
   ProjectFolderInfo,
   SessionReader,
+  SessionReaderReset,
   SessionProviderOptions,
   ProviderOperationStatus,
   SessionProviderDiagnostic,
@@ -483,7 +484,16 @@ export { OpenCodeProvider, getOpenCodeDataDir } from './providers/openCode';
 export { CodexProvider, findCodexRolloutFile } from './providers/codex';
 export { walkRolloutFiles, walkRolloutFilesAsync } from './providers/rolloutWalker';
 export type { RolloutFileInfo, WalkRolloutFilesOptions } from './providers/rolloutWalker';
-export type { FindCodexRolloutFileOptions } from './providers/codex';
+export type { CodexProviderOptions, FindCodexRolloutFileOptions } from './providers/codex';
+export {
+  COMPRESSED_ROLLOUT_SUFFIX,
+  isCompressedRolloutPath,
+  isZstdDecompressionAvailable,
+  readRolloutBuffer,
+  readRolloutText,
+  resolveRolloutPath,
+} from './providers/compressedRollouts';
+export type { ReadRolloutOptions } from './providers/compressedRollouts';
 
 // Parsers — JSONL
 export { JsonlParser, TRUNCATION_PATTERNS } from './parsers/jsonl';
@@ -515,6 +525,19 @@ export type {
 } from './parsers/codexParser';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
+export {
+  SUBAGENT_ACTIVITY_BLOCK_TYPE,
+  SUBAGENT_ACTIVITY_ORIGIN_KIND,
+  describeSubagentActivity,
+  isSubagentActivitySystemEvent,
+  parseCodexAgentMessageText,
+  subagentActivityFromEvent,
+} from './subagentActivity';
+export type {
+  CodexAgentMessageText,
+  SubagentActivity,
+  SubagentActivityKind,
+} from './subagentActivity';
 
 // Parsers — Subagent scanning
 export { scanSubagentDir, extractTaskInfo, readAgentMeta } from './parsers/subagentScanner';
@@ -611,7 +634,8 @@ export type { DebugLogEntry, DebugLogFile, DebugLogLevel } from './parsers/debug
 
 // Database wrappers
 export { OpenCodeDatabase } from './providers/openCodeDatabase';
-export { CodexDatabase } from './providers/codexDatabase';
+export { CodexDatabase, isCodexSubagentThread } from './providers/codexDatabase';
+export type { CodexSpawnedThread } from './providers/codexDatabase';
 
 // Search
 export { searchSessions } from './search/sessionSearch';
@@ -647,12 +671,39 @@ export type {
 // Subagent spawns (`Agent` / `Task`) and background-task notifications
 export {
   SUBAGENT_SPAWN_TOOL_NAMES,
+  agentsStoppedNoticeFromEvent,
+  isAgentsKilledSystemEvent,
+  isCodexSubagentSpawnTool,
   isSubagentSpawnTool,
   isTaskNotificationSystemEvent,
+  isTaskStatusSystemEvent,
+  parseAgentsStoppedNotice,
+  parseCodexSpawnLaunch,
   parseTaskNotification,
   taskNotificationFromEvent,
+  taskStatusFromAttachment,
+  taskStatusFromEvent,
 } from './subagentSpawn';
-export type { TaskNotification } from './subagentSpawn';
+export type {
+  AgentsStoppedNotice,
+  CodexSpawnLaunch,
+  SubagentTaskStatus,
+  TaskNotification,
+} from './subagentSpawn';
+export {
+  SUBAGENT_PARENT_IDLE_ENDED_MS,
+  SUBAGENT_UNREPORTED_QUIET_MS,
+  resolveSubagentDisplayState,
+  subagentDisplayLabel,
+} from './subagentDisplayState';
+export type {
+  SubagentDisplayLifecycle,
+  SubagentDisplayOptions,
+  SubagentDisplayReason,
+  SubagentDisplayState,
+  SubagentDisplayStateName,
+  SubagentDisplayTrace,
+} from './subagentDisplayState';
 
 // Assistant turn projection
 export {
@@ -762,7 +813,7 @@ export type { PhraseCategory } from './phrases';
 export { EventAggregator, parseTodoDependencies } from './aggregation/EventAggregator';
 export { SessionMonitor } from './sessionMonitor';
 export type { SessionMonitorOptions, SessionMonitorSubscribeOptions } from './sessionMonitor';
-export type { SerializedAggregatorState } from './aggregation/EventAggregator';
+export type { SerializedAggregatorState, SubagentEvidence } from './aggregation/EventAggregator';
 export {
   saveSnapshot,
   loadSnapshot,
@@ -781,6 +832,7 @@ export type {
   BurnRateInfo,
   SubagentLifecycle,
   SubagentOutcome,
+  SubagentSettledBy,
   AggregatedMetrics,
   FrequencyMetric,
   PatternMetric,

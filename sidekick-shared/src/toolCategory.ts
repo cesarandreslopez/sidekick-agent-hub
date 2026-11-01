@@ -20,7 +20,11 @@ export const TOOL_CATEGORIES = [
 ] as const;
 export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
 
-/** Lower-cased tool names of every provider, by category. */
+/**
+ * Lower-cased tool names of every provider, by category. Codex's bare `wait`
+ * is a code-mode cell wait, not a subagent wait (that is `wait_agent`), so it
+ * is `other`.
+ */
 const CATEGORY_BY_NAME = new Map<string, ToolCategory>(
   (
     [
@@ -56,7 +60,7 @@ const CATEGORY_BY_NAME = new Map<string, ToolCategory>(
           'send_message',
           'followup_task',
           'list_agents',
-          'wait',
+          'interrupt_agent',
         ],
       ],
       [

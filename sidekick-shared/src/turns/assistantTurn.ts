@@ -1,6 +1,6 @@
 import { formatToolSummary, truncate } from '../formatters/toolSummary';
 import type { SessionEvent } from '../types/sessionEvent';
-import { isSubagentSpawnTool } from '../subagentSpawn';
+import { SUBAGENT_SPAWN_TOOL_NAMES } from '../subagentSpawn';
 
 export type AssistantTurnEventType =
   | 'text'
@@ -125,9 +125,12 @@ export function reasoningSummary(text: string): ReasoningSummary {
   return { title: null, body: trimmed };
 }
 
-/** Whether a tool call spawns a subagent (`Agent`, or its earlier name `Task`). */
+/**
+ * Whether a tool call spawns a subagent (`Agent`, or its earlier name `Task`).
+ * Codex `spawn_agent` is not included here (its turns project as before).
+ */
 export function isAssistantTurnSubagentTool(toolName: string | undefined): boolean {
-  return isSubagentSpawnTool(toolName);
+  return typeof toolName === 'string' && SUBAGENT_SPAWN_TOOL_NAMES.includes(toolName);
 }
 
 export function segmentAssistantTurn(

@@ -39,10 +39,19 @@ import type {
   CodexErrorEvent,
   CodexContextCompactedEvent,
   CodexPatchAppliedEvent,
+  CodexAgentMessageItem,
+  CodexItemCompletedEvent,
 } from '../types/codex';
 import { isAggregateCodexLimit } from '../types/codex';
 import { normalizeToolName } from './openCodeParser';
 import { normalizeProviderUsage } from '../usageNormalization';
+import {
+  SUBAGENT_ACTIVITY_BLOCK_TYPE,
+  SUBAGENT_ACTIVITY_ORIGIN_KIND,
+  parseCodexAgentMessageText,
+  type SubagentActivity,
+  type SubagentActivityKind,
+} from '../subagentActivity';
 
 /** Pending exec command awaiting its end event. */
 interface PendingExecCommand {
@@ -272,6 +281,15 @@ export interface CodexRolloutParserOptions {
    * unchanged. For cheap passes over large rollouts; default false.
    */
   metadataOnly?: boolean;
+  /**
+   * Emit the multi-agent lifecycle as `system` events with `origin: { kind:
+   * 'subagent-activity' }` (read them with `subagentActivityFromEvent()`):
+   * `SubAgentActivity` items (`started`, `completed`, `interacted`,
+   * `interrupted`) and each `FINAL_ANSWER` agent message. Transcripts,
+   * context attribution, and the aggregator's message counts skip them.
+   * Default false: those records produce no events.
+   */
+  includeSubagentActivity?: boolean;
 }
 
 /** Pending tool-call state counters from {@link CodexRolloutParser.getPendingStats}. */
@@ -312,10 +330,49 @@ export interface CodexRolloutResumeState {
   pendingExecCommands: PendingExecCommand[];
   /** `mcp_tool_call_begin` events awaiting their end. */
   pendingMcpToolCalls: PendingMcpToolCall[];
+  /**
+   * Multi-agent tool calls by call id with their raw tool names, so a later
+   * `SubAgentActivity` record names its tool. Optional: absent in states
+   * from earlier versions (and when `includeSubagentActivity` is off).
+   */
+  collaborationCalls?: Array<[string, string]>;
+  /**
+   * Forked subagent rollouts: the ordinal below which records are the
+   * embedded parent history (see `getInheritedHistoryEnd()`). Optional:
+   * absent (nothing skipped) in states from earlier versions.
+   */
+  inheritedHistoryEnd?: number | null;
 }
 
 /** Entries per table {@link CodexRolloutParser.exportResumeState} keeps by default. */
 const DEFAULT_RESUME_STATE_LIMIT = 256;
+
+/** Raw names of Codex's multi-agent tools (namespace `collaboration`). */
+const COLLABORATION_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'spawn_agent',
+  'followup_task',
+  'send_message',
+  'interrupt_agent',
+  'wait_agent',
+  'list_agents',
+]);
+
+const SUBAGENT_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
+  'started',
+  'completed',
+  'interacted',
+  'interrupted',
+]);
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** `subagent_history_start_ordinal` of a session_meta payload, when valid. */
+function historyStartOrdinalOf(meta: CodexSessionMeta | null | undefined): number | null {
+  const value = meta?.subagent_history_start_ordinal;
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -442,6 +499,15 @@ export class CodexRolloutParser {
   /** Byte budget for pending calls; `null` = unlimited (no accounting). */
   private readonly maxPendingBytes: number | null;
   private readonly metadataOnly: boolean;
+  private readonly includeSubagentActivity: boolean;
+  /**
+   * Set once a forked child's rollout embeds an ancestor's session_meta: its
+   * own `subagent_history_start_ordinal`, below which records are the
+   * parent's history and are skipped. `null` while nothing is skipped.
+   */
+  private historyStartOrdinal: number | null = null;
+  /** Multi-agent tool calls (call id → raw name), only with `includeSubagentActivity`. */
+  private collaborationCalls = new Map<string, string>();
   /** Pending calls in insertion order, for the byte budget. */
   private pendingLedger = new Map<string, PendingLedgerEntry>();
   private pendingBytes = 0;
@@ -458,6 +524,7 @@ export class CodexRolloutParser {
         ? Math.floor(maxBytes)
         : null;
     this.metadataOnly = options.metadataOnly === true;
+    this.includeSubagentActivity = options.includeSubagentActivity === true;
   }
 
   /** Counters for the pending tool-call state and what the caps evicted. */
@@ -499,6 +566,17 @@ export class CodexRolloutParser {
   }
 
   /**
+   * In a forked subagent's rollout, the ordinal of its first own record:
+   * records with a lower `ordinal` are the parent history the fork embeds
+   * and produce no events. Known once the rollout's second line (an embedded
+   * ancestor `session_meta`) was parsed; `null` otherwise, and for every
+   * rollout that is not such a fork.
+   */
+  getInheritedHistoryEnd(): number | null {
+    return this.historyStartOrdinal;
+  }
+
+  /**
    * The state later lines depend on — session metadata, current model,
    * previous cumulative token total, context window, rate limits, plan mode,
    * and the tool-call correlation tables (newest `limit` entries each) — as
@@ -531,6 +609,18 @@ export class CodexRolloutParser {
         this.pendingMcpToolCalls.size,
         limit,
       ),
+      ...(this.historyStartOrdinal !== null
+        ? { inheritedHistoryEnd: this.historyStartOrdinal }
+        : {}),
+      ...(this.collaborationCalls.size > 0
+        ? {
+            collaborationCalls: newest(
+              this.collaborationCalls,
+              this.collaborationCalls.size,
+              limit,
+            ),
+          }
+        : {}),
     } satisfies CodexRolloutResumeState);
   }
 
@@ -603,6 +693,30 @@ export class CodexRolloutParser {
     ) {
       return false;
     }
+    const inheritedEnd = s.inheritedHistoryEnd;
+    if (
+      inheritedEnd !== undefined &&
+      inheritedEnd !== null &&
+      !(typeof inheritedEnd === 'number' && Number.isInteger(inheritedEnd) && inheritedEnd > 0)
+    ) {
+      return false;
+    }
+    const collaborationCalls = s.collaborationCalls;
+    if (
+      collaborationCalls !== undefined &&
+      !(
+        Array.isArray(collaborationCalls) &&
+        collaborationCalls.every(
+          (entry) =>
+            Array.isArray(entry) &&
+            entry.length === 2 &&
+            typeof entry[0] === 'string' &&
+            typeof entry[1] === 'string',
+        )
+      )
+    ) {
+      return false;
+    }
 
     const copy = cloneJson({
       sessionMeta: s.sessionMeta as CodexSessionMeta | null,
@@ -613,6 +727,7 @@ export class CodexRolloutParser {
     });
     this.reset();
     this.sessionMeta = copy.sessionMeta;
+    this.historyStartOrdinal = typeof inheritedEnd === 'number' ? inheritedEnd : null;
     this.currentModel = s.currentModel as string | null;
     this.prevTotalUsage = prevTotalUsage;
     this.lastTokenUsage = lastTokenUsage;
@@ -634,6 +749,11 @@ export class CodexRolloutParser {
     for (const pending of copy.mcps) {
       this.putPendingMcp(this.metadataOnly ? { ...pending, arguments: undefined } : pending);
     }
+    if (this.includeSubagentActivity && Array.isArray(collaborationCalls)) {
+      for (const [callId, name] of collaborationCalls as Array<[string, string]>) {
+        this.rememberCollaborationCall(callId, name);
+      }
+    }
     return true;
   }
 
@@ -641,9 +761,19 @@ export class CodexRolloutParser {
    * Converts a single rollout line to zero or more session events.
    */
   convertLine(line: CodexRolloutLine): SessionEvent[] {
+    if (line.type === 'session_meta') {
+      return this.handleSessionMeta(line.timestamp, line.payload as CodexSessionMeta, line.ordinal);
+    }
+    // A forked subagent rollout embeds the parent's history before its own
+    // records; that history is the parent's, not the child's.
+    if (
+      this.historyStartOrdinal !== null &&
+      typeof line.ordinal === 'number' &&
+      line.ordinal < this.historyStartOrdinal
+    ) {
+      return [];
+    }
     switch (line.type) {
-      case 'session_meta':
-        return this.handleSessionMeta(line.timestamp, line.payload as CodexSessionMeta);
       case 'response_item':
         return this.handleResponseItem(line.timestamp, line.payload as CodexResponseItem);
       case 'compacted':
@@ -660,6 +790,8 @@ export class CodexRolloutParser {
   /** Reset all parser state. */
   reset(): void {
     this.sessionMeta = null;
+    this.historyStartOrdinal = null;
+    this.collaborationCalls.clear();
     this.currentModel = null;
     this.pendingExecCommands.clear();
     this.pendingMcpToolCalls.clear();
@@ -782,7 +914,30 @@ export class CodexRolloutParser {
 
   // --- Handlers ---
 
-  private handleSessionMeta(timestamp: string, payload: CodexSessionMeta): SessionEvent[] {
+  private handleSessionMeta(
+    timestamp: string,
+    payload: CodexSessionMeta,
+    ordinal: unknown,
+  ): SessionEvent[] {
+    if (this.sessionMeta) {
+      // Only the rollout's own (first) session_meta counts. A forked child
+      // embeds its parent's right after its own, followed by the parent's
+      // history up to the child's `subagent_history_start_ordinal`; from
+      // here on, records below that ordinal are skipped. (Children whose
+      // rollout has no embedded meta keep every record: in some, Codex
+      // recorded a start ordinal past their own records.)
+      const start = historyStartOrdinalOf(this.sessionMeta);
+      if (
+        this.historyStartOrdinal === null &&
+        start !== null &&
+        typeof ordinal === 'number' &&
+        ordinal < start
+      ) {
+        this.historyStartOrdinal = start;
+      }
+      return [];
+    }
+    if (!payload || typeof payload !== 'object') return [];
     this.sessionMeta = payload;
     const text = payload.base_instructions?.text?.trim();
     return [
@@ -823,9 +978,107 @@ export class CodexRolloutParser {
         return this.handleCustomToolCall(timestamp, payload as CodexCustomToolCallItem);
       case 'custom_tool_call_output':
         return this.handleCustomToolCallOutput(timestamp, payload as CodexCustomToolCallOutputItem);
+      case 'agent_message':
+        return this.handleAgentMessage(timestamp, payload as CodexAgentMessageItem);
       default:
         return [];
     }
+  }
+
+  // --- Subagent activity ---
+
+  private rememberCollaborationCall(callId: string, name: string): void {
+    this.collaborationCalls.delete(callId);
+    this.collaborationCalls.set(callId, name);
+    while (this.collaborationCalls.size > this.maxTrackedToolCalls) {
+      this.collaborationCalls.delete(this.collaborationCalls.keys().next().value as string);
+    }
+  }
+
+  private subagentActivityEvent(
+    timestamp: string,
+    id: string,
+    activity: SubagentActivity,
+  ): SessionEvent {
+    return {
+      type: 'system',
+      timestamp,
+      origin: { kind: SUBAGENT_ACTIVITY_ORIGIN_KIND },
+      message: {
+        role: 'system',
+        id: `subagent-activity:${id}`,
+        sourceLabel: 'subagent activity',
+        content: [{ type: SUBAGENT_ACTIVITY_BLOCK_TYPE, ...activity }],
+      },
+      providerMetadata: { providerId: 'codex', source: 'codex-rollout' },
+    };
+  }
+
+  /** A child's `FINAL_ANSWER` message to its parent (opt-in). */
+  private handleAgentMessage(timestamp: string, item: CodexAgentMessageItem): SessionEvent[] {
+    if (!this.includeSubagentActivity || !Array.isArray(item.content)) return [];
+    const first = item.content.find(
+      (part): part is CodexContentPart =>
+        !!part && typeof part === 'object' && typeof (part as CodexContentPart).text === 'string',
+    );
+    const parsed = parseCodexAgentMessageText(first?.text);
+    if (!parsed || parsed.messageType !== 'FINAL_ANSWER') return [];
+    const agentPath = nonEmptyString(item.author) ?? parsed.sender;
+    const recipient = nonEmptyString(item.recipient) ?? parsed.taskName;
+    const text = this.metadataOnly ? undefined : nonEmptyString(parsed.payload.trim());
+    const activity: SubagentActivity = {
+      kind: 'final-answer',
+      ...(agentPath ? { agentPath } : {}),
+      ...(recipient ? { recipient } : {}),
+      ...(text ? { text } : {}),
+    };
+    return [
+      this.subagentActivityEvent(
+        timestamp,
+        nonEmptyString(item.id) ?? `final-answer-${timestamp}-${agentPath ?? ''}`,
+        activity,
+      ),
+    ];
+  }
+
+  /** A `SubAgentActivity` turn item (opt-in). */
+  private handleItemCompleted(timestamp: string, event: CodexItemCompletedEvent): SessionEvent[] {
+    if (!this.includeSubagentActivity) return [];
+    const item = event.item;
+    if (!item || item.type !== 'SubAgentActivity') return [];
+    const kind = typeof item.kind === 'string' ? item.kind : '';
+    if (!SUBAGENT_ACTIVITY_KINDS.has(kind)) return [];
+    const itemId = nonEmptyString(item.id);
+    const completedTurn =
+      kind === 'completed' && itemId?.startsWith('subagent-completed-')
+        ? nonEmptyString(itemId.slice('subagent-completed-'.length))
+        : undefined;
+    const callId = kind === 'completed' ? undefined : itemId;
+    const tool = callId ? this.collaborationCalls.get(callId) : undefined;
+    const fields: Omit<SubagentActivity, 'kind'> = {
+      callId,
+      tool,
+      turnId: completedTurn,
+      agentThreadId: nonEmptyString(item.agent_thread_id),
+      agentPath: nonEmptyString(item.agent_path),
+      model: nonEmptyString(item.model),
+      reasoningEffort: nonEmptyString(item.reasoning_effort),
+      parentThreadId: nonEmptyString(event.thread_id),
+      parentTurnId: nonEmptyString(event.turn_id),
+    };
+    const activity: SubagentActivity = { kind: kind as SubagentActivityKind };
+    for (const [key, value] of Object.entries(fields) as Array<
+      [keyof typeof fields, string | undefined]
+    >) {
+      if (value !== undefined) activity[key] = value;
+    }
+    return [
+      this.subagentActivityEvent(
+        timestamp,
+        itemId ?? `${kind}-${timestamp}-${activity.agentThreadId ?? ''}`,
+        activity,
+      ),
+    ];
   }
 
   private handleMessage(timestamp: string, item: CodexMessageItem): SessionEvent[] {
@@ -915,6 +1168,13 @@ export class CodexRolloutParser {
     const canonicalName = normalizeCodexToolName(item.name);
     const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedArgs);
     rememberBounded(this.emittedToolUseIds, item.call_id, this.maxTrackedToolCalls);
+    if (
+      this.includeSubagentActivity &&
+      typeof item.call_id === 'string' &&
+      (item.namespace === 'collaboration' || COLLABORATION_TOOL_NAMES.has(item.name))
+    ) {
+      this.rememberCollaborationCall(item.call_id, item.name);
+    }
 
     return [
       {
@@ -1398,6 +1658,9 @@ export class CodexRolloutParser {
             timestamp,
           },
         ];
+
+      case 'item_completed':
+        return this.handleItemCompleted(timestamp, event as CodexItemCompletedEvent);
 
       case 'turn_aborted':
       case 'agent_reasoning':

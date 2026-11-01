@@ -108,7 +108,7 @@ export interface SessionEventBase {
   gitBranch?: string;
 
   /** Permission mode active when this event occurred */
-  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+  permissionMode?: PermissionMode;
 
   /** Subscription rate limits, when provided by the session source. */
   rateLimits?: {
@@ -172,6 +172,11 @@ export interface SystemSessionEvent extends SessionEventBase {
   type: 'system';
   /** Bookkeeping-only system rows legitimately have no message. */
   message?: SessionMessage;
+  /**
+   * The provider's system-line subtype, when it wrote one (Claude Code:
+   * `turn_duration`, `compact_boundary`, `agents_killed`, …).
+   */
+  subtype?: string;
 }
 
 export interface ToolUseSessionEvent extends SessionEventBase {
@@ -196,9 +201,17 @@ export type SessionEvent =
   | ToolResultSessionEvent;
 
 /**
- * Permission mode values from Claude Code JSONL.
+ * Permission mode values from Claude Code JSONL. `auto` approves or denies
+ * permission prompts with a model classifier; `dontAsk` denies anything not
+ * pre-approved. Unknown future modes are dropped by the schema, not rejected.
  */
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+export type PermissionMode =
+  | 'default'
+  | 'acceptEdits'
+  | 'bypassPermissions'
+  | 'plan'
+  | 'auto'
+  | 'dontAsk';
 
 /**
  * A permission mode change event in the session timeline.
@@ -510,6 +523,41 @@ export interface SubagentStats {
 
   /** Duration in milliseconds */
   durationMs?: number;
+
+  /**
+   * Codex: the subagent's rollout file — the `.jsonl`, or the `.jsonl.zst`
+   * when only the compressed one exists (with `includeCompressedRollouts`).
+   */
+  filePath?: string;
+
+  /**
+   * Codex: the parent's spawn call (`spawn_agent` call id) that started this
+   * subagent — the tool-use id of that call in the parent's events.
+   */
+  spawnToolUseId?: string;
+
+  /** Codex: the display nickname Codex gave the subagent (e.g. `Banach`). */
+  agentNickname?: string;
+
+  /** Codex: the subagent's agent path (e.g. `/root/review_builder`). */
+  agentPath?: string;
+
+  /**
+   * Codex: the thread that spawned this subagent — the session's id for its
+   * own children, another subagent's `agentId` below that.
+   */
+  parentAgentId?: string;
+
+  /** Codex: spawn depth — 1 for the session's own children, 2 for theirs, … */
+  depth?: number;
+
+  /**
+   * The subagent's transcript ended cleanly: Claude Code, its last assistant
+   * turn stopped with `end_turn` / `stop_sequence` and left no tool call
+   * unanswered; Codex, its last own turn ended with `task_complete`. A later
+   * prompt (a resumed agent) clears it. Absent when unknown.
+   */
+  endedCleanly?: boolean;
 }
 
 /**
