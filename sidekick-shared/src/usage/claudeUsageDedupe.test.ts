@@ -100,6 +100,100 @@ describe('ClaudeUsageDeduper', () => {
   });
 });
 
+describe('ClaudeUsageDeduper resume state', () => {
+  const total = (events: SessionEvent[]) =>
+    events.reduce((sum, event) => sum + (event.message?.normalizedUsage?.totalTokens ?? 0), 0);
+
+  it('does not recount a response split across the export boundary', () => {
+    // One response written as three lines, the snapshot taken after the first.
+    const lines = [
+      assistant('msg_1', { input: 3, output: 1, cacheRead: 1000 }),
+      assistant('msg_1', { input: 3, output: 1, cacheRead: 1000 }),
+      assistant('msg_1', { input: 3, output: 145, cacheRead: 1000 }),
+      assistant('msg_2', { input: 2, output: 9 }),
+    ];
+    const full = new ClaudeUsageDeduper();
+    const expected = total(lines.map((line) => full.apply(line)));
+
+    const live = new ClaudeUsageDeduper();
+    const before = total([live.apply(lines[0])]);
+    const state = JSON.parse(JSON.stringify(live.exportState()));
+    expect(state).toEqual({
+      version: 1,
+      entries: [['msg_1', { input: 3, cacheRead: 1000, cacheWrite: 0, output: 1, reasoning: 0 }]],
+    });
+
+    const resumed = new ClaudeUsageDeduper();
+    expect(resumed.importState(state)).toBe(true);
+    const after = lines.slice(1).map((line) => resumed.apply(line));
+    expect(after[0].message?.normalizedUsage).toBeUndefined();
+    expect(after[1].message).toMatchObject({
+      usageKind: 'correction',
+      normalizedUsage: { outputTokens: 144, totalTokens: 144 },
+    });
+    expect(before + total(after)).toBe(expected);
+
+    // Without the state the boundary response is counted twice.
+    const fresh = new ClaudeUsageDeduper();
+    expect(before + total(lines.slice(1).map((line) => fresh.apply(line)))).toBe(expected + 1004);
+  });
+
+  it('exports the most recent entries, oldest first, and imports within capacity', () => {
+    const deduper = new ClaudeUsageDeduper();
+    for (const id of ['a', 'b', 'c', 'd']) deduper.apply(assistant(id, { input: 1, output: 1 }));
+    expect(deduper.exportState(2).entries.map(([id]) => id)).toEqual(['c', 'd']);
+    expect(deduper.exportState(0).entries).toEqual([]);
+    expect(deduper.exportState().entries).toHaveLength(4);
+
+    const small = new ClaudeUsageDeduper(3);
+    expect(small.importState(deduper.exportState())).toBe(true);
+    expect(['a', 'b', 'c', 'd'].map((id) => small.has(id))).toEqual([false, true, true, true]);
+  });
+
+  it('replaces existing state on import', () => {
+    const source = new ClaudeUsageDeduper();
+    source.apply(assistant('new', { input: 1, output: 1 }));
+    const target = new ClaudeUsageDeduper();
+    target.apply(assistant('old', { input: 1, output: 1 }));
+    expect(target.importState(source.exportState())).toBe(true);
+    expect(target.has('old')).toBe(false);
+    expect(target.has('new')).toBe(true);
+  });
+
+  const buckets = { input: 1, cacheRead: 0, cacheWrite: 0, output: 1, reasoning: 0 };
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['a string', 'state'],
+    ['another version', { version: 2, entries: [] }],
+    ['entries that are not an array', { version: 1, entries: {} }],
+    ['an entry that is not a pair', { version: 1, entries: [['a']] }],
+    ['an empty id', { version: 1, entries: [['', buckets]] }],
+    ['a numeric id', { version: 1, entries: [[1, buckets]] }],
+    ['missing buckets', { version: 1, entries: [['a', null]] }],
+    ['a missing count', { version: 1, entries: [['a', { ...buckets, reasoning: undefined }]] }],
+    ['a negative count', { version: 1, entries: [['a', { ...buckets, output: -1 }]] }],
+    ['a non-finite count', { version: 1, entries: [['a', { ...buckets, input: Infinity }]] }],
+    ['a string count', { version: 1, entries: [['a', { ...buckets, input: '1' }]] }],
+    [
+      'one bad entry among good ones',
+      {
+        version: 1,
+        entries: [
+          ['a', buckets],
+          ['b', { ...buckets, cacheRead: Number.NaN }],
+        ],
+      },
+    ],
+  ])('rejects %s and keeps its state', (_label, state) => {
+    const deduper = new ClaudeUsageDeduper();
+    deduper.apply(assistant('kept', { input: 1, output: 1 }));
+    expect(deduper.importState(state)).toBe(false);
+    expect(deduper.has('kept')).toBe(true);
+    expect(deduper.has('a')).toBe(false);
+  });
+});
+
 describe('dedupedRawClaudeUsage', () => {
   it('reads raw JSONL assistant lines with last-copy-wins totals', () => {
     const deduper = new ClaudeUsageDeduper();

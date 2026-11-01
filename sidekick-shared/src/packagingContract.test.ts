@@ -356,6 +356,8 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'encodeClaudeWorkspacePath',
       'getClaudeSessionDirectory',
       'createJsonlTail',
+      'captureJsonlCheckpoint',
+      'verifyJsonlCheckpoint',
       'resolveWorkspaceRoots',
       'getCodexSessionsDirs',
     ]) {
@@ -427,6 +429,9 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     expect(typeof m.CodexQuotaWatcher).toBe('function');
     expect(typeof m.MultiProviderQuotaService).toBe('function');
     expect(typeof m.createJsonlTail).toBe('function');
+    expect(typeof m.captureJsonlCheckpoint).toBe('function');
+    expect(typeof m.verifyJsonlCheckpoint).toBe('function');
+    expect(typeof m.isSnapshotValid).toBe('function');
     expect(typeof m.formatDurationMs).toBe('function');
     expect(typeof m.formatTokenCount).toBe('function');
     expect(typeof m.extractToolCall).toBe('function');

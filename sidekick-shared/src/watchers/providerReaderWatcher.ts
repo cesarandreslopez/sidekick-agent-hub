@@ -40,6 +40,20 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
     return this.reader.getPosition();
   }
 
+  /** The reader's resume state, if it keeps any. */
+  getResumeState(): unknown {
+    return this.reader.getResumeState?.();
+  }
+
+  /**
+   * Restores the reader's resume state after `seekTo()`. A reader that keeps
+   * none accepts only `undefined`.
+   */
+  restoreResumeState(state: unknown): boolean {
+    if (!this.reader.restoreResumeState) return state === undefined;
+    return this.reader.restoreResumeState(state);
+  }
+
   start(replay: boolean): void {
     if (this._isActive) return;
     this._isActive = true;

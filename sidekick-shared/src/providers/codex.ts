@@ -18,7 +18,7 @@ import type {
   ReadSessionContextSnapshotOptions,
   SessionContextSnapshot,
 } from '../context/sessionContext';
-import { CodexRolloutParser } from '../parsers/codexParser';
+import { CodexRolloutParser, type CodexRolloutResumeState } from '../parsers/codexParser';
 import { CodexDatabase, spawnParentFromSource } from './codexDatabase';
 import { cachedSubagentStats } from '../parsers/subagentStatsCache';
 import {
@@ -309,6 +309,12 @@ class CodexReader implements SessionReader {
   private lineBuffer = '';
   private _wasTruncated = false;
   private decoder = new StringDecoder('utf8');
+  /**
+   * Position from `seekTo()` whose prefix still has to be parsed for model,
+   * turn, and cumulative-token context; `restoreResumeState()` supplies that
+   * context instead and clears it.
+   */
+  private pendingSeek: number | null = null;
 
   constructor(
     private readonly rolloutPath: string,
@@ -321,10 +327,12 @@ class CodexReader implements SessionReader {
 
   /** Get the parser's session metadata. */
   getSessionMeta(): CodexSessionMeta | null {
+    this.settleSeek();
     return this.parser.getSessionMeta();
   }
 
   readNew(endPosition?: number): SessionEvent[] {
+    this.settleSeek();
     this._wasTruncated = false;
     const events: SessionEvent[] = [];
 
@@ -383,48 +391,53 @@ class CodexReader implements SessionReader {
         }
       }
 
-      // Propagate model_context_window from token_count events to the provider.
-      // The model comes along so the value can be persisted per model — the
-      // window Codex reports is tier-specific, not the published maximum.
-      const mcw = this.parser.getModelContextWindow();
-      if (mcw && this.onContextWindowLimit) {
-        this.onContextWindowLimit(mcw, this.parser.getCurrentModel() ?? undefined);
-      }
-
-      // Propagate rate_limits from token_count events to the provider
-      const rateLimits = this.parser.getLastRateLimits();
-      if (rateLimits && this.onRateLimits) {
-        this.onRateLimits(rateLimits);
-      }
-
-      // Propagate last token usage snapshot to the provider
-      const lastUsage = this.parser.getLastTokenUsage();
-      if (lastUsage && this.onTokenUsage) {
-        const normalized = normalizeProviderUsage({
-          semantics: 'openai',
-          provider: 'openai',
-          source: 'codex-reader-snapshot',
-          model: this.parser.getCurrentModel() || undefined,
-          inputTokens: lastUsage.input_tokens,
-          outputTokens: lastUsage.output_tokens,
-          cacheReadTokens: lastUsage.cached_input_tokens,
-          reasoningTokens: lastUsage.reasoning_output_tokens,
-        });
-        this.onTokenUsage({
-          inputTokens: normalized.uncachedInputTokens,
-          outputTokens: normalized.outputTokens,
-          cacheWriteTokens: normalized.cacheWriteTokens,
-          cacheReadTokens: normalized.cacheReadTokens,
-          reasoningTokens: normalized.reasoningTokens,
-          model: this.parser.getCurrentModel() || 'unknown',
-          timestamp: new Date(),
-        });
-      }
+      this.propagateParserState();
     } catch {
       // Skip read errors
     }
 
     return events;
+  }
+
+  /** Hands the parser's context window, rate limits, and last usage to the provider. */
+  private propagateParserState(): void {
+    // Propagate model_context_window from token_count events to the provider.
+    // The model comes along so the value can be persisted per model — the
+    // window Codex reports is tier-specific, not the published maximum.
+    const mcw = this.parser.getModelContextWindow();
+    if (mcw && this.onContextWindowLimit) {
+      this.onContextWindowLimit(mcw, this.parser.getCurrentModel() ?? undefined);
+    }
+
+    // Propagate rate_limits from token_count events to the provider
+    const rateLimits = this.parser.getLastRateLimits();
+    if (rateLimits && this.onRateLimits) {
+      this.onRateLimits(rateLimits);
+    }
+
+    // Propagate last token usage snapshot to the provider
+    const lastUsage = this.parser.getLastTokenUsage();
+    if (lastUsage && this.onTokenUsage) {
+      const normalized = normalizeProviderUsage({
+        semantics: 'openai',
+        provider: 'openai',
+        source: 'codex-reader-snapshot',
+        model: this.parser.getCurrentModel() || undefined,
+        inputTokens: lastUsage.input_tokens,
+        outputTokens: lastUsage.output_tokens,
+        cacheReadTokens: lastUsage.cached_input_tokens,
+        reasoningTokens: lastUsage.reasoning_output_tokens,
+      });
+      this.onTokenUsage({
+        inputTokens: normalized.uncachedInputTokens,
+        outputTokens: normalized.outputTokens,
+        cacheWriteTokens: normalized.cacheWriteTokens,
+        cacheReadTokens: normalized.cacheReadTokens,
+        reasoningTokens: normalized.reasoningTokens,
+        model: this.parser.getCurrentModel() || 'unknown',
+        timestamp: new Date(),
+      });
+    }
   }
 
   readAll(): SessionEvent[] {
@@ -439,6 +452,7 @@ class CodexReader implements SessionReader {
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
     this._wasTruncated = false;
+    this.pendingSeek = null;
   }
 
   exists(): boolean {
@@ -446,6 +460,7 @@ class CodexReader implements SessionReader {
   }
 
   flush(): void {
+    this.settleSeek();
     this.lineBuffer += this.decoder.end();
     // Process any remaining data in the line buffer
     if (this.lineBuffer.trim()) {
@@ -464,14 +479,45 @@ class CodexReader implements SessionReader {
   }
 
   seekTo(position: number): void {
-    // Rebuild model, turn, and cumulative-token context before resuming.
-    // The prefix is parsed only; its events are already in the consumer snapshot.
     this.reset();
-    if (position > 0) this.readNew(position);
+    this.filePosition = position;
+    this.committedPosition = position;
+    // The prefix's context is rebuilt on the next read, unless
+    // restoreResumeState() supplies it first.
+    if (position > 0) this.pendingSeek = position;
   }
 
   wasTruncated(): boolean {
     return this._wasTruncated;
+  }
+
+  /** The parser's continuation state (see `CodexRolloutParser.exportResumeState`). */
+  getResumeState(): CodexRolloutResumeState {
+    this.settleSeek();
+    return this.parser.exportResumeState();
+  }
+
+  /**
+   * Restores parser state from `getResumeState()`; after `seekTo()` this
+   * replaces re-parsing the rollout up to that position.
+   */
+  restoreResumeState(state: unknown): boolean {
+    if (!this.parser.importResumeState(state)) return false;
+    this.pendingSeek = null;
+    this.propagateParserState();
+    return true;
+  }
+
+  /**
+   * Rebuilds model, turn, and cumulative-token context for a pending
+   * `seekTo()` position. The prefix is parsed only; its events are already
+   * in the consumer snapshot.
+   */
+  private settleSeek(): void {
+    const position = this.pendingSeek;
+    if (position === null) return;
+    this.reset();
+    this.readNew(position);
   }
 }
 

@@ -64,6 +64,18 @@ export interface SessionWatcher {
   seekTo?(position: number): void;
   /** Get current reader position (byte offset or timestamp). */
   getPosition?(): number;
+  /**
+   * Parse state to persist with `getPosition()` so a later watcher can
+   * resume there without recounting (see `SessionReader.getResumeState`).
+   * `undefined` when the watcher keeps none.
+   */
+  getResumeState?(): unknown;
+  /**
+   * Restores state from `getResumeState()` right after `seekTo()` and before
+   * `start()`. Returns false, changing nothing, when `state` is missing or
+   * not valid; replay from the start instead.
+   */
+  restoreResumeState?(state: unknown): boolean;
 }
 
 export interface CreateWatcherOptions {

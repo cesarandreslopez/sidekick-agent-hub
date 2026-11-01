@@ -65,12 +65,47 @@ export function normalizeClaudeUsage(event: SessionEvent): SessionEvent {
   };
 }
 
-interface Buckets {
+/** Tokens a {@link ClaudeUsageDeduper} has already counted for one message id. */
+export interface ClaudeUsageDedupeBuckets {
   input: number;
   cacheRead: number;
   cacheWrite: number;
   output: number;
   reasoning: number;
+}
+
+type Buckets = ClaudeUsageDedupeBuckets;
+
+const BUCKET_KEYS = ['input', 'cacheRead', 'cacheWrite', 'output', 'reasoning'] as const;
+
+/** Entries {@link ClaudeUsageDeduper.exportState} keeps by default. */
+const DEFAULT_EXPORT_LIMIT = 256;
+
+/**
+ * JSON-serializable state of a {@link ClaudeUsageDeduper}, from
+ * `exportState()`, for `importState()` in a reader resumed at the same
+ * position (for example from a persisted session snapshot).
+ */
+export interface ClaudeUsageDedupeState {
+  version: 1;
+  /** `[message id, counted tokens]` pairs, oldest first. */
+  entries: Array<[string, ClaudeUsageDedupeBuckets]>;
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function bucketsFrom(value: unknown): Buckets | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const buckets = {} as Buckets;
+  for (const key of BUCKET_KEYS) {
+    const count = record[key];
+    if (!isCount(count)) return null;
+    buckets[key] = count;
+  }
+  return buckets;
 }
 
 function bucketsOf(usage: NormalizedUsage): Buckets {
@@ -183,6 +218,51 @@ export class ClaudeUsageDeduper {
 
   reset(): void {
     this.seen.clear();
+  }
+
+  /**
+   * The most recent `limit` message ids and the tokens counted for each,
+   * oldest first. Split lines of one response are adjacent, so a reader
+   * resumed at the position this was taken at needs only the last few.
+   */
+  exportState(limit = DEFAULT_EXPORT_LIMIT): ClaudeUsageDedupeState {
+    const count = limit >= 0 ? Math.min(this.seen.size, Math.floor(limit)) : 0;
+    const entries: Array<[string, Buckets]> = [];
+    if (count > 0) {
+      let skip = this.seen.size - count;
+      for (const [id, buckets] of this.seen) {
+        if (skip > 0) {
+          skip -= 1;
+          continue;
+        }
+        entries.push([id, { ...buckets }]);
+      }
+    }
+    return { version: 1, entries };
+  }
+
+  /**
+   * Replaces this deduper's state with one from {@link exportState}. Returns
+   * false, changing nothing, when `state` is not a valid version-1 state
+   * (wrong shape, empty ids, or counts that are not finite non-negative
+   * numbers). Entries beyond this deduper's capacity drop oldest first.
+   */
+  importState(state: unknown): boolean {
+    if (!state || typeof state !== 'object') return false;
+    const { version, entries } = state as { version?: unknown; entries?: unknown };
+    if (version !== 1 || !Array.isArray(entries)) return false;
+    const parsed: Array<[string, Buckets]> = [];
+    for (const entry of entries) {
+      if (!Array.isArray(entry) || entry.length !== 2) return false;
+      const [id, value] = entry as [unknown, unknown];
+      if (typeof id !== 'string' || id.length === 0) return false;
+      const buckets = bucketsFrom(value);
+      if (!buckets) return false;
+      parsed.push([id, buckets]);
+    }
+    this.seen.clear();
+    for (const [id, buckets] of parsed) this.remember(id, buckets);
+    return true;
   }
 
   private remember(id: string, buckets: Buckets): void {

@@ -103,10 +103,11 @@ export interface JsonlTailReadResult<T> extends JsonlTailBatch {
 }
 
 /**
- * A JSON-serializable resume point from {@link JsonlTail.checkpoint}. It
- * identifies the file by device and inode plus a digest of its first bytes,
- * so a new tail (in this or a later process) can verify it is still reading
- * the same, append-only file before continuing from `offset`.
+ * A JSON-serializable resume point from {@link JsonlTail.checkpoint} or
+ * {@link captureJsonlCheckpoint}. It identifies the file by device and inode
+ * plus a digest of its first bytes, so a new tail (in this or a later
+ * process) or {@link verifyJsonlCheckpoint} can confirm the file is still the
+ * same, append-only one before anything continues from `offset`.
  */
 export interface JsonlTailCheckpoint {
   version: typeof JSONL_TAIL_CHECKPOINT_VERSION;
@@ -203,6 +204,60 @@ export interface JsonlTail<T = unknown> {
 
 export function createJsonlTail<T>(options: JsonlTailOptions<T>): JsonlTail<T> {
   return new JsonlTailReader(options);
+}
+
+/**
+ * Records a {@link JsonlTailCheckpoint} for byte `offset` of `filePath`
+ * without a tail, for readers that keep their own offset (a snapshot that
+ * stores a reader position, for example). The checkpoint carries the file's
+ * current device and inode and a digest of its first bytes, so
+ * {@link verifyJsonlCheckpoint} (or {@link JsonlTail.resumeFrom}) can later
+ * tell whether `offset` still refers to the same, append-only content.
+ *
+ * Returns `null` when the file is missing or unreadable, or when `offset` is
+ * not a resume-safe position in it: negative, past the end, or not 0 and not
+ * just after a newline. Follows symbolic links.
+ */
+export function captureJsonlCheckpoint(
+  filePath: string,
+  offset: number,
+): JsonlTailCheckpoint | null {
+  if (!Number.isSafeInteger(offset) || offset < 0) return null;
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const stat = fs.fstatSync(fd);
+    if (offset > stat.size) return null;
+    if (offset > 0 && readAt(fd, offset - 1, 1)[0] !== 0x0a) return null;
+    return checkpointOf(offset, stat, fileHeadOf(readPrefix(fd, stat)));
+  } catch {
+    return null;
+  } finally {
+    closeQuietly(fd);
+  }
+}
+
+/**
+ * Whether `checkpoint` (any value, typically parsed from JSON) is a valid
+ * {@link JsonlTailCheckpoint} that still describes `filePath`: same device
+ * and inode, the recorded first bytes unchanged, and its offset within the
+ * file and just after a newline (or 0). This is the check
+ * {@link JsonlTail.resumeFrom} applies. `false` on any error, including a
+ * missing file. Follows symbolic links.
+ */
+export function verifyJsonlCheckpoint(filePath: string, checkpoint: unknown): boolean {
+  const parsed = parseCheckpoint(checkpoint);
+  if (parsed === null) return false;
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const stat = fs.fstatSync(fd);
+    return checkpointMatches(parsed, fd, stat, readPrefix(fd, stat));
+  } catch {
+    return false;
+  } finally {
+    closeQuietly(fd);
+  }
 }
 
 /** The bytes the continuity check needs, read before any state changes. */
@@ -453,7 +508,7 @@ class JsonlTailReader<T> implements JsonlTail<T> {
 
   private probeSync(fd: number, stat: fs.Stats): ContinuityProbe {
     return {
-      prefix: readAt(fd, 0, Math.min(HEAD_BYTES, stat.size)),
+      prefix: readPrefix(fd, stat),
       before:
         this.committedOffset > 0 && this.committedOffset <= stat.size
           ? readAt(fd, this.committedOffset - 1, 1)
@@ -586,12 +641,7 @@ class JsonlTailReader<T> implements JsonlTail<T> {
   }
 
   checkpoint(): JsonlTailCheckpoint {
-    return {
-      version: JSONL_TAIL_CHECKPOINT_VERSION,
-      offset: this.committedOffset,
-      identity: this.identity ? { dev: this.identity.dev, ino: this.identity.ino } : null,
-      prefixDigest: this.head ? { bytes: this.head.bytes, hash: this.head.hash } : null,
-    };
+    return checkpointOf(this.committedOffset, this.identity, this.head);
   }
 
   resumeFrom(checkpoint: unknown): boolean {
@@ -602,7 +652,7 @@ class JsonlTailReader<T> implements JsonlTail<T> {
     try {
       fd = this.openSync();
       const stat = fs.fstatSync(fd);
-      const prefix = readAt(fd, 0, Math.min(HEAD_BYTES, stat.size));
+      const prefix = readPrefix(fd, stat);
       const matches = parsed !== null && checkpointMatches(parsed, fd, stat, prefix);
       const offset = matches
         ? parsed.offset
@@ -727,6 +777,20 @@ function parseCheckpoint(value: unknown): JsonlTailCheckpoint | null {
   };
 }
 
+/** A fresh checkpoint for `offset` in the file with `identity` and recorded `head`. */
+function checkpointOf(
+  offset: number,
+  identity: { dev: number; ino: number } | null,
+  head: FileHead | null,
+): JsonlTailCheckpoint {
+  return {
+    version: JSONL_TAIL_CHECKPOINT_VERSION,
+    offset,
+    identity: identity ? { dev: identity.dev, ino: identity.ino } : null,
+    prefixDigest: head ? { bytes: head.bytes, hash: head.hash } : null,
+  };
+}
+
 /** Whether `checkpoint` still describes the open file. */
 function checkpointMatches(
   checkpoint: JsonlTailCheckpoint,
@@ -771,6 +835,11 @@ function readAt(fd: number, position: number, length: number): Buffer {
   const buffer = Buffer.alloc(length);
   const count = length > 0 ? fs.readSync(fd, buffer, 0, length, position) : 0;
   return buffer.subarray(0, count);
+}
+
+/** The file's first `min(HEAD_BYTES, size)` bytes: what a checkpoint digests. */
+function readPrefix(fd: number, stat: fs.Stats): Buffer {
+  return readAt(fd, 0, Math.min(HEAD_BYTES, stat.size));
 }
 
 async function readAtAsync(

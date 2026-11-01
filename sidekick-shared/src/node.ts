@@ -321,11 +321,13 @@ export { discoverWorktreeSiblings, resolveWorktreeMainRepo } from './parsers/ses
 
 // Bounded JSONL tail reader
 export {
+  captureJsonlCheckpoint,
   createJsonlTail,
   DEFAULT_JSONL_TAIL_MAX_LINE_BYTES,
   DEFAULT_JSONL_TAIL_READ_BYTES,
   JSONL_TAIL_CHECKPOINT_VERSION,
   JsonlTailSymlinkError,
+  verifyJsonlCheckpoint,
 } from './watchers/jsonlTail';
 export type {
   JsonlTail,

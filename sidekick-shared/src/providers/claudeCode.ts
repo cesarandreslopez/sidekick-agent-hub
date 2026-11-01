@@ -18,7 +18,11 @@ import type {
   SessionContextSnapshot,
 } from '../context/sessionContext';
 import { JsonlParser } from '../parsers/jsonl';
-import { ClaudeUsageDeduper, normalizeClaudeUsage } from '../usage/claudeUsageDedupe';
+import {
+  ClaudeUsageDeduper,
+  normalizeClaudeUsage,
+  type ClaudeUsageDedupeState,
+} from '../usage/claudeUsageDedupe';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { SessionEvent, SubagentStats, TokenUsage } from '../types/sessionEvent';
 import type {
@@ -153,7 +157,8 @@ class ClaudeCodeReader implements SessionReader {
     this.usageDeduper = usageDeduper ?? new ClaudeUsageDeduper();
     this.parser = new JsonlParser<unknown>({
       onEvent: (raw) => {
-        for (const event of extractSessionEvents(raw)) {
+        // Mid-turn task notifications finish background subagents.
+        for (const event of extractSessionEvents(raw, { includeTaskNotifications: true })) {
           this.events.push(this.usageDeduper.apply(normalizeClaudeUsage(event)));
         }
       },
@@ -252,6 +257,15 @@ class ClaudeCodeReader implements SessionReader {
 
   wasTruncated(): boolean {
     return this._wasTruncated;
+  }
+
+  /** The usage deduper's recent message ids, so a resumed reader does not recount a split response. */
+  getResumeState(): ClaudeUsageDedupeState {
+    return this.usageDeduper.exportState();
+  }
+
+  restoreResumeState(state: unknown): boolean {
+    return this.usageDeduper.importState(state);
   }
 }
 

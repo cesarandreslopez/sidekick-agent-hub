@@ -800,3 +800,156 @@ describe('CodexRolloutParser maxPendingBytes', () => {
     }
   });
 });
+
+describe('CodexRolloutParser resume state', () => {
+  const usage = (input: number, output: number) => ({
+    input_tokens: input,
+    cached_input_tokens: 0,
+    output_tokens: output,
+    reasoning_output_tokens: 0,
+    total_tokens: input + output,
+  });
+  const at = (second: number) => `2026-06-01T12:01:${String(second).padStart(2, '0')}.000Z`;
+
+  /** The mixed rollout plus cumulative token counts (with a duplicate) and the plan's end. */
+  function resumableRollout(): CodexRolloutLine[] {
+    return [
+      ...mixedRollout(),
+      line('turn_context', { model: 'gpt-5.1-codex' }, at(0)),
+      line(
+        'event_msg',
+        {
+          type: 'token_count',
+          info: { total_token_usage: usage(1000, 100), model_context_window: 258_400 },
+          rate_limits: { limit_id: 'codex', primary: { used_percent: 12, window_minutes: 300 } },
+        },
+        at(1),
+      ),
+      line(
+        'event_msg',
+        { type: 'token_count', info: { total_token_usage: usage(1000, 100) } },
+        at(2),
+      ),
+      line(
+        'event_msg',
+        { type: 'token_count', info: { total_token_usage: usage(1600, 160) } },
+        at(3),
+      ),
+      line('event_msg', { type: 'task_complete' }, at(4)),
+    ];
+  }
+
+  /** Parses `lines[0..cut)`, round-trips the state through JSON, and parses the rest. */
+  function resumedAt(lines: CodexRolloutLine[], cut: number, options = {}) {
+    const live = new CodexRolloutParser(options);
+    runRollout(live, lines.slice(0, cut));
+    const state = JSON.parse(JSON.stringify(live.exportResumeState()));
+    const resumed = new CodexRolloutParser(options);
+    expect(resumed.importResumeState(state)).toBe(true);
+    return { resumed, events: runRollout(resumed, lines.slice(cut)) };
+  }
+
+  it('continues exactly like an uninterrupted parse from every line boundary', () => {
+    const lines = resumableRollout();
+    for (let cut = 0; cut <= lines.length; cut++) {
+      const full = new CodexRolloutParser();
+      const expected = runRollout(full, lines).slice(
+        runRollout(new CodexRolloutParser(), lines.slice(0, cut)).length,
+      );
+      const { resumed, events } = resumedAt(lines, cut);
+      expect(events, `cut at line ${cut}`).toEqual(expected);
+      expect(resumed.exportResumeState(), `cut at line ${cut}`).toEqual(full.exportResumeState());
+    }
+  });
+
+  it('skips a duplicate token_count after resume and keeps the model', () => {
+    const lines = resumableRollout();
+    const cut = lines.findIndex((entry) => entry.timestamp === at(2));
+    const { events } = resumedAt(lines, cut);
+    const usageEvents = events.filter((event) => extractNormalizedUsage(event));
+    // Only the growth to 1600/160 is counted; the resent 1000/100 is not.
+    expect(usageEvents.map((event) => extractNormalizedUsage(event)?.totalTokens)).toEqual([660]);
+    expect(usageEvents[0].message?.model).toBe('gpt-5.1-codex');
+    expect(events.find((event) => event.timestamp === at(4))).toMatchObject({
+      message: { content: [{ name: 'ExitPlanMode' }] },
+    });
+
+    // A fresh parser has no baseline: it counts the duplicate and loses the model.
+    const fresh = runRollout(new CodexRolloutParser(), lines.slice(cut));
+    const freshUsage = fresh.filter((event) => extractNormalizedUsage(event));
+    expect(freshUsage.map((event) => extractNormalizedUsage(event)?.totalTokens)).toEqual([
+      1100, 660,
+    ]);
+    expect(freshUsage[0].message?.model).toBeUndefined();
+  });
+
+  it('carries metadata, context window, and rate limits', () => {
+    const lines = resumableRollout();
+    const { resumed } = resumedAt(lines, lines.length);
+    expect(resumed.getSessionMeta()).toMatchObject({ id: 'session-1', cwd: '/w' });
+    expect(resumed.getCurrentModel()).toBe('gpt-5.1-codex');
+    expect(resumed.getModelContextWindow()).toBe(258_400);
+    expect(resumed.getLastRateLimits()).toMatchObject({ limit_id: 'codex' });
+    expect(resumed.getLastTokenUsage()).toMatchObject({ input_tokens: 600, output_tokens: 60 });
+  });
+
+  it('exports the newest entries of each table and copies, not aliases, its data', () => {
+    const parser = new CodexRolloutParser();
+    for (let i = 0; i < 5; i++) {
+      parser.convertLine(
+        line('event_msg', { type: 'exec_command_begin', call_id: `open-${i}`, command: ['ls'] }),
+      );
+    }
+    const state = parser.exportResumeState(2);
+    expect(state.pendingExecCommands.map((entry) => entry.call_id)).toEqual(['open-3', 'open-4']);
+    state.pendingExecCommands[0].command.push('-la');
+    expect(parser.exportResumeState().pendingExecCommands[3].command).toEqual(['ls']);
+  });
+
+  it('applies its own metadataOnly option to imported pending calls', () => {
+    const lines = mixedRollout();
+    const cut = lines.findIndex(
+      (entry) => (entry.payload as { type?: string }).type === 'mcp_tool_call_end',
+    );
+    const live = new CodexRolloutParser();
+    runRollout(live, lines.slice(0, cut));
+    const state = live.exportResumeState();
+    expect(state.pendingMcpToolCalls).toMatchObject([{ arguments: { query: 'private query' } }]);
+    const scan = new CodexRolloutParser({ metadataOnly: true });
+    expect(scan.importResumeState(state)).toBe(true);
+    expect(scan.exportResumeState().pendingMcpToolCalls[0].arguments).toBeUndefined();
+  });
+
+  const valid = () => new CodexRolloutParser().exportResumeState();
+  it.each([
+    ['undefined', () => undefined],
+    ['null', () => null],
+    ['another version', () => ({ ...valid(), version: 2 })],
+    ['a numeric model', () => ({ ...valid(), currentModel: 5 })],
+    ['a negative token count', () => ({ ...valid(), prevTotalUsage: usage(-1, 0) })],
+    ['a token usage without output', () => ({ ...valid(), prevTotalUsage: { input_tokens: 1 } })],
+    ['a zero context window', () => ({ ...valid(), modelContextWindow: 0 })],
+    ['a non-boolean plan mode', () => ({ ...valid(), inPlanMode: 'yes' })],
+    ['an array session meta', () => ({ ...valid(), sessionMeta: [] })],
+    ['a missing table', () => ({ ...valid(), emittedToolUseIds: undefined })],
+    ['a numeric call id', () => ({ ...valid(), emittedToolUseIds: [1] })],
+    ['a malformed patch entry', () => ({ ...valid(), patchExpandedToolUseIds: [['p', 'a']] })],
+    [
+      'a pending exec without a timestamp',
+      () => ({ ...valid(), pendingExecCommands: [{ call_id: 'e', command: [] }] }),
+    ],
+    [
+      'pending MCP arguments that are not an object',
+      () => ({
+        ...valid(),
+        pendingMcpToolCalls: [{ call_id: 'm', tool_name: 't', arguments: 'x', timestamp: 't' }],
+      }),
+    ],
+  ])('rejects %s and keeps its state', (_label, state) => {
+    const parser = new CodexRolloutParser();
+    runRollout(parser, resumableRollout());
+    const before = parser.exportResumeState();
+    expect(parser.importResumeState(state())).toBe(false);
+    expect(parser.exportResumeState()).toEqual(before);
+  });
+});

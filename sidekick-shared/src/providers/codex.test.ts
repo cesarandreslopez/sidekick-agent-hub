@@ -211,6 +211,133 @@ describe('CodexProvider', () => {
     }
   });
 
+  it('resumes from restored parser state without re-parsing the prefix', async () => {
+    const filename = path.join(tmpDir, 'rollout-resume.jsonl');
+    const line = (row: unknown) => JSON.stringify(row) + '\n';
+    const total = (input: number, output: number) => ({
+      input_tokens: input,
+      cached_input_tokens: 0,
+      output_tokens: output,
+      total_tokens: input + output,
+    });
+    const tokenCount = (input: number, output: number, second: number) =>
+      line({
+        type: 'event_msg',
+        timestamp: `2026-09-06T12:00:0${second}Z`,
+        payload: {
+          type: 'token_count',
+          info: { total_token_usage: total(input, output), model_context_window: 200_000 },
+        },
+      });
+    const prefix =
+      line({ type: 'session_meta', payload: { id: 'session', cwd: tmpDir } }) +
+      line({ type: 'turn_context', payload: { model: 'gpt-5-codex', cwd: tmpDir } }) +
+      tokenCount(1000, 100, 1);
+    // The duplicate repeats the cumulative total; only the growth after it counts.
+    const suffix = tokenCount(1000, 100, 2) + tokenCount(1500, 150, 3);
+    fs.writeFileSync(filename, prefix);
+    const { CodexProvider } = await import('./codex');
+    const provider = new CodexProvider();
+    const usageOf = (events: ReturnType<ReturnType<typeof provider.createReader>['readNew']>) =>
+      events
+        .filter((event) => event.message?.normalizedUsage)
+        .map((event) => ({
+          model: event.message?.model,
+          total: event.message?.normalizedUsage?.totalTokens,
+        }));
+    try {
+      const live = provider.createReader(filename);
+      live.readNew();
+      const position = live.getPosition();
+      const state = JSON.parse(JSON.stringify(live.getResumeState?.()));
+      expect(state).toMatchObject({ version: 1, currentModel: 'gpt-5-codex' });
+
+      // Blank out the prefix (same length): only the restored state can supply its context.
+      fs.writeFileSync(filename, prefix.replace(/[^\n]/g, ' ') + suffix);
+      const resumed = provider.createReader(filename);
+      resumed.seekTo(position);
+      expect(resumed.restoreResumeState?.(state)).toBe(true);
+      expect(resumed.getPosition()).toBe(position);
+      expect(usageOf(resumed.readNew())).toEqual([{ model: 'gpt-5-codex', total: 550 }]);
+      expect(resumed.getPosition()).toBe(Buffer.byteLength(prefix + suffix));
+
+      // Without restored state, seekTo() rebuilds context from the prefix it can read.
+      fs.writeFileSync(filename, prefix + suffix);
+      const rebuilt = provider.createReader(filename);
+      rebuilt.seekTo(position);
+      expect(usageOf(rebuilt.readNew())).toEqual([{ model: 'gpt-5-codex', total: 550 }]);
+
+      const rejected = provider.createReader(filename);
+      rejected.seekTo(position);
+      expect(rejected.restoreResumeState?.({ ...state, version: 2 })).toBe(false);
+      expect(usageOf(rejected.readNew())).toEqual([{ model: 'gpt-5-codex', total: 550 }]);
+    } finally {
+      provider.dispose();
+    }
+  });
+
+  it('passes reader resume state through ProviderReaderSessionWatcher', async () => {
+    const filename = path.join(tmpDir, 'rollout-watcher-resume.jsonl');
+    const line = (row: unknown) => JSON.stringify(row) + '\n';
+    fs.writeFileSync(
+      filename,
+      line({ type: 'session_meta', payload: { id: 'session', cwd: tmpDir } }) +
+        line({ type: 'turn_context', payload: { model: 'gpt-5-codex', cwd: tmpDir } }),
+    );
+    const { CodexProvider } = await import('./codex');
+    const { ProviderReaderSessionWatcher } = await import('../watchers/providerReaderWatcher');
+    const provider = new CodexProvider();
+    const models: Array<string | undefined> = [];
+    const watch = () =>
+      new ProviderReaderSessionWatcher(provider, filename, {
+        onEvent: (event) => models.push(event.model),
+      });
+    try {
+      const original = watch();
+      original.start(true);
+      original.stop();
+      const offset = original.getPosition();
+      const state = JSON.parse(JSON.stringify(original.getResumeState()));
+      expect(state).toMatchObject({ currentModel: 'gpt-5-codex' });
+      models.length = 0;
+
+      // Same-length blank prefix: the model can only come from the restored state.
+      const content = fs.readFileSync(filename, 'utf8');
+      fs.writeFileSync(
+        filename,
+        content.replace(/[^\n]/g, ' ') +
+          line({
+            type: 'response_item',
+            timestamp: '2026-09-06T12:00:00Z',
+            payload: {
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'output_text', text: 'hi' }],
+            },
+          }),
+      );
+      const resumed = watch();
+      resumed.seekTo(offset);
+      expect(resumed.restoreResumeState(state)).toBe(true);
+      resumed.start(true);
+      resumed.stop();
+      expect(models).toEqual(['gpt-5-codex']);
+      expect(watch().restoreResumeState(null)).toBe(false);
+
+      // A reader without resume state accepts only "nothing to restore".
+      const plain = new ProviderReaderSessionWatcher(
+        { id: 'codex', createReader: () => ({ getPosition: () => 0 }) } as never,
+        filename,
+        { onEvent: () => {} },
+      );
+      expect(plain.getResumeState()).toBeUndefined();
+      expect(plain.restoreResumeState(undefined)).toBe(true);
+      expect(plain.restoreResumeState({})).toBe(false);
+    } finally {
+      provider.dispose();
+    }
+  });
+
   it('records the reported context window against the session model', async () => {
     // Codex reports a tier-specific model_context_window on every token_count
     // event. It must be persisted per model so historical views don't fall back

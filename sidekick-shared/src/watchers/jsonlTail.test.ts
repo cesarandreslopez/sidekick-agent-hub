@@ -13,8 +13,10 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
+  captureJsonlCheckpoint,
   createJsonlTail,
   JsonlTailSymlinkError,
+  verifyJsonlCheckpoint,
   type JsonlTailBatch,
   type JsonlTailCheckpoint,
   type JsonlTailLine,
@@ -592,5 +594,110 @@ describe('createJsonlTail read()', () => {
     events.length = 0;
     await tail.read();
     expect(events).toEqual(lines.map((line) => JSON.parse(line).type));
+  });
+});
+
+describe('captureJsonlCheckpoint / verifyJsonlCheckpoint', () => {
+  const content = '{"type":"one"}\n{"type":"two"}\n';
+  const firstLine = Buffer.byteLength('{"type":"one"}\n');
+
+  it('captures what a tail checkpoints at the same offset, and verifies it', () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, content);
+    const { tail } = recordingTail(file);
+    tail.readNow();
+
+    const captured = captureJsonlCheckpoint(file, tail.getOffset());
+    expect(captured).toEqual(tail.checkpoint());
+    expect(verifyJsonlCheckpoint(file, captured)).toBe(true);
+    // Survives JSON, and a tail accepts it too.
+    const serialized = JSON.parse(JSON.stringify(captured)) as unknown;
+    expect(verifyJsonlCheckpoint(file, serialized)).toBe(true);
+    expect(recordingTail(file).tail.resumeFrom(serialized)).toBe(true);
+    expect(captureJsonlCheckpoint(file, 0)).toMatchObject({ offset: 0 });
+    expect(captureJsonlCheckpoint(file, firstLine)).toMatchObject({ offset: firstLine });
+  });
+
+  it('stays valid while the file only grows, including past a short head', () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, content);
+    const checkpoint = captureJsonlCheckpoint(file, Buffer.byteLength(content));
+    expect(checkpoint?.prefixDigest?.bytes).toBe(Buffer.byteLength(content));
+    appendFileSync(file, `${JSON.stringify({ type: 'big', pad: 'x'.repeat(8192) })}\n`);
+    appendFileSync(file, '{"type":"partial');
+    expect(verifyJsonlCheckpoint(file, checkpoint)).toBe(true);
+  });
+
+  it('returns null for a missing file or an offset that is not resume-safe', () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, content);
+    expect(captureJsonlCheckpoint(`${file}.missing`, 0)).toBeNull();
+    expect(captureJsonlCheckpoint(file, firstLine - 1)).toBeNull();
+    expect(captureJsonlCheckpoint(file, Buffer.byteLength(content) + 1)).toBeNull();
+    expect(captureJsonlCheckpoint(file, -1)).toBeNull();
+    expect(captureJsonlCheckpoint(file, 1.5)).toBeNull();
+    expect(captureJsonlCheckpoint(file, Number.NaN)).toBeNull();
+    expect(captureJsonlCheckpoint(path.dirname(file), 0)).toBeNull();
+  });
+
+  it('rejects a same-size rewrite, a replacement with identical content, and truncation', () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, content);
+    const checkpoint = captureJsonlCheckpoint(file, Buffer.byteLength(content));
+
+    // Same size, different first bytes.
+    writeFileSync(file, content.replace('one', 'ONE'));
+    expect(verifyJsonlCheckpoint(file, checkpoint)).toBe(false);
+
+    // A new inode with byte-identical content.
+    writeFileSync(file, content);
+    const before = captureJsonlCheckpoint(file, Buffer.byteLength(content));
+    expect(verifyJsonlCheckpoint(file, before)).toBe(true);
+    const replacement = `${file}.next`;
+    writeFileSync(replacement, content);
+    renameSync(replacement, file);
+    expect(verifyJsonlCheckpoint(file, before)).toBe(false);
+
+    // Shrunk below the offset.
+    const full = captureJsonlCheckpoint(file, Buffer.byteLength(content));
+    truncateSync(file, firstLine);
+    expect(verifyJsonlCheckpoint(file, full)).toBe(false);
+  });
+
+  it('rejects an offset that no longer follows a newline', () => {
+    const file = makeJsonlFile();
+    // A first line longer than the digested head, so only the newline check can fail.
+    const pad = `${JSON.stringify({ type: 'pad', pad: 'x'.repeat(5000) })}\n`;
+    writeFileSync(file, `${pad}{"type":"two"}\n`);
+    const offset = Buffer.byteLength(`${pad}{"type":"two"}\n`);
+    const checkpoint = captureJsonlCheckpoint(file, offset);
+    expect(checkpoint?.prefixDigest?.bytes).toBe(4096);
+    expect(verifyJsonlCheckpoint(file, checkpoint)).toBe(true);
+    expect(verifyJsonlCheckpoint(file, { ...checkpoint!, offset: offset - 1 })).toBe(false);
+
+    // Rewritten in place (same inode, same head): the byte before the offset is no longer '\n'.
+    writeFileSync(file, `${pad}{"type":"two"}x{"type":"three"}\n`);
+    expect(verifyJsonlCheckpoint(file, checkpoint)).toBe(false);
+  });
+
+  it('is false for malformed checkpoints and missing files, never throwing', () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, content);
+    const good = captureJsonlCheckpoint(file, firstLine)!;
+    for (const bad of [
+      undefined,
+      null,
+      'checkpoint',
+      42,
+      {},
+      { ...good, version: 2 },
+      { ...good, offset: -1 },
+      { ...good, identity: 'x' },
+      { ...good, prefixDigest: { bytes: 99999, hash: 'x' } },
+      { ...good, identity: null },
+    ]) {
+      expect(verifyJsonlCheckpoint(file, bad)).toBe(false);
+    }
+    expect(verifyJsonlCheckpoint(`${file}.missing`, good)).toBe(false);
   });
 });

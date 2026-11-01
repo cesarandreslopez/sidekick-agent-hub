@@ -6,12 +6,26 @@
 import { createJsonlTail, type JsonlTail } from './jsonlTail';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { ProviderId } from '../providers/types';
-import { normalizeCodexToolName, resolveCodexCallUsage } from '../parsers/codexParser';
+import {
+  codexTokenUsageFrom,
+  normalizeCodexToolName,
+  resolveCodexCallUsage,
+} from '../parsers/codexParser';
 import type { CodexTokenUsage } from '../types/codex';
 import { formatToolSummary } from '../formatters/toolSummary';
 import { ClaudeUsageDeduper, normalizeClaudeUsage } from '../usage/claudeUsageDedupe';
 import type { SessionEvent } from '../types/sessionEvent';
+import { parseTaskNotification, taskNotificationPromptFromAttachment } from '../subagentSpawn';
 import type { FollowEvent, SessionWatcher, SessionWatcherCallbacks } from './types';
+
+/** Options for {@link JsonlSessionWatcher}. */
+export interface JsonlSessionWatcherOptions {
+  /**
+   * Emit a `system` event (summary from the notification, `raw` the line) for
+   * each Claude Code mid-turn task-notification attachment. Default `false`.
+   */
+  includeTaskNotifications?: boolean;
+}
 
 // ── Normalizers ──
 
@@ -34,6 +48,7 @@ function dedupedClaudeUsage(raw: RawSessionEvent, deduper: ClaudeUsageDeduper) {
 function normalizeClaudeCodeEvent(
   raw: RawSessionEvent,
   deduper: ClaudeUsageDeduper,
+  includeTaskNotifications: boolean,
 ): FollowEvent[] {
   const events: FollowEvent[] = [];
   const ts = raw.timestamp || new Date().toISOString();
@@ -145,6 +160,18 @@ function normalizeClaudeCodeEvent(
         summary: 'Session ended',
         raw,
       });
+    } else if (includeTaskNotifications) {
+      // A task notification that landed mid-turn is only an attachment line.
+      const notification = parseTaskNotification(taskNotificationPromptFromAttachment(raw));
+      if (notification) {
+        events.push({
+          providerId: 'claude-code',
+          type: 'system',
+          timestamp: ts,
+          summary: notification.summary ?? `Background task ${notification.status ?? 'finished'}`,
+          raw,
+        });
+      }
     }
   }
 
@@ -231,6 +258,7 @@ export class JsonlSessionWatcher implements SessionWatcher {
     private readonly providerId: ProviderId,
     private readonly sessionPath: string,
     private readonly callbacks: SessionWatcherCallbacks,
+    private readonly options: JsonlSessionWatcherOptions = {},
   ) {}
 
   get isActive(): boolean {
@@ -246,6 +274,35 @@ export class JsonlSessionWatcher implements SessionWatcher {
   /** Position after the last complete JSONL line. */
   getPosition(): number {
     return this.tail?.getOffset() ?? this.startOffset ?? 0;
+  }
+
+  /**
+   * Parse state for {@link getPosition}: for Claude Code, the usage deduper's
+   * recent message ids (a `ClaudeUsageDedupeState`); for Codex, the previous
+   * cumulative token total and plan mode.
+   */
+  getResumeState(): unknown {
+    if (this.providerId === 'codex') {
+      return {
+        version: 1,
+        prevTotalUsage: this.codexPrevTotal ? { ...this.codexPrevTotal } : null,
+        inPlanMode: this.codexInPlanMode,
+      };
+    }
+    return this.claudeUsageDeduper.exportState();
+  }
+
+  /** Restores state from {@link getResumeState} after `seekTo()` and before `start()`. */
+  restoreResumeState(state: unknown): boolean {
+    if (this.providerId !== 'codex') return this.claudeUsageDeduper.importState(state);
+    if (!state || typeof state !== 'object') return false;
+    const { version, prevTotalUsage, inPlanMode } = state as Record<string, unknown>;
+    if (version !== 1 || typeof inPlanMode !== 'boolean') return false;
+    const total = codexTokenUsageFrom(prevTotalUsage);
+    if (total === undefined) return false;
+    this.codexPrevTotal = total ?? undefined;
+    this.codexInPlanMode = inPlanMode;
+    return true;
   }
 
   start(replay: boolean): void {
@@ -281,7 +338,11 @@ export class JsonlSessionWatcher implements SessionWatcher {
     const followEvents =
       this.providerId === 'codex'
         ? this.normalizeCodexEvent(event as unknown as Record<string, unknown>)
-        : normalizeClaudeCodeEvent(event, this.claudeUsageDeduper);
+        : normalizeClaudeCodeEvent(
+            event,
+            this.claudeUsageDeduper,
+            this.options.includeTaskNotifications === true,
+          );
     for (const fe of followEvents) {
       this.callbacks.onEvent(fe);
     }

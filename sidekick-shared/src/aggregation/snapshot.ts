@@ -2,8 +2,11 @@
  * Session snapshot sidecar — persists aggregator state + reader position
  * so that re-attaching to a session skips full replay.
  *
- * Snapshots are stored in ~/.config/sidekick/snapshots/{sessionId}.json.
- * They are invalidated when the source file changes beyond the snapshot position.
+ * Snapshots are stored in `<config dir>/snapshots/{sessionId}.json` (see
+ * `getConfigDir()`). They are invalidated when the source file shrank below
+ * the snapshot position or, for file-backed sessions that recorded a
+ * {@link SessionSnapshot.sourceCheckpoint}, when the file is no longer the
+ * same append-only file.
  *
  * @module aggregation/snapshot
  */
@@ -11,6 +14,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from '../paths';
+import { verifyJsonlCheckpoint, type JsonlTailCheckpoint } from '../watchers/jsonlTail';
 import { atomicWriteJsonSync } from '../writers/atomic';
 import { SNAPSHOT_SCHEMA_VERSION, type SerializedAggregatorState } from './EventAggregator';
 
@@ -35,6 +39,23 @@ export interface SessionSnapshot {
   readerPosition: number;
   /** Source file size at snapshot time (for staleness check; 0 for DB-backed). */
   sourceSize: number;
+  /**
+   * Identity of the source file at `readerPosition`, from
+   * `captureJsonlCheckpoint(sourcePath, readerPosition)`: its device and
+   * inode plus a digest of its first bytes. Present for file-backed sessions
+   * written by 0.29.1 and later; absent for DB-backed sessions and older
+   * snapshots. {@link isSnapshotValid} checks it when given the source path.
+   */
+  sourceCheckpoint?: JsonlTailCheckpoint;
+  /**
+   * The reader's parse state at `readerPosition`, from
+   * `SessionReader.getResumeState()` or `SessionWatcher.getResumeState()`
+   * (for Claude Code, which split-line responses were already counted).
+   * After seeking to `readerPosition`, pass it to `restoreResumeState()` and
+   * replay from the start when that returns false. Absent when the reader
+   * keeps none, and in snapshots written before 0.29.1.
+   */
+  readerState?: unknown;
   /** ISO timestamp when snapshot was written. */
   createdAt: string;
   /** Serialized EventAggregator state. */
@@ -126,8 +147,8 @@ export function pruneSnapshots(keep: number = MAX_SNAPSHOT_FILES): number {
  * - Schema version doesn't match
  * - JSON parse fails
  *
- * The caller is responsible for staleness checks (comparing sourceSize
- * and readerPosition against the actual file).
+ * The caller is responsible for staleness checks against the actual file:
+ * `isSnapshotValid(snapshot, currentSize, sourcePath)`.
  */
 export function loadSnapshot(sessionId: string): SessionSnapshot | null {
   try {
@@ -170,13 +191,25 @@ export function deleteSnapshot(sessionId: string): void {
 /**
  * Validates whether a snapshot is still usable for a given source file.
  *
- * For JSONL providers: checks that the file hasn't been truncated
- * (current size >= snapshot position) and that the size matches or has grown.
- *
  * For DB-backed providers: sourceSize is 0, so we always consider valid
  * (the DB reader's timestamp-based cursor handles staleness naturally).
+ *
+ * For JSONL providers: the file must not have shrunk below the snapshot
+ * position. With `sourcePath` the check is also content-aware: the snapshot
+ * must carry a {@link SessionSnapshot.sourceCheckpoint} for exactly
+ * `readerPosition`, and that checkpoint must still match the file at
+ * `sourcePath` (same device and inode, same first bytes, position just after
+ * a newline), so a file replaced by another one or rewritten to the same or
+ * a larger size is not resumed mid-content. A snapshot without a checkpoint
+ * (written before 0.29.1) is invalid when `sourcePath` is given, which costs
+ * one full replay. Without `sourcePath` only the size check applies, as it
+ * did before.
  */
-export function isSnapshotValid(snapshot: SessionSnapshot, currentSourceSize: number): boolean {
+export function isSnapshotValid(
+  snapshot: SessionSnapshot,
+  currentSourceSize: number,
+  sourcePath?: string,
+): boolean {
   // DB-backed providers store sourceSize=0 — always valid (cursor is a timestamp)
   if (snapshot.sourceSize === 0) {
     return true;
@@ -187,5 +220,18 @@ export function isSnapshotValid(snapshot: SessionSnapshot, currentSourceSize: nu
     return false;
   }
 
-  return true;
+  if (typeof sourcePath !== 'string') {
+    return true;
+  }
+
+  // Snapshot content comes from disk: guard the shape before trusting it.
+  const checkpoint: unknown = snapshot.sourceCheckpoint;
+  if (
+    !checkpoint ||
+    typeof checkpoint !== 'object' ||
+    (checkpoint as { offset?: unknown }).offset !== snapshot.readerPosition
+  ) {
+    return false;
+  }
+  return verifyJsonlCheckpoint(sourcePath, checkpoint);
 }

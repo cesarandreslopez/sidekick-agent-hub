@@ -106,6 +106,106 @@ describe('JsonlSessionWatcher', () => {
     expect(seen).toHaveLength(2);
   });
 
+  it('restores usage dedupe state so a response split at the offset is counted once', () => {
+    const block = (output: number) =>
+      Buffer.from(
+        JSON.stringify({
+          type: 'assistant',
+          timestamp: '2026-09-06T12:00:00Z',
+          message: {
+            id: 'msg_split',
+            role: 'assistant',
+            model: 'claude-sonnet-4-20250514',
+            content: [{ type: 'text', text: 'part' }],
+            usage: { input_tokens: 10, output_tokens: output, cache_read_input_tokens: 500 },
+          },
+        }) + '\n',
+      );
+    const output = (events: FollowEvent[]) =>
+      events.reduce((sum, followEvent) => sum + (followEvent.tokens?.output ?? 0), 0);
+    const filename = file(block(4));
+    const before: FollowEvent[] = [];
+    const original = create(filename, before);
+    original.start(true);
+    const offset = original.getPosition();
+    const state = JSON.parse(JSON.stringify(original.getResumeState()));
+    original.stop();
+    appendFileSync(filename, Buffer.concat([block(4), block(323)]));
+
+    const after: FollowEvent[] = [];
+    const resumed = create(filename, after);
+    resumed.seekTo(offset);
+    expect(resumed.restoreResumeState(state)).toBe(true);
+    resumed.start(true);
+    expect(output(before) + output(after)).toBe(323);
+    expect(after.map((followEvent) => followEvent.usageKind)).toEqual([undefined, 'correction']);
+
+    const unrestored: FollowEvent[] = [];
+    const plain = create(filename, unrestored);
+    plain.seekTo(offset);
+    plain.start(true);
+    expect(output(before) + output(unrestored)).toBe(4 + 323);
+
+    expect(create(filename, []).restoreResumeState(undefined)).toBe(false);
+  });
+
+  it('restores the Codex duplicate baseline and plan mode', () => {
+    const tokenCount = (input: number, output: number) => ({
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: { total_token_usage: { input_tokens: input, output_tokens: output } },
+      },
+    });
+    const lines = (rows: unknown[]) =>
+      Buffer.from(rows.map((row) => JSON.stringify(row) + '\n').join(''));
+    const filename = file(
+      lines([
+        { type: 'event_msg', payload: { type: 'task_started', collaboration_mode_kind: 'plan' } },
+        tokenCount(1000, 100),
+      ]),
+    );
+    const codex = (events: FollowEvent[]) => {
+      const watcher = new JsonlSessionWatcher('codex', filename, {
+        onEvent: (followEvent) => events.push(followEvent),
+      });
+      watchers.push(watcher);
+      return watcher;
+    };
+    const original = codex([]);
+    original.start(true);
+    const offset = original.getPosition();
+    const state = JSON.parse(JSON.stringify(original.getResumeState()));
+    expect(state).toEqual({
+      version: 1,
+      prevTotalUsage: { input_tokens: 1000, output_tokens: 100 },
+      inPlanMode: true,
+    });
+    original.stop();
+    appendFileSync(
+      filename,
+      lines([
+        tokenCount(1000, 100),
+        tokenCount(1500, 150),
+        { type: 'event_msg', payload: { type: 'task_complete' } },
+      ]),
+    );
+
+    const after: FollowEvent[] = [];
+    const resumed = codex(after);
+    resumed.seekTo(offset);
+    expect(resumed.restoreResumeState(state)).toBe(true);
+    resumed.start(true);
+    expect(after.map((followEvent) => followEvent.tokens ?? followEvent.toolName)).toEqual([
+      { input: 500, output: 50 },
+      'ExitPlanMode',
+    ]);
+    expect(codex([]).restoreResumeState({ ...state, inPlanMode: 1 })).toBe(false);
+    expect(codex([]).restoreResumeState({ ...state, prevTotalUsage: { input_tokens: 1 } })).toBe(
+      false,
+    );
+  });
+
   it('notifies checkpoint consumers after every event in a batch', () => {
     const bytes = Buffer.concat([event('one'), event('two')]);
     const filename = file(bytes);
@@ -210,5 +310,47 @@ describe('JsonlSessionWatcher', () => {
       tokens: { input: 200, output: 50 },
       cacheTokens: { read: 800 },
     });
+  });
+});
+
+describe('JsonlSessionWatcher task-notification attachments', () => {
+  const notification =
+    '<task-notification>\n<task-id>a35998d20ba7e3e9c</task-id>\n<tool-use-id>toolu_spawn</tool-use-id>\n<status>completed</status>\n<summary>Agent "Explore" finished</summary>\n<result>Done.</result>\n</task-notification>';
+  const attachment = Buffer.from(
+    JSON.stringify({
+      type: 'attachment',
+      timestamp: '2026-11-01T03:06:53.351Z',
+      attachment: {
+        type: 'queued_command',
+        prompt: notification,
+        commandMode: 'task-notification',
+      },
+    }) + '\n',
+  );
+
+  it('drops attachment lines unless asked for task notifications', () => {
+    const filename = file(attachment);
+    const plain: FollowEvent[] = [];
+    create(filename, plain).start(true);
+    expect(plain).toEqual([]);
+
+    const opted: FollowEvent[] = [];
+    const watcher = new JsonlSessionWatcher(
+      'claude-code',
+      filename,
+      { onEvent: (followEvent) => opted.push(followEvent) },
+      { includeTaskNotifications: true },
+    );
+    watchers.push(watcher);
+    watcher.start(true);
+    expect(opted).toMatchObject([
+      {
+        providerId: 'claude-code',
+        type: 'system',
+        timestamp: '2026-11-01T03:06:53.351Z',
+        summary: 'Agent "Explore" finished',
+        raw: { type: 'attachment' },
+      },
+    ]);
   });
 });

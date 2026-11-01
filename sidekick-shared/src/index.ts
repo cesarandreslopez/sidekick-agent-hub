@@ -508,12 +508,17 @@ export {
   normalizeCodexToolInput,
   resolveCodexCallUsage,
 } from './parsers/codexParser';
-export type { CodexPendingStats, CodexRolloutParserOptions } from './parsers/codexParser';
+export type {
+  CodexPendingStats,
+  CodexRolloutParserOptions,
+  CodexRolloutResumeState,
+} from './parsers/codexParser';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
 
 // Parsers — Subagent scanning
 export { scanSubagentDir, extractTaskInfo, readAgentMeta } from './parsers/subagentScanner';
+export type { AgentMeta } from './parsers/subagentScanner';
 
 // Usage — split-line dedupe, subagent tokens, session totals
 export {
@@ -522,6 +527,7 @@ export {
   dedupedRawClaudeUsage,
   normalizeClaudeUsage,
 } from './usage/claudeUsageDedupe';
+export type { ClaudeUsageDedupeBuckets, ClaudeUsageDedupeState } from './usage/claudeUsageDedupe';
 export { addUsageToSubagent } from './usage/subagentUsage';
 export {
   collectSessionTokenTotals,
@@ -638,6 +644,16 @@ export type {
   SessionContextSourceType,
 } from './context/sessionContext';
 
+// Subagent spawns (`Agent` / `Task`) and background-task notifications
+export {
+  SUBAGENT_SPAWN_TOOL_NAMES,
+  isSubagentSpawnTool,
+  isTaskNotificationSystemEvent,
+  parseTaskNotification,
+  taskNotificationFromEvent,
+} from './subagentSpawn';
+export type { TaskNotification } from './subagentSpawn';
+
 // Assistant turn projection
 export {
   assistantTurnEventsFromSessionEvents,
@@ -684,11 +700,13 @@ export { createWatcher, resolveSessionPath } from './watchers/factory';
 export type { CreateWatcherOptions } from './watchers/factory';
 export { toFollowEvents } from './watchers/eventBridge';
 export {
+  captureJsonlCheckpoint,
   createJsonlTail,
   DEFAULT_JSONL_TAIL_MAX_LINE_BYTES,
   DEFAULT_JSONL_TAIL_READ_BYTES,
   JSONL_TAIL_CHECKPOINT_VERSION,
   JsonlTailSymlinkError,
+  verifyJsonlCheckpoint,
 } from './watchers/jsonlTail';
 export type {
   JsonlTail,
@@ -762,6 +780,7 @@ export type {
   ModelUsageStats,
   BurnRateInfo,
   SubagentLifecycle,
+  SubagentOutcome,
   AggregatedMetrics,
   FrequencyMetric,
   PatternMetric,
@@ -1315,6 +1334,7 @@ export {
   permissionModeSchema,
   extractSessionEvents,
 } from './schemas/sessionEvent';
+export type { ExtractSessionEventsOptions } from './schemas/sessionEvent';
 
 // Schemas — Zod runtime validation for quota / provider quota / peak hours
 export {

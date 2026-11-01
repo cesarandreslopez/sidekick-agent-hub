@@ -218,6 +218,20 @@ export interface SessionReader {
   seekTo(position: number): void;
   /** Check if file was truncated (size < position). */
   wasTruncated(): boolean;
+  /**
+   * Parse state the reader needs, beyond `getPosition()`, to continue
+   * correctly after a restart: JSON-serializable data to persist together
+   * with that position (for example which Claude responses were already
+   * counted). `undefined` when the reader keeps none. Optional.
+   */
+  getResumeState?(): unknown;
+  /**
+   * Restores state from `getResumeState()`. Call it right after `seekTo()`
+   * the position that state was taken at. Returns false, changing nothing,
+   * when `state` is missing or not valid for this reader; the caller should
+   * then replay from the start instead. Optional.
+   */
+  restoreResumeState?(state: unknown): boolean;
 }
 
 /**

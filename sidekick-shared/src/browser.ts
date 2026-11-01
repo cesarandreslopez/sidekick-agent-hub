@@ -49,6 +49,7 @@ export {
 } from './tokenSummary';
 export type { TokenSummary, TokenTotalsLike } from './tokenSummary';
 export { ClaudeUsageDeduper, SYNTHETIC_MODEL } from './usage/claudeUsageDedupe';
+export type { ClaudeUsageDedupeBuckets, ClaudeUsageDedupeState } from './usage/claudeUsageDedupe';
 export {
   ASCII_CHARS_PER_TOKEN,
   estimateTextTokens,
@@ -115,6 +116,16 @@ export type {
   SessionContextSource,
   SessionContextSourceType,
 } from './context/sessionContext';
+
+export {
+  SUBAGENT_SPAWN_TOOL_NAMES,
+  isSubagentSpawnTool,
+  isTaskNotificationSystemEvent,
+  parseTaskNotification,
+  taskNotificationFromEvent,
+} from './subagentSpawn';
+export type { TaskNotification } from './subagentSpawn';
+export type { SubagentOutcome } from './aggregation/types';
 
 export {
   assistantTurnEventsFromSessionEvents,
@@ -355,7 +366,11 @@ export {
   normalizeCodexToolInput,
   resolveCodexCallUsage,
 } from './parsers/codexParser';
-export type { CodexPendingStats, CodexRolloutParserOptions } from './parsers/codexParser';
+export type {
+  CodexPendingStats,
+  CodexRolloutParserOptions,
+  CodexRolloutResumeState,
+} from './parsers/codexParser';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
 

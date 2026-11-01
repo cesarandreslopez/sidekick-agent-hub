@@ -286,6 +286,91 @@ export interface CodexPendingStats {
   evictedByBytes: number;
 }
 
+/**
+ * JSON-serializable continuation state of a {@link CodexRolloutParser}, from
+ * `exportResumeState()`, for `importResumeState()` in a parser that resumes
+ * at the same rollout position (for example from a persisted session
+ * snapshot). Every table lists its entries oldest first.
+ */
+export interface CodexRolloutResumeState {
+  version: 1;
+  sessionMeta: CodexSessionMeta | null;
+  /** Model from the latest `turn_context`, attributed to later events. */
+  currentModel: string | null;
+  /** Cumulative total of the previous token_count event, to skip its duplicates. */
+  prevTotalUsage: CodexTokenUsage | null;
+  lastTokenUsage: CodexTokenUsage | null;
+  modelContextWindow: number | null;
+  lastRateLimits: CodexRateLimits | null;
+  hasAggregateRateLimits: boolean;
+  inPlanMode: boolean;
+  /** Call ids whose tool use was already emitted, so their end event does not emit another. */
+  emittedToolUseIds: string[];
+  /** `apply_patch` calls awaiting output: call id and its per-file tool-use ids. */
+  patchExpandedToolUseIds: Array<[string, string[]]>;
+  /** `exec_command_begin` events awaiting their end. */
+  pendingExecCommands: PendingExecCommand[];
+  /** `mcp_tool_call_begin` events awaiting their end. */
+  pendingMcpToolCalls: PendingMcpToolCall[];
+}
+
+/** Entries per table {@link CodexRolloutParser.exportResumeState} keeps by default. */
+const DEFAULT_RESUME_STATE_LIMIT = 256;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string';
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isTokenCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/** A valid `CodexTokenUsage` (copied), `null` for `null`, or `undefined` when invalid. Internal. */
+export function codexTokenUsageFrom(value: unknown): CodexTokenUsage | null | undefined {
+  if (value === null) return null;
+  if (!isPlainObject(value)) return undefined;
+  if (!isTokenCount(value.input_tokens) || !isTokenCount(value.output_tokens)) return undefined;
+  const usage: CodexTokenUsage = {
+    input_tokens: value.input_tokens,
+    output_tokens: value.output_tokens,
+  };
+  for (const field of ['cached_input_tokens', 'reasoning_output_tokens', 'total_tokens'] as const) {
+    const count = value[field];
+    if (count === undefined) continue;
+    if (!isTokenCount(count)) return undefined;
+    usage[field] = count;
+  }
+  return usage;
+}
+
+/** Last `limit` items of an insertion-ordered collection, oldest first. */
+function newest<T>(items: Iterable<T>, size: number, limit: number): T[] {
+  const count = limit >= 0 ? Math.min(size, Math.floor(limit)) : 0;
+  const kept: T[] = [];
+  let skip = size - count;
+  for (const item of items) {
+    if (kept.length >= count) break;
+    if (skip > 0) {
+      skip -= 1;
+      continue;
+    }
+    kept.push(item);
+  }
+  return kept;
+}
+
 /** Fixed per-entry cost added to each pending call's byte estimate. */
 const PENDING_ENTRY_OVERHEAD_BYTES = 64;
 
@@ -414,6 +499,145 @@ export class CodexRolloutParser {
   }
 
   /**
+   * The state later lines depend on — session metadata, current model,
+   * previous cumulative token total, context window, rate limits, plan mode,
+   * and the tool-call correlation tables (newest `limit` entries each) — as
+   * JSON-serializable data. Eviction counters are not included.
+   */
+  exportResumeState(limit = DEFAULT_RESUME_STATE_LIMIT): CodexRolloutResumeState {
+    return cloneJson({
+      version: 1,
+      sessionMeta: this.sessionMeta,
+      currentModel: this.currentModel,
+      prevTotalUsage: this.prevTotalUsage,
+      lastTokenUsage: this.lastTokenUsage,
+      modelContextWindow: this.modelContextWindow,
+      lastRateLimits: this.lastRateLimits,
+      hasAggregateRateLimits: this.hasAggregateRateLimits,
+      inPlanMode: this.inPlanMode,
+      emittedToolUseIds: newest(this.emittedToolUseIds, this.emittedToolUseIds.size, limit),
+      patchExpandedToolUseIds: newest(
+        this.patchExpandedToolUseIds,
+        this.patchExpandedToolUseIds.size,
+        limit,
+      ),
+      pendingExecCommands: newest(
+        this.pendingExecCommands.values(),
+        this.pendingExecCommands.size,
+        limit,
+      ),
+      pendingMcpToolCalls: newest(
+        this.pendingMcpToolCalls.values(),
+        this.pendingMcpToolCalls.size,
+        limit,
+      ),
+    } satisfies CodexRolloutResumeState);
+  }
+
+  /**
+   * Replaces this parser's state with one from {@link exportResumeState}, as
+   * if it had parsed the rollout up to where that state was taken. Returns
+   * false, changing nothing, when `state` is not a valid version-1 state.
+   * This parser's own `maxTrackedToolCalls`, `maxPendingBytes`, and
+   * `metadataOnly` options apply to the imported tables.
+   */
+  importResumeState(state: unknown): boolean {
+    if (!isPlainObject(state) || state.version !== 1) return false;
+    const s = state;
+    const prevTotalUsage = codexTokenUsageFrom(s.prevTotalUsage);
+    const lastTokenUsage = codexTokenUsageFrom(s.lastTokenUsage);
+    if (prevTotalUsage === undefined || lastTokenUsage === undefined) return false;
+    if (s.sessionMeta !== null && !isPlainObject(s.sessionMeta)) return false;
+    if (s.lastRateLimits !== null && !isPlainObject(s.lastRateLimits)) return false;
+    if (s.currentModel !== null && typeof s.currentModel !== 'string') return false;
+    const contextWindow = s.modelContextWindow;
+    if (
+      contextWindow !== null &&
+      !(typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0)
+    ) {
+      return false;
+    }
+    if (typeof s.hasAggregateRateLimits !== 'boolean' || typeof s.inPlanMode !== 'boolean') {
+      return false;
+    }
+    if (!isStringArray(s.emittedToolUseIds)) return false;
+    const patches = s.patchExpandedToolUseIds;
+    if (
+      !Array.isArray(patches) ||
+      !patches.every(
+        (entry) =>
+          Array.isArray(entry) &&
+          entry.length === 2 &&
+          typeof entry[0] === 'string' &&
+          isStringArray(entry[1]),
+      )
+    ) {
+      return false;
+    }
+    const execs = s.pendingExecCommands;
+    if (
+      !Array.isArray(execs) ||
+      !execs.every(
+        (entry) =>
+          isPlainObject(entry) &&
+          typeof entry.call_id === 'string' &&
+          isStringArray(entry.command) &&
+          isOptionalString(entry.workdir) &&
+          typeof entry.timestamp === 'string',
+      )
+    ) {
+      return false;
+    }
+    const mcps = s.pendingMcpToolCalls;
+    if (
+      !Array.isArray(mcps) ||
+      !mcps.every(
+        (entry) =>
+          isPlainObject(entry) &&
+          typeof entry.call_id === 'string' &&
+          typeof entry.tool_name === 'string' &&
+          isOptionalString(entry.server_name) &&
+          (entry.arguments === undefined || isPlainObject(entry.arguments)) &&
+          typeof entry.timestamp === 'string',
+      )
+    ) {
+      return false;
+    }
+
+    const copy = cloneJson({
+      sessionMeta: s.sessionMeta as CodexSessionMeta | null,
+      lastRateLimits: s.lastRateLimits as CodexRateLimits | null,
+      patches: patches as Array<[string, string[]]>,
+      execs: execs as unknown as PendingExecCommand[],
+      mcps: mcps as unknown as PendingMcpToolCall[],
+    });
+    this.reset();
+    this.sessionMeta = copy.sessionMeta;
+    this.currentModel = s.currentModel as string | null;
+    this.prevTotalUsage = prevTotalUsage;
+    this.lastTokenUsage = lastTokenUsage;
+    this.modelContextWindow = contextWindow as number | null;
+    this.lastRateLimits = copy.lastRateLimits;
+    this.hasAggregateRateLimits = s.hasAggregateRateLimits;
+    this.inPlanMode = s.inPlanMode;
+    for (const id of s.emittedToolUseIds) {
+      rememberBounded(this.emittedToolUseIds, id, this.maxTrackedToolCalls);
+    }
+    for (const [callId, toolUseIds] of copy.patches) this.putPendingPatch(callId, toolUseIds);
+    for (const pending of copy.execs) {
+      this.putPendingExec(
+        this.metadataOnly
+          ? { call_id: pending.call_id, command: [], timestamp: pending.timestamp }
+          : pending,
+      );
+    }
+    for (const pending of copy.mcps) {
+      this.putPendingMcp(this.metadataOnly ? { ...pending, arguments: undefined } : pending);
+    }
+    return true;
+  }
+
+  /**
    * Converts a single rollout line to zero or more session events.
    */
   convertLine(line: CodexRolloutLine): SessionEvent[] {
@@ -493,6 +717,34 @@ export class CodexRolloutParser {
       oldest.table.delete(oldest.callId);
       this.evictedByBytes += 1;
     }
+  }
+
+  private putPendingExec(pending: PendingExecCommand): void {
+    this.putPending(this.pendingExecCommands, pending.call_id, pending, () =>
+      stringBytes(
+        pending.call_id,
+        pending.workdir,
+        pending.timestamp,
+        ...(Array.isArray(pending.command) ? pending.command : []),
+      ),
+    );
+  }
+
+  private putPendingMcp(pending: PendingMcpToolCall): void {
+    this.putPending(
+      this.pendingMcpToolCalls,
+      pending.call_id,
+      pending,
+      () =>
+        stringBytes(pending.call_id, pending.server_name, pending.tool_name, pending.timestamp) +
+        approxJsonBytes(pending.arguments),
+    );
+  }
+
+  private putPendingPatch(callId: string, toolUseIds: string[]): void {
+    this.putPending(this.patchExpandedToolUseIds, callId, toolUseIds, () =>
+      stringBytes(callId, ...toolUseIds),
+    );
   }
 
   /** Removes and returns a pending call. */
@@ -743,9 +995,7 @@ export class CodexRolloutParser {
       const filePaths = extractPatchFilePaths(item.input);
       if (filePaths.length === 0) return [];
       const toolUseIds = filePaths.map((fp) => `${item.call_id}-${fp}`);
-      this.putPending(this.patchExpandedToolUseIds, item.call_id, toolUseIds, () =>
-        stringBytes(item.call_id, ...toolUseIds),
-      );
+      this.putPendingPatch(item.call_id, toolUseIds);
       for (const id of toolUseIds) {
         rememberBounded(this.emittedToolUseIds, id, this.maxTrackedToolCalls);
       }
@@ -905,14 +1155,7 @@ export class CodexRolloutParser {
         const pending: PendingExecCommand = this.metadataOnly
           ? { call_id: e.call_id, command: [], timestamp }
           : { call_id: e.call_id, command: e.command, workdir: e.workdir, timestamp };
-        this.putPending(this.pendingExecCommands, e.call_id, pending, () =>
-          stringBytes(
-            pending.call_id,
-            pending.workdir,
-            pending.timestamp,
-            ...(Array.isArray(pending.command) ? pending.command : []),
-          ),
-        );
+        this.putPendingExec(pending);
         return [];
       }
 
@@ -980,14 +1223,7 @@ export class CodexRolloutParser {
           arguments: this.metadataOnly ? undefined : e.arguments,
           timestamp,
         };
-        this.putPending(
-          this.pendingMcpToolCalls,
-          e.call_id,
-          pending,
-          () =>
-            stringBytes(pending.call_id, pending.server_name, pending.tool_name, timestamp) +
-            approxJsonBytes(pending.arguments),
-        );
+        this.putPendingMcp(pending);
         return [];
       }
 
