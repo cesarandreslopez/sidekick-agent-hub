@@ -326,6 +326,39 @@ function sessionPoints(
   return [...buckets.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
 
+/**
+ * Models recorded without (complete) pricing in a window: daily or monthly
+ * model rows with `priced: false` (the hourly buckets carry no models, so
+ * `today` reads its day record), or the project's session records.
+ */
+function unpricedModelsIn(
+  source: HistoricalSummarySource,
+  range: HistoricalRange,
+  window: Window,
+  records: SessionHistoryRecord[] | null,
+): string[] {
+  const unpriced = new Set<string>();
+  const add = (models: ModelUsageRecord[] | undefined): void => {
+    for (const m of models ?? []) if (m.priced === false) unpriced.add(m.model);
+  };
+  if (records) {
+    for (const record of records) {
+      const started = new Date(record.startTime);
+      if (Number.isNaN(started.getTime())) continue;
+      const dayKey = formatLocalDateKey(started);
+      const key = range === 'all' ? monthKey(dayKey) : dayKey;
+      if (key < window.start || key > window.end) continue;
+      add(record.modelUsage);
+      for (const id of record.unpricedModelIds ?? []) unpriced.add(id);
+    }
+  } else if (range === 'all') {
+    for (const month of source.getMonthlyData(window.start, window.end)) add(month.modelUsage);
+  } else {
+    for (const day of source.getDailyData(window.start, window.end)) add(day.modelUsage);
+  }
+  return [...unpriced].sort();
+}
+
 /** Distinct, sorted project paths across the durable session records. */
 export function listHistoricalProjects(records: SessionHistoryRecord[]): string[] {
   return [...new Set(records.map((r) => r.project).filter((p): p is string => Boolean(p)))].sort();
@@ -382,25 +415,23 @@ export function buildHistoricalSummary(
     };
   }
 
+  const projectRecords = project ? records.filter((r) => r.project === project) : null;
   const pointsFor = (w: Window): HistoricalDataPoint[] =>
-    project
-      ? sessionPoints(
-          records.filter((r) => r.project === project),
-          range,
-          w,
-          series,
-        )
+    projectRecords
+      ? sessionPoints(projectRecords, range, w, series)
       : storePoints(source, range, w, series);
 
   const dataPoints = pointsFor(window);
   const previous = previousWindow(range, window);
   const previousPeriod = previous ? pointsFor(previous) : [];
+  const unpricedModelIds = unpricedModelsIn(source, range, window, projectRecords);
 
   return {
     range,
     granularity,
     dataPoints,
     totals: sumTotals(dataPoints),
+    ...(unpricedModelIds.length > 0 ? { unpricedModelIds } : {}),
     series,
     seriesKeys: seriesKeysOf(dataPoints, series),
     projects,

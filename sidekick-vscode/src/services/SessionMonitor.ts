@@ -49,14 +49,21 @@ import {
   createEmptyTokenTotals,
 } from '../types/historicalData';
 import { estimateTokens } from '../utils/tokenEstimator';
-import { ModelPricingService } from './ModelPricingService';
+import {
+  addUsageToPricing,
+  priceSessionModelUsage,
+  type ModelUsageEntry,
+} from './ModelPricingService';
+import { visibleToolInput } from '../utils/toolInputOrigin';
 import { log, logError } from './Logger';
 import { parsePlanMarkdown, extractProposedPlan } from '../utils/planParser';
 import { detectCycle } from '../utils/cycleDetector';
 import type { SessionEventLogger } from './SessionEventLogger';
 import {
   EventAggregator,
+  canonicalModelId,
   deleteSnapshot,
+  extractNormalizedUsage,
   extractTokenUsage,
   isSnapshotValid,
   loadSnapshot,
@@ -118,6 +125,12 @@ export function isClaudePlanFile(filePath: string): boolean {
  */
 /** Storage key for persisted custom session path */
 const CUSTOM_SESSION_PATH_KEY = 'sidekick.customSessionPath';
+
+/**
+ * Revision of the VS Code part of a session snapshot. 3: model rows are keyed
+ * by `canonicalModelId` and carry pricing buckets; older snapshots replay.
+ */
+const VSCODE_CHECKPOINT_REVISION = 3;
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
@@ -1329,35 +1342,18 @@ export class SessionMonitor implements vscode.Disposable {
       return null;
     }
 
-    // Build model usage with costs. Unknown-pricing models get cost=0 and
-    // are tagged `priced: false` so the UI renders "—" instead of "$0".
-    const modelUsage: ModelUsageRecord[] = [];
-    const unpricedModelIds: string[] = [];
-    this.stats.modelUsage.forEach((usage, model) => {
-      const pricing = ModelPricingService.getPricing(model);
-      const cost = ModelPricingService.calculateCost(
-        {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          cacheWriteTokens: usage.cacheWriteTokens,
-          cacheReadTokens: usage.cacheReadTokens,
-          reasoningTokens: usage.reasoningTokens,
-        },
-        pricing,
-      );
-      if (cost === null) {
-        unpricedModelIds.push(model);
-        modelUsage.push({
-          model,
-          calls: usage.calls,
-          tokens: usage.tokens,
-          cost: 0,
-          priced: false,
-        });
-      } else {
-        modelUsage.push({ model, calls: usage.calls, tokens: usage.tokens, cost, priced: true });
-      }
-    });
+    // Build model usage with costs (the same pricing the dashboard shows).
+    // Unpriced usage contributes 0 and tags the row `priced: false` so the UI
+    // renders "—" instead of "$0".
+    const pricedModels = priceSessionModelUsage(this.stats.modelUsage);
+    const modelUsage: ModelUsageRecord[] = pricedModels.rows.map((row) => ({
+      model: row.model,
+      calls: row.calls,
+      tokens: row.tokens,
+      cost: row.cost,
+      priced: row.priced,
+    }));
+    const unpricedModelIds = pricedModels.unpricedModelIds;
 
     // Build tool usage from analytics
     const toolUsage: ToolUsageRecord[] = [];
@@ -1377,8 +1373,7 @@ export class SessionMonitor implements vscode.Disposable {
     tokens.cacheWriteTokens = this.stats.totalCacheWriteTokens;
     tokens.cacheReadTokens = this.stats.totalCacheReadTokens;
 
-    // Calculate total cost from model usage
-    const totalCost = modelUsage.reduce((sum, m) => sum + m.cost, 0);
+    const totalCost = pricedModels.totalCost;
     let additions = 0;
     let deletions = 0;
     for (const call of this.stats.toolCalls) {
@@ -1824,7 +1819,7 @@ export class SessionMonitor implements vscode.Disposable {
     // Verify provider matches
     if (
       snapshot.providerId !== this.provider.id ||
-      snapshot.consumer?.checkpointRevision !== 2 ||
+      snapshot.consumer?.checkpointRevision !== VSCODE_CHECKPOINT_REVISION ||
       snapshot.consumer.consumerType !== 'vscode'
     ) {
       deleteSnapshot(this.sessionId);
@@ -1868,22 +1863,7 @@ export class SessionMonitor implements vscode.Disposable {
 
       // Restore Maps from serialized arrays
       if (Array.isArray(s.modelUsage)) {
-        this.stats.modelUsage = new Map(
-          s.modelUsage as Array<
-            [
-              string,
-              {
-                calls: number;
-                tokens: number;
-                inputTokens: number;
-                outputTokens: number;
-                cacheWriteTokens: number;
-                cacheReadTokens: number;
-                reasoningTokens?: number;
-              },
-            ]
-          >,
-        );
+        this.stats.modelUsage = new Map(s.modelUsage as Array<[string, ModelUsageEntry]>);
       }
       if (Array.isArray(s.toolCalls)) {
         this.stats.toolCalls = (s.toolCalls as ToolCall[])
@@ -1982,7 +1962,7 @@ export class SessionMonitor implements vscode.Disposable {
       aggregator,
       consumer: {
         consumerType: 'vscode',
-        checkpointRevision: 2,
+        checkpointRevision: VSCODE_CHECKPOINT_REVISION,
         stats: {
           totalInputTokens: this.stats.totalInputTokens,
           totalOutputTokens: this.stats.totalOutputTokens,
@@ -2444,8 +2424,11 @@ export class SessionMonitor implements vscode.Disposable {
       this.stats.totalCacheWriteTokens += usage.cacheWriteTokens;
       this.stats.totalCacheReadTokens += usage.cacheReadTokens;
 
-      // Update per-model usage (kept for SessionSummary cost calculation)
-      const modelStats = this.stats.modelUsage.get(usage.model) || {
+      // Update per-model usage (priced on read by priceSessionModelUsage).
+      // Rows merge a model's aliases (dated, `[1m]`, provider-prefixed ids);
+      // the pricing buckets keep each raw id so it is priced as itself.
+      const modelKey = canonicalModelId(usage.model);
+      const modelStats: ModelUsageEntry = this.stats.modelUsage.get(modelKey) ?? {
         calls: 0,
         tokens: 0,
         inputTokens: 0,
@@ -2464,7 +2447,11 @@ export class SessionMonitor implements vscode.Disposable {
       modelStats.cacheWriteTokens += usage.cacheWriteTokens;
       modelStats.cacheReadTokens += usage.cacheReadTokens;
       modelStats.reasoningTokens = (modelStats.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0);
-      this.stats.modelUsage.set(usage.model, modelStats);
+      // The parser's normalized usage carries whether output already includes
+      // reasoning (Codex, Claude) or reasoning is billed on top of it.
+      const normalized = extractNormalizedUsage(event);
+      if (normalized) addUsageToPricing(modelStats, usage.model, normalized);
+      this.stats.modelUsage.set(modelKey, modelStats);
 
       // Track context size for waterfall chart
       const newContextSize = this.aggregator.getMetrics().currentContextSize;
@@ -2659,7 +2646,10 @@ export class SessionMonitor implements vscode.Disposable {
           if (block.type === 'thinking' && typeof block.thinking === 'string') {
             turnBreakdown.thinking += estimateTokens(block.thinking as string);
           } else if (block.type === 'tool_use') {
-            turnBreakdown.toolInputs += estimateTokens(JSON.stringify(block.input || {}));
+            // Sidekick's own `_sidekick*` bookkeeping keys are not model input.
+            turnBreakdown.toolInputs += estimateTokens(
+              JSON.stringify(visibleToolInput(block.input)),
+            );
           } else if (block.type === 'text' && typeof block.text === 'string') {
             turnBreakdown.assistantResponses += estimateTokens(block.text as string);
           }

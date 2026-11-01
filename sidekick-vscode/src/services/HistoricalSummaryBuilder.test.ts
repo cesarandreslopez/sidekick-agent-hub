@@ -147,6 +147,37 @@ describe('buildHistoricalSummary', () => {
     expect(beta.dataPoints).toHaveLength(1);
     expect(beta.previousPeriod).toHaveLength(1);
   });
+
+  it('lists the models recorded without pricing in the range only', () => {
+    const base = source();
+    const withUnpriced: HistoricalSummarySource = {
+      ...base,
+      getDailyData: (start, end) =>
+        base.getDailyData(start, end).map((d) =>
+          d.date === TODAY
+            ? {
+                ...d,
+                modelUsage: [
+                  ...d.modelUsage,
+                  { model: 'local-model', calls: 1, tokens: 5, cost: 0, priced: false },
+                ],
+              }
+            : d,
+        ),
+    };
+    expect(buildHistoricalSummary(base, 'week', { now: NOW }).unpricedModelIds).toBeUndefined();
+    expect(buildHistoricalSummary(withUnpriced, 'week', { now: NOW }).unpricedModelIds).toEqual([
+      'local-model',
+    ]);
+    // Today is hourly; its day record still names the model.
+    expect(buildHistoricalSummary(withUnpriced, 'today', { now: NOW }).unpricedModelIds).toEqual([
+      'local-model',
+    ]);
+    const yesterday = new Date(NOW.getTime() - 24 * 60 * 60 * 1000);
+    expect(
+      buildHistoricalSummary(withUnpriced, 'today', { now: yesterday }).unpricedModelIds,
+    ).toBeUndefined();
+  });
 });
 
 describe('drillDownTarget', () => {

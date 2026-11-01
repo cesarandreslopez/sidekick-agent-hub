@@ -15,6 +15,7 @@ import type {
   HistoricalSeries,
   HistoricalSummary,
 } from '../../types/dashboard';
+import { unpricedNote } from './cost';
 
 export type HistoryMetric = 'tokens' | 'cost' | 'messages';
 /** The value actually plotted: tool series always plot calls. */
@@ -251,6 +252,24 @@ export function computeHistoryTiles(summary: HistoricalSummary): HistoryTiles {
   };
 }
 
+/**
+ * The Total Cost tile and its note. Unpriced models contribute nothing, so a
+ * range where nothing was priced shows "—" rather than `$0`, and any unpriced
+ * model is named in the note.
+ */
+export function costTile(
+  summary: Pick<HistoricalSummary, 'unpricedModelIds'>,
+  cost: number,
+  fmt: (value: number) => string,
+): { value: string; note: string; title: string } {
+  const unpriced = summary.unpricedModelIds ?? [];
+  return {
+    value: unpriced.length > 0 && !(cost > 0) ? '—' : fmt(cost),
+    note: unpricedNote(unpriced.length),
+    title: unpriced.join('\n'),
+  };
+}
+
 /** `+12%`, `−5%`, `0%`, or `new` when the previous period had nothing. */
 export function formatDelta(value: number | null): string {
   if (value === null) return 'new';
@@ -389,12 +408,18 @@ export function createHistoryView(doc: Document): HistoryView {
       const tiles = computeHistoryTiles(summary);
       const fmtNumber = mounted?.formatNumber ?? String;
       const fmtCost = mounted?.formatCost ?? ((v: number) => `$${v.toFixed(2)}`);
+      const cost = costTile(summary, tiles.cost, fmtCost);
       const values: Record<keyof typeof TILE_IDS, string> = {
         tokens: fmtNumber(tiles.tokens),
-        cost: fmtCost(tiles.cost),
+        cost: cost.value,
         sessions: fmtNumber(tiles.sessions),
         messages: fmtNumber(tiles.messages),
       };
+      const costNote = doc.getElementById(`${TILE_IDS.cost}-note`);
+      if (costNote) {
+        costNote.textContent = cost.note;
+        costNote.title = cost.title;
+      }
       for (const key of Object.keys(TILE_IDS) as Array<keyof typeof TILE_IDS>) {
         const valueEl = doc.getElementById(TILE_IDS[key]);
         if (valueEl) valueEl.textContent = values[key];

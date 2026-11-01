@@ -10,7 +10,27 @@ vi.mock('../services/Logger', () => ({
   logError: vi.fn(),
 }));
 
-import { conversationChunksFromSessionEvents } from './ConversationViewProvider';
+import {
+  ConversationViewProvider,
+  conversationChunksFromSessionEvents,
+} from './ConversationViewProvider';
+
+describe('ConversationViewProvider model tags', () => {
+  const label = (model: string) =>
+    (
+      new ConversationViewProvider({} as never, {} as never) as unknown as {
+        getShortModelName(model: string): string;
+      }
+    ).getShortModelName(model);
+
+  it('keeps the GPT tier so gpt-6 variants are told apart', () => {
+    expect(label('gpt-6-sol')).toBe('gpt-6-sol');
+    expect(label('gpt-6.1-terra-high')).toBe('gpt-6.1-terra');
+    expect(label('openai/gpt-6-luna')).toBe('gpt-6-luna');
+    expect(label('gpt-6')).toBe('gpt-6');
+    expect(label('claude-opus-4-6')).toBe('Opus');
+  });
+});
 
 describe('conversationChunksFromSessionEvents', () => {
   it('renders Claude assistant thinking, tools, and answer from the shared timeline projection', () => {

@@ -41,6 +41,7 @@ export interface BillingBlockOfficialSample {
   ageMs?: number;
 }
 import type { ProviderStatusDisplay } from '../utils/providerStatusDisplay';
+import type { PricingHealthLine } from '../utils/pricingCatalogLabel';
 
 /**
  * Session info for the session card navigator.
@@ -554,6 +555,12 @@ export interface HistoricalSummary {
     messageCount: number;
     sessionCount: number;
   };
+
+  /**
+   * Models in the range recorded without (complete) pricing; `totals.totalCost`
+   * covers only the priced part. Absent when every model was priced.
+   */
+  unpricedModelIds?: string[];
   qualityTrend?: import('sidekick-shared').QualityTrend;
   latestQuality?: {
     score: number;
@@ -813,4 +820,6 @@ export interface DashboardHealthPayload {
   providerDiagnostics: SessionProviderDiagnostic[];
   /** The 7-day and 30-day failing-tool windows merged with a trend (mergeFailingToolWindows). */
   failingTools: FailingToolTrendRow[];
+  /** The pricing basis behind cost estimates and custom pricing, described on the host. */
+  pricing?: PricingHealthLine[];
 }

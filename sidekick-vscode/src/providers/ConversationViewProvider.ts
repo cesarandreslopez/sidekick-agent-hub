@@ -15,7 +15,12 @@ import type { SessionEvent } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log, logError } from '../services/Logger';
 import { toErrorMessage } from '../utils/errors';
-import { assistantTurnEventsFromSessionEvents, segmentAssistantTurn } from 'sidekick-shared';
+import {
+  assistantTurnEventsFromSessionEvents,
+  canonicalModelId,
+  parseModelId,
+  segmentAssistantTurn,
+} from 'sidekick-shared';
 import type { AssistantTurnToolRef } from 'sidekick-shared';
 
 /** Parsed message chunk for display */
@@ -439,7 +444,7 @@ export class ConversationViewProvider implements vscode.Disposable {
           return `<details class="chunk reasoning-chunk${sidechain}" id="chunk-${i}">
           <summary>
             <span class="role-label reasoning">Reasoning</span>
-            ${chunk.model ? `<span class="model-tag">${this.getShortModelName(chunk.model)}</span>` : ''}
+            ${chunk.model ? `<span class="model-tag">${this.escapeHtml(this.getShortModelName(chunk.model))}</span>` : ''}
             <span class="chunk-time">${time}</span>
           </summary>
           <div class="reasoning-body">${this.escapeHtml(chunk.content)}</div>
@@ -449,7 +454,7 @@ export class ConversationViewProvider implements vscode.Disposable {
         const ROLE_LABELS: Record<string, string> = { user: 'You', assistant: 'Assistant' };
         const roleLabel = ROLE_LABELS[chunk.role] ?? 'System';
         const modelTag = chunk.model
-          ? `<span class="model-tag">${this.getShortModelName(chunk.model)}</span>`
+          ? `<span class="model-tag">${this.escapeHtml(this.getShortModelName(chunk.model))}</span>`
           : '';
 
         return `<div class="chunk ${chunk.role}-chunk${sidechain}" id="chunk-${i}">
@@ -788,7 +793,11 @@ export class ConversationViewProvider implements vscode.Disposable {
     if (model.includes('opus')) return 'Opus';
     if (model.includes('sonnet')) return 'Sonnet';
     if (model.includes('haiku')) return 'Haiku';
-    return model.split('-').slice(0, 2).join('-');
+    // GPT tiers share a version (gpt-6-sol, gpt-6-terra): keep the tier.
+    const id = canonicalModelId(model);
+    const base = id.split('-').slice(0, 2).join('-');
+    const variant = parseModelId(id)?.variant;
+    return variant ? `${base}-${variant}` : base;
   }
 
   dispose(): void {

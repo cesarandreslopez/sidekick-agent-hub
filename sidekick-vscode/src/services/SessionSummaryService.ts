@@ -23,7 +23,11 @@ import type {
   AdvancedBurnRateData,
   ToolEfficiencyData,
 } from '../types/sessionSummary';
-import { ModelPricingService } from './ModelPricingService';
+import {
+  ModelPricingService,
+  priceSessionModelUsage,
+  type SessionCost,
+} from './ModelPricingService';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
 import { buildNarrativePrompt } from '../utils/summaryPrompts';
 import { calculateCodeImpact, formatDurationMs, summarizeTokens } from 'sidekick-shared';
@@ -90,7 +94,9 @@ export class SessionSummaryService {
       cacheWriteTokens: stats.totalCacheWriteTokens,
       cacheReadTokens: stats.totalCacheReadTokens,
     }).total;
-    const totalCost = this._computeTotalCost(stats);
+    // One pricing pass, the same one the dashboard and historical records use.
+    const pricedModels = priceSessionModelUsage(stats.modelUsage);
+    const totalCost = pricedModels.totalCost;
     const apiCalls = stats.messageCount;
     const contextPeak = (stats.currentContextSize / contextWindowLimit) * 100;
 
@@ -103,7 +109,7 @@ export class SessionSummaryService {
       this._buildFileChanges(stats.toolCalls);
 
     // Cost by model
-    const costByModel = this._buildCostByModel(stats);
+    const costByModel = this._buildCostByModel(pricedModels);
     const codeImpact = calculateCodeImpact(
       totalCost,
       totalAdditions,
@@ -138,6 +144,9 @@ export class SessionSummaryService {
       totalAdditions,
       totalDeletions,
       costByModel,
+      ...(pricedModels.unpricedModelIds.length > 0
+        ? { unpricedModelIds: pricedModels.unpricedModelIds }
+        : {}),
       costByTool,
       codeImpact,
       errors,
@@ -355,27 +364,9 @@ export class SessionSummaryService {
 
   // ── Private helpers ──
 
+  /** Priced part of the session's cost; unpriced usage contributes 0. */
   private _computeTotalCost(stats: SessionStats): number {
-    if (stats.totalReportedCost !== undefined && stats.totalReportedCost > 0) {
-      return stats.totalReportedCost;
-    }
-    let cost = 0;
-    stats.modelUsage.forEach((usage, model) => {
-      const pricing = ModelPricingService.getPricing(model);
-      const contribution = ModelPricingService.calculateCost(
-        {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          cacheWriteTokens: usage.cacheWriteTokens,
-          cacheReadTokens: usage.cacheReadTokens,
-        },
-        pricing,
-      );
-      // Unpriced models (null) contribute 0; see SessionMonitor.getSessionSummary
-      // for the per-model "—" rendering path.
-      if (contribution !== null) cost += contribution;
-    });
-    return cost;
+    return priceSessionModelUsage(stats.modelUsage).totalCost;
   }
 
   private _buildTaskSummaries(
@@ -453,31 +444,17 @@ export class SessionSummaryService {
     };
   }
 
-  private _buildCostByModel(
-    stats: SessionStats,
-  ): { model: string; cost: number; percentage: number }[] {
-    const entries: { model: string; cost: number }[] = [];
-    let total = 0;
-
-    stats.modelUsage.forEach((usage, model) => {
-      const pricing = ModelPricingService.getPricing(model);
-      const cost = ModelPricingService.calculateCost(
-        {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          cacheWriteTokens: usage.cacheWriteTokens,
-          cacheReadTokens: usage.cacheReadTokens,
-        },
-        pricing,
-      );
-      // Unpriced models (null) contribute 0 and 0% to the percentage chart.
-      const contribution = cost ?? 0;
-      entries.push({ model, cost: contribution });
-      total += contribution;
-    });
-
-    return entries
-      .map((e) => ({ ...e, percentage: total > 0 ? (e.cost / total) * 100 : 0 }))
+  private _buildCostByModel(priced: SessionCost): SessionSummaryData['costByModel'] {
+    // Unpriced usage contributes 0 (and 0%); `priced: false` lets the UI show
+    // "—" for a wholly unpriced row and mark a partially priced one.
+    const total = priced.totalCost;
+    return priced.rows
+      .map((row) => ({
+        model: row.model,
+        cost: row.cost,
+        percentage: total > 0 ? (row.cost / total) * 100 : 0,
+        priced: row.priced,
+      }))
       .sort((a, b) => b.cost - a.cost);
   }
 

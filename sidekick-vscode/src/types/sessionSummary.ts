@@ -65,8 +65,13 @@ export interface SessionSummaryData {
   totalAdditions: number;
   /** Total lines deleted */
   totalDeletions: number;
-  /** Cost breakdown by model */
-  costByModel: { model: string; cost: number; percentage: number }[];
+  /**
+   * Cost breakdown by model. `priced: false` marks a row with unpriced usage;
+   * its `cost` covers only the priced part (0 when none was).
+   */
+  costByModel: { model: string; cost: number; percentage: number; priced?: boolean }[];
+  /** Models with unpriced usage; `totalCost` covers only the priced part. */
+  unpricedModelIds?: string[];
   /** Cost breakdown by tool */
   costByTool: { tool: string; estimatedCost: number; calls: number }[];
   /** Churn×cost impact, including the per-model cost-per-line table. */

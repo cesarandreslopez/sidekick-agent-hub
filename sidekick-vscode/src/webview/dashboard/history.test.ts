@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildHistoryChartData,
   computeHistoryTiles,
+  costTile,
   effectiveMetric,
   formatDelta,
   historyRequest,
@@ -118,5 +119,26 @@ describe('tiles and requests', () => {
       series: 'model',
       project: '/work/alpha',
     });
+  });
+});
+
+describe('costTile', () => {
+  const fmt = (v: number) => `$${v.toFixed(2)}`;
+
+  it('shows a dash and a note when nothing in the range was priced', () => {
+    expect(costTile({ unpricedModelIds: ['local-model'] }, 0, fmt)).toEqual({
+      value: '—',
+      note: '1 model unpriced',
+      title: 'local-model',
+    });
+  });
+
+  it('keeps the priced part and names the unpriced models', () => {
+    expect(costTile({ unpricedModelIds: ['a', 'b'] }, 2, fmt)).toEqual({
+      value: '$2.00',
+      note: '2 models unpriced',
+      title: 'a\nb',
+    });
+    expect(costTile({}, 0, fmt)).toEqual({ value: '$0.00', note: '', title: '' });
   });
 });

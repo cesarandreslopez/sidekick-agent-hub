@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { ModelPricingService } from './ModelPricingService';
+import { normalizeProviderUsage } from 'sidekick-shared';
+import {
+  addUsageToPricing,
+  ModelPricingService,
+  priceModelUsage,
+  priceSessionModelUsage,
+} from './ModelPricingService';
 
 describe('ModelPricingService', () => {
   describe('parseModelId', () => {
@@ -129,96 +135,224 @@ describe('ModelPricingService', () => {
     });
   });
 
-  describe('calculateCost', () => {
+  describe('priceModelUsage', () => {
+    const row = (
+      model: string,
+      usage: Partial<{
+        inputTokens: number;
+        outputTokens: number;
+        cacheWriteTokens: number;
+        cacheReadTokens: number;
+      }>,
+    ) => {
+      const entry = {
+        calls: 1,
+        tokens: 0,
+        inputTokens: usage.inputTokens ?? 0,
+        outputTokens: usage.outputTokens ?? 0,
+        cacheWriteTokens: usage.cacheWriteTokens ?? 0,
+        cacheReadTokens: usage.cacheReadTokens ?? 0,
+      };
+      return priceModelUsage(model, entry);
+    };
+
     it('calculates cost for simple input/output (haiku)', () => {
-      const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
-      const cost = ModelPricingService.calculateCost(
-        { inputTokens: 1000, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
-        pricing,
-      );
       // 1000 tokens at $1.00 per million = $0.001
-      expect(cost).toBeCloseTo(0.001, 6);
+      expect(row('claude-haiku-4.5-20251215', { inputTokens: 1000 }).cost).toBeCloseTo(0.001, 6);
     });
 
     it('calculates cost for input and output', () => {
-      const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
-      const cost = ModelPricingService.calculateCost(
-        { inputTokens: 1000, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 0 },
-        pricing,
-      );
-      // Input: 1000 * $1.00 / 1M = $0.001
-      // Output: 500 * $5.00 / 1M = $0.0025
-      // Total: $0.0035
-      expect(cost).toBeCloseTo(0.0035, 6);
+      // Input: 1000 * $1.00 / 1M = $0.001; output: 500 * $5.00 / 1M = $0.0025
+      expect(
+        row('claude-haiku-4.5-20251215', { inputTokens: 1000, outputTokens: 500 }).cost,
+      ).toBeCloseTo(0.0035, 6);
     });
 
-    it('calculates cost with cache write tokens', () => {
-      const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
-      const cost = ModelPricingService.calculateCost(
-        { inputTokens: 1000, outputTokens: 500, cacheWriteTokens: 2000, cacheReadTokens: 0 },
-        pricing,
-      );
-      expect(cost).toBeCloseTo(0.006, 6);
-    });
-
-    it('calculates cost with cache read tokens', () => {
-      const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
-      const cost = ModelPricingService.calculateCost(
-        { inputTokens: 1000, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 5000 },
-        pricing,
-      );
-      expect(cost).toBeCloseTo(0.004, 6);
+    it('calculates cost with cache write and cache read tokens', () => {
+      expect(
+        row('claude-haiku-4.5-20251215', {
+          inputTokens: 1000,
+          outputTokens: 500,
+          cacheWriteTokens: 2000,
+        }).cost,
+      ).toBeCloseTo(0.006, 6);
+      expect(
+        row('claude-haiku-4.5-20251215', {
+          inputTokens: 1000,
+          outputTokens: 500,
+          cacheReadTokens: 5000,
+        }).cost,
+      ).toBeCloseTo(0.004, 6);
     });
 
     it('calculates cost with all token types', () => {
-      const pricing = ModelPricingService.getPricing('claude-sonnet-4.5-20241022');
-      const cost = ModelPricingService.calculateCost(
-        { inputTokens: 10000, outputTokens: 5000, cacheWriteTokens: 3000, cacheReadTokens: 8000 },
-        pricing,
-      );
-      expect(cost).toBeCloseTo(0.11865, 6);
-    });
-
-    it('prices reasoning tokens at the output rate', () => {
-      const pricing = ModelPricingService.getPricing('o3-mini');
-      const cost = ModelPricingService.calculateCost(
-        {
-          inputTokens: 0,
-          outputTokens: 0,
-          cacheWriteTokens: 0,
-          cacheReadTokens: 0,
-          reasoningTokens: 1_000_000,
-        },
-        pricing,
-      );
-      // o3-mini output rate is $4.40/M
-      expect(cost).toBeCloseTo(4.4, 2);
-    });
-
-    it('returns 0 for zero tokens', () => {
-      const pricing = ModelPricingService.getPricing('claude-haiku-4.5-20251215');
-      const cost = ModelPricingService.calculateCost(
-        { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
-        pricing,
-      );
-      expect(cost).toBe(0);
-    });
-
-    it('returns null when pricing is null', () => {
-      const cost = ModelPricingService.calculateCost(
-        { inputTokens: 1000, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 0 },
-        null,
-      );
-      expect(cost).toBeNull();
+      const priced = row('claude-sonnet-4.5-20241022', {
+        inputTokens: 10000,
+        outputTokens: 5000,
+        cacheWriteTokens: 3000,
+        cacheReadTokens: 8000,
+      });
+      expect(priced).toMatchObject({ priced: true, source: 'estimated' });
+      expect(priced.cost).toBeCloseTo(0.11865, 6);
     });
 
     it('handles large token counts (millions)', () => {
-      const pricing = ModelPricingService.getPricing('claude-opus-4.5-20250514');
-      const cost = ModelPricingService.calculateCost(
-        { inputTokens: 1_000_000, outputTokens: 500_000, cacheWriteTokens: 0, cacheReadTokens: 0 },
-        pricing,
+      expect(
+        row('claude-opus-4.5-20250514', { inputTokens: 1_000_000, outputTokens: 500_000 }).cost,
+      ).toBeCloseTo(17.5, 6);
+    });
+
+    it('returns a priced zero for zero tokens', () => {
+      expect(row('claude-haiku-4.5-20251215', {})).toEqual({ cost: 0, priced: true });
+    });
+
+    it('marks unknown models unpriced with a zero contribution', () => {
+      expect(row('made-up-vendor-model', { inputTokens: 1000, outputTokens: 500 })).toEqual({
+        cost: 0,
+        source: 'unpriced',
+        priced: false,
+      });
+    });
+
+    it('does not price Codex reasoning twice (output already includes it)', () => {
+      // input 1000 incl. 200 cached, output 500 incl. 300 reasoning, as the
+      // Codex parser normalizes a token_count event.
+      const usage = normalizeProviderUsage({
+        semantics: 'openai',
+        model: 'gpt-6-sol',
+        inputTokens: 1000,
+        cacheReadTokens: 200,
+        outputTokens: 500,
+        reasoningTokens: 300,
+      });
+      const entry = {
+        calls: 1,
+        tokens: usage.totalTokens,
+        inputTokens: usage.uncachedInputTokens,
+        outputTokens: usage.outputTokens,
+        cacheWriteTokens: 0,
+        cacheReadTokens: usage.cacheReadTokens,
+        reasoningTokens: usage.reasoningTokens,
+      };
+      addUsageToPricing(entry, 'gpt-6-sol', usage);
+      // 800 × $2 + 200 × $0.20 + 500 × $10 per million. The deprecated
+      // calculator added the 300 reasoning tokens again: $0.00964.
+      expect(priceModelUsage('gpt-6-sol', entry).cost).toBeCloseTo(0.00664, 8);
+    });
+
+    it('bills reasoning reported apart from output at the output rate', () => {
+      const entry = {
+        calls: 1,
+        tokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      };
+      addUsageToPricing(
+        entry,
+        'o3-mini',
+        normalizeProviderUsage({
+          semantics: 'sidekick',
+          reasoningTokens: 1_000_000,
+          reasoningIncludedInOutput: false,
+        }),
       );
-      expect(cost).toBeCloseTo(17.5, 6);
+      // o3-mini output rate is $4.40/M
+      expect(priceModelUsage('o3-mini', entry).cost).toBeCloseTo(4.4, 2);
+    });
+
+    it('keeps provider-reported spend and prices only the rest', () => {
+      const entry = {
+        calls: 2,
+        tokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      };
+      addUsageToPricing(
+        entry,
+        'claude-haiku-4.5-20251215',
+        normalizeProviderUsage({
+          semantics: 'anthropic',
+          inputTokens: 5000,
+          reportedCostUsd: 0.5,
+        }),
+      );
+      addUsageToPricing(
+        entry,
+        'claude-haiku-4.5-20251215',
+        normalizeProviderUsage({ semantics: 'anthropic', inputTokens: 1000 }),
+      );
+      const priced = priceModelUsage('claude-haiku-4.5-20251215', entry);
+      expect(priced.cost).toBeCloseTo(0.501, 6);
+      expect(priced.source).toBe('estimated');
+    });
+
+    it('prices each merged raw id with its own price', () => {
+      const entry = {
+        calls: 2,
+        tokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+      };
+      addUsageToPricing(
+        entry,
+        'claude-haiku-4.5-20251215',
+        normalizeProviderUsage({ semantics: 'anthropic', inputTokens: 1000 }),
+      );
+      addUsageToPricing(
+        entry,
+        'unknown-deployment/claude-haiku-4.5',
+        normalizeProviderUsage({ semantics: 'anthropic', inputTokens: 1000 }),
+      );
+      // The priced part counts; the row is partial.
+      expect(priceModelUsage('claude-haiku-4.5', entry)).toEqual({
+        cost: expect.closeTo(0.001, 6),
+        source: 'unpriced',
+        priced: false,
+      });
+    });
+  });
+
+  describe('priceSessionModelUsage', () => {
+    it('sums priced rows and lists unpriced ones', () => {
+      const result = priceSessionModelUsage(
+        new Map([
+          [
+            'claude-haiku-4.5',
+            {
+              calls: 1,
+              tokens: 1000,
+              inputTokens: 1000,
+              outputTokens: 0,
+              cacheWriteTokens: 0,
+              cacheReadTokens: 0,
+            },
+          ],
+          [
+            'made-up-vendor-model',
+            {
+              calls: 2,
+              tokens: 10,
+              inputTokens: 10,
+              outputTokens: 0,
+              cacheWriteTokens: 0,
+              cacheReadTokens: 0,
+            },
+          ],
+        ]),
+      );
+      expect(result.totalCost).toBeCloseTo(0.001, 6);
+      expect(result.unpricedModelIds).toEqual(['made-up-vendor-model']);
+      expect(result.source).toBe('unpriced');
+      expect(result.rows.map((r) => [r.model, r.calls, r.priced])).toEqual([
+        ['claude-haiku-4.5', 1, true],
+        ['made-up-vendor-model', 2, false],
+      ]);
     });
   });
 

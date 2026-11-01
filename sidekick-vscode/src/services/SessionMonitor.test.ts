@@ -49,7 +49,7 @@ vi.mock('sidekick-shared', async (importOriginal) => ({
 }));
 
 import { SessionMonitor, isClaudePlanFile } from './SessionMonitor';
-import { loadSnapshot, saveSnapshot } from 'sidekick-shared';
+import { loadSnapshot, normalizeProviderUsage, saveSnapshot } from 'sidekick-shared';
 
 afterEach(() => vi.useRealTimers());
 
@@ -166,6 +166,78 @@ describe('SessionMonitor', () => {
     expect(stats.totalOutputTokens).toBe(40);
     expect(stats.modelUsage.get('claude-opus-4-6')?.calls).toBe(1);
     expect(stats.modelUsage.get('claude-opus-4-6')?.tokens).toBe(50);
+    monitor.dispose();
+  });
+
+  it('prices Codex reasoning once and merges model aliases into one row', () => {
+    const monitor = new SessionMonitor(createProvider({ id: 'codex' }) as never);
+    const target = monitor as unknown as {
+      handleEvent(event: unknown): void;
+      sessionId: string | null;
+    };
+    target.sessionId = 'codex-session';
+    // As the Codex parser emits a token_count: input 1000 incl. 200 cached,
+    // output 500 incl. 300 reasoning.
+    const normalizedUsage = normalizeProviderUsage({
+      semantics: 'openai',
+      provider: 'openai',
+      source: 'codex-token-count',
+      model: 'gpt-6-sol',
+      inputTokens: 1000,
+      cacheReadTokens: 200,
+      outputTokens: 500,
+      reasoningTokens: 300,
+    });
+    target.handleEvent({
+      type: 'system',
+      timestamp: '2026-11-01T00:00:00.000Z',
+      providerMetadata: { providerId: 'codex', source: 'codex-rollout' },
+      message: {
+        role: 'system',
+        id: 'token-count-1',
+        model: 'gpt-6-sol',
+        usage: {
+          input_tokens: 800,
+          output_tokens: 500,
+          cache_read_input_tokens: 200,
+          cache_creation_input_tokens: 0,
+          reasoning_tokens: 300,
+        },
+        normalizedUsage,
+        content: [],
+      },
+    });
+
+    const summary = monitor.getSessionSummary();
+    // The deprecated calculator priced the reasoning again: $0.00964.
+    expect(summary?.totalCost).toBeCloseTo(0.00664, 8);
+    expect(summary?.modelUsage).toEqual([
+      {
+        model: 'gpt-6-sol',
+        calls: 1,
+        tokens: 1500,
+        cost: expect.closeTo(0.00664, 8),
+        priced: true,
+      },
+    ]);
+    expect(summary?.unpricedModelIds).toBeUndefined();
+
+    const claude = (model: string) => ({
+      type: 'assistant',
+      timestamp: '2026-11-01T00:01:00.000Z',
+      message: {
+        role: 'assistant',
+        id: `msg-${model}`,
+        model,
+        usage: { input_tokens: 10, output_tokens: 1 },
+        content: [{ type: 'text', text: model }],
+      },
+    });
+    target.handleEvent(claude('claude-sonnet-4-6'));
+    target.handleEvent(claude('claude-sonnet-4-6[1m]'));
+    const rows = monitor.getStats().modelUsage;
+    expect([...rows.keys()]).toEqual(['gpt-6-sol', 'claude-sonnet-4-6']);
+    expect(rows.get('claude-sonnet-4-6')?.calls).toBe(2);
     monitor.dispose();
   });
 

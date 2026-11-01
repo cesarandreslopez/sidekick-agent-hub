@@ -11,6 +11,26 @@ import type { SessionSummaryData } from '../types/sessionSummary';
 import { ModelPricingService } from '../services/ModelPricingService';
 
 /**
+ * The cost line for the prompt. Unpriced models are named so the narrative
+ * says the cost is unknown or partial instead of presenting $0 as free.
+ */
+function describeCost(summary: SessionSummaryData): string {
+  const unpriced = summary.unpricedModelIds ?? [];
+  if (unpriced.length === 0) return ModelPricingService.formatCost(summary.totalCost);
+  const models = unpriced.join(', ');
+  return summary.totalCost > 0
+    ? `${ModelPricingService.formatCost(summary.totalCost)} (partial: no pricing for ${models}; do not present this as the full cost)`
+    : `unknown (no pricing for ${models}; do not present the cost as $0 or free)`;
+}
+
+function describeModelCost(model: { cost: number; priced?: boolean }): string {
+  if (model.priced !== false) return ModelPricingService.formatCost(model.cost);
+  return model.cost > 0
+    ? `${ModelPricingService.formatCost(model.cost)} (partially priced)`
+    : 'unpriced';
+}
+
+/**
  * Builds a prompt for generating a narrative summary of a session.
  *
  * @param summary - Structured session summary data
@@ -18,7 +38,7 @@ import { ModelPricingService } from '../services/ModelPricingService';
  */
 export function buildNarrativePrompt(summary: SessionSummaryData): string {
   const durationMin = Math.round(summary.duration / 60000);
-  const costStr = ModelPricingService.formatCost(summary.totalCost);
+  const costStr = describeCost(summary);
 
   const taskLines =
     summary.tasks.length > 0
@@ -40,7 +60,7 @@ export function buildNarrativePrompt(summary: SessionSummaryData): string {
       ? summary.costByModel
           .map(
             (m) =>
-              `  - ${m.model}: ${ModelPricingService.formatCost(m.cost)} (${Math.round(m.percentage)}%)`,
+              `  - ${m.model}: ${describeModelCost(m)}${m.priced === false && m.cost === 0 ? '' : ` (${Math.round(m.percentage)}%)`}`,
           )
           .join('\n')
       : '  (no model data)';

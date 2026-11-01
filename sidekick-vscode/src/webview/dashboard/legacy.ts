@@ -13,6 +13,7 @@
 import { renderProviderStatus as renderPublicStatus } from './providerStatus';
 import { tokenMetricDisplay } from './tokens';
 import { quotaCardVisibility, quotaSectionTooltip, renderQuotaExtrasHtml } from './quotaWindows';
+import { blockCostText, formatCost as formatCostText, modelLabel, rowCostText, totalCostText, unpricedNote } from './cost';
 import type { DashboardInit } from '../../types/dashboard';
 import type { LegacyHelpers } from './helpers';
 
@@ -101,6 +102,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         totalCacheReadTokens: 0,
         subagentTokens: null,
         totalCost: 0,
+        unpricedModelIds: [],
         messageCount: 0,
         burnRate: 0,
         sessionDuration: '0m'
@@ -365,8 +367,11 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
           switch (currentMetric) {
             case 'cost':
-              primaryMetricValue.textContent = formatCost(sessionState.totalCost);
-              primaryMetricSubtitle.textContent = 'Estimated session cost';
+              // Unpriced models contribute nothing: never present that as $0.
+              const unpricedIds = sessionState.unpricedModelIds;
+              primaryMetricValue.textContent = totalCostText(sessionState.totalCost, unpricedIds.length);
+              primaryMetricSubtitle.textContent = 'Estimated session cost' + (unpricedIds.length ? ' · ' + unpricedNote(unpricedIds.length) : '');
+              primaryMetricSubtitle.title = unpricedIds.join('\n');
               break;
             case 'tokens':
               // Shared vocabulary via the typed tokens module: every billed
@@ -577,27 +582,17 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       }
 
       /**
-       * Formats cost with appropriate precision.
+       * Formats cost with appropriate precision; a missing value renders "—" (typed cost module).
        */
       function formatCost(cost) {
-        if (cost < 0.01) {
-          return '$' + cost.toFixed(4);
-        }
-        return '$' + cost.toFixed(2);
+        return formatCostText(cost);
       }
 
       /**
-       * Extracts short model name from full ID.
+       * Short model label, e.g. "Opus 4.5" or "GPT-6.1 Sol" (typed cost module).
        */
       function getShortModelName(modelId) {
-        // Minor versions are 1–2 digits, so a date suffix is never read as one.
-        const match = modelId.match(/claude-(haiku|sonnet|opus|fable)-(\d+(?:[.-]\d{1,2}(?!\d))?)/i);
-        if (match) {
-          return (
-            match[1].charAt(0).toUpperCase() + match[1].slice(1) + ' ' + match[2].replace('-', '.')
-          );
-        }
-        return modelId;
+        return modelLabel(modelId);
       }
 
       /**
@@ -870,12 +865,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         };
         windowEl.textContent = hhmm(block.start) + ' – ' + hhmm(block.end) + ' · '
           + hm(block.elapsedMs) + ' elapsed · ' + hm(block.remainingMs) + ' left';
-        const unpriced = block.costProvenance === 'unpriced';
-        const costText = unpriced ? '—' : '$' + block.costUsd.toFixed(2);
+        // "—" only when no call was priced; "(partial)" when some were not.
+        const costText = blockCostText(block.costUsd, block);
         usageEl.innerHTML = '<strong>' + formatTokensShort(block.tokens.total) + '</strong> tokens · <strong>' + costText
           + '</strong> · ' + formatTokensShort(Math.round(block.burnRatePerMinute)) + '/min · local estimate';
         projectionEl.innerHTML = 'Projected by end: <strong>' + formatTokensShort(block.projectedTokens) + '</strong> tokens · <strong>'
-          + (unpriced ? '—' : '$' + block.projectedCostUsd.toFixed(2)) + '</strong>';
+          + blockCostText(block.projectedCostUsd, block) + '</strong>';
         if (official) {
           const resetsIn = (iso) => {
             const resetMs = iso ? Date.parse(iso) - Date.now() : NaN;
@@ -1799,6 +1794,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         sessionState.totalCacheReadTokens = state.totalCacheReadTokens;
         sessionState.subagentTokens = state.subagentTokens || null;
         sessionState.totalCost = state.totalCost;
+        sessionState.unpricedModelIds = state.unpricedModelIds || [];
         sessionState.messageCount = state.modelBreakdown.reduce(function(sum, m) { return sum + m.calls; }, 0);
 
         // Show dashboard, hide empty state
@@ -1840,10 +1836,17 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             state.modelBreakdown.forEach(function(model) {
               const item = document.createElement('div');
               item.className = 'model-item';
+              item.title = model.model;
               item.innerHTML = '<span class="name">' + escapeHtml(getShortModelName(model.model)) + '</span>' +
-                '<span class="stats">' + model.calls + ' calls, ' + formatNumber(model.tokens) + ' tokens, ' + formatCost(model.cost) + '</span>';
+                '<span class="stats">' + model.calls + ' calls, ' + formatNumber(model.tokens) + ' tokens, ' + rowCostText(model) + '</span>';
               modelListEl.appendChild(item);
             });
+            if (sessionState.unpricedModelIds.length) {
+              const note = document.createElement('div');
+              note.className = 'cost-note';
+              note.textContent = unpricedNote(sessionState.unpricedModelIds.length) + ': ' + sessionState.unpricedModelIds.join(', ');
+              modelListEl.appendChild(note);
+            }
           }
         }
 
@@ -1907,7 +1910,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           if (modelCount > 0) perfParts.push(modelCount + ' model' + (modelCount !== 1 ? 's' : ''));
           var toolCount = (state.toolAnalytics || []).length;
           if (toolCount > 0) perfParts.push(toolCount + ' tool' + (toolCount !== 1 ? 's' : ''));
-          if (state.totalCost > 0) perfParts.push(formatCost(state.totalCost));
+          if (state.totalCost > 0) perfParts.push(formatCost(state.totalCost) + (sessionState.unpricedModelIds.length ? ' (partial)' : ''));
           perfSummary.textContent = perfParts.length ? perfParts.join(', ') : '';
         }
 
@@ -3027,7 +3030,11 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
         if (durEl) durEl.textContent = formatDurationMs(summary.duration);
         if (tokEl) tokEl.textContent = formatNumber(summary.totalTokens);
-        if (costEl) costEl.textContent = formatCost(summary.totalCost);
+        const summaryUnpriced = summary.unpricedModelIds || [];
+        if (costEl) {
+          costEl.textContent = totalCostText(summary.totalCost, summaryUnpriced.length);
+          costEl.title = summaryUnpriced.length ? unpricedNote(summaryUnpriced.length) + ': ' + summaryUnpriced.join(', ') : '';
+        }
         if (apiEl) apiEl.textContent = formatNumber(summary.apiCalls);
         if (ctxEl) ctxEl.textContent = Math.round(summary.contextPeak) + '%';
         if (compEl) compEl.textContent = Math.round(summary.taskCompletionRate * 100) + '%';
@@ -3076,9 +3083,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             chtml += '<table class="summary-cost-table"><tr><th>Model</th><th>Cost</th><th>%</th></tr>';
             summary.costByModel.forEach(function(m) {
               const impact = summary.codeImpact.byModel.find(function(row) { return row.model === m.model; });
-              chtml += '<tr><td>' + escapeHtml(getShortModelName(m.model)) + '</td><td>' + formatCost(m.cost) + (impact && impact.costPerChangedLine != null ? ' (' + formatCost(impact.costPerChangedLine) + '/line)' : '') + '</td><td>' + Math.round(m.percentage) + '%</td></tr>';
+              chtml += '<tr><td>' + escapeHtml(getShortModelName(m.model)) + '</td><td>' + rowCostText(m) + (impact && impact.costPerChangedLine != null ? ' (' + formatCost(impact.costPerChangedLine) + '/line)' : '') + '</td><td>' + (m.priced === false && !(m.cost > 0) ? '—' : Math.round(m.percentage) + '%') + '</td></tr>';
             });
             chtml += '</table>';
+            if (summaryUnpriced.length) {
+              chtml += '<div class="cost-note">' + escapeHtml(unpricedNote(summaryUnpriced.length) + ': ' + summaryUnpriced.join(', ')) + '</div>';
+            }
           }
           if (summary.costByTool.length > 0) {
             chtml += '<div style="font-size:11px;font-weight:600;margin:8px 0 4px;">By Tool (estimated)</div>';
