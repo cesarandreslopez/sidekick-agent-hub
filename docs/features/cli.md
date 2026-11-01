@@ -118,6 +118,9 @@ sidekick dump --format json > session.json
 | `--signals`      | Add interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks                      |
 | `--replies`      | Add the agent's final reply to each prompt                                                                  |
 | `--format <fmt>` | `text` (default), `markdown`, `json` (with bounds and stats), or `jsonl` (one session per line)             |
+| `--no-usage`     | Skip the per-prompt token and cost lookup                                                                   |
+
+Each prompt also shows the tokens and cost of every model call that answered it, including subagent calls, and each session header shows its total, for example `#2  21:17:31  ·  4.9M tokens · $7.02 (est.)`. The usage comes from the session logs, matched to the prompt by ordinal. In JSON it is `promptUsage` / `sessionUsage`. The `usage` field remains the first answering call. The lookup stops after 30 seconds with a notice, and `--no-usage` skips it.
 
 Both providers are read unless `--provider claude-code` or `--provider codex` is given; OpenCode is not supported. Each session carries its time span, working directories, branches, and models, and a `complete` flag that is false when prompts were out of scope, a record was unreadable, or the session was cut at 256 MiB. Signals note the prompt they followed (`afterOrdinal`). A Claude tool rejection keeps the reason the person typed, in full, while tool and API error text is cut to 1024 characters. Codex logs do not mark rejections.
 
@@ -252,7 +255,7 @@ sidekick --provider codex doctor  # diagnose Codex monitoring
 sidekick statusline  # fast one-line account/quota/burn-rate footer
 ```
 
-`doctor` checks the selected session provider (`--provider`, or auto-detection). Missing sessions or dependencies for that provider include a repair hint; unused integrations and missing saved accounts are informational. Existing sessions can be monitored without adding a Sidekick account.
+`doctor` checks the selected session provider (`--provider`, or auto-detection). It also reports the pricing catalog behind cost estimates: its source, age, entry count and digest. It warns when only the built-in table or a stale cache is active, or when `cli-config.json` pricing has invalid entries. Missing sessions or dependencies for that provider include a repair hint; unused integrations and missing saved accounts are informational. Existing sessions can be monitored without adding a Sidekick account.
 
 `today` and `statusline` bypass account bootstrap, pricing hydration, and quota network calls. Use `Sidekick: Install Statusline` in VS Code to merge the status-line command into Claude Code settings; uninstalling it restores the previous block.
 
@@ -441,7 +444,7 @@ sidekick blocks [--active | --recent | --since <time>] [--csv]
 
 Five-hour billing blocks computed straight from session logs, for the auto-detected or `--provider` session provider. A block opens at the first usage event (aligned down to the UTC hour, as ccusage does), lasts five hours, and a gap longer than five hours or an event past the block's end opens a new one. Each row shows the block's cache-inclusive token total, cost, burn rate (tokens per minute over the block so far), and — for the block that is still open — the projected end-of-block tokens and cost and the time remaining.
 
-Session logs are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time, so repeat runs only re-read sessions that changed; `--no-cache` forces a full re-read. The cache format moved to version 2 in 0.27.3; caches written by earlier versions rebuild automatically. The table is a **local estimate**. When `sidekick statusline` has persisted an official rate-limit sample from Claude Code, it is printed beneath the table as `Official (status line)` with its age so the two can be compared.
+Session logs are read once and cached under `~/.config/sidekick/usage-cache/` by size and modification time, so repeat runs only re-read sessions that changed; `--no-cache` forces a full re-read. The cache format is version 3 since 0.29.0 (files named `*.v3.json`, so an older Sidekick sharing the folder keeps its own). Caches written by earlier versions rebuild automatically, so the first run after upgrading reads each session once. The table is a **local estimate**. When `sidekick statusline` has persisted an official rate-limit sample from Claude Code, it is printed beneath the table as `Official (status line)` with its age so the two can be compared.
 
 | Flag             | Description                                                                                |
 | ---------------- | ------------------------------------------------------------------------------------------ |
@@ -451,7 +454,13 @@ Session logs are read once and cached under `~/.config/sidekick/usage-cache/` by
 | `--csv`          | One row per block: window, status, token buckets, cost, provenance, burn, projection       |
 | `--no-cache`     | Re-read every session instead of using the usage cache                                     |
 
-Use the global `--json` for the full report (`blocks`, `active`, `official`, session and cache counts).
+Costs follow one rule in every report:
+
+- `—` when nothing was priced
+- `$x (est.)` for catalog estimates
+- `$x (partial)` when some calls had no price (the figure covers only the priced calls)
+
+The projected cost of an unpriced block is `—` too. The footer names the pricing basis, for example `Pricing: LiteLLM catalog, fetched 9h ago · fnv1a64:…`. Use the global `--json` for the full report (`blocks`, `active`, `official`, `pricingCatalog`, session and cache counts).
 
 #### Examples
 
@@ -489,7 +498,37 @@ Rows are bucketed by the **time of each usage event**, on the local calendar unl
 | `--csv`          | One row per bucket (and per breakdown sub-row): period, provider, project, model, token buckets, total, cost, provenance                          |
 | `--no-cache`     | Re-read every session instead of using the usage cache                                                                                            |
 
-Column labels follow the shared vocabulary ("Total (incl. cache)"); costs carry their provenance in the footer and unpriced rows show `—`. Use the global `--json` for the full report (`rows`, `breakdown`, `totals`, providers, and cache counts).
+Other report details:
+
+- **Column labels** follow the shared vocabulary ("Total (incl. cache)").
+- **Costs** use the same `—` / `(est.)` / `(partial)` rule as `blocks`, and the footer names the pricing catalog.
+- **Model spellings** of one model (dated ids, provider or region prefixes, Bedrock forms) share a row, and Claude Code's `<synthetic>` placeholder is left out.
+- **Reasoning** gets its own column when any row has reasoning tokens (already included in Total), and `--csv` appends a `reasoning` column last.
+- **`sessions --breakdown`** prints the per-model `└` sub-rows under each session. Codex subagent and fork sessions are tagged `↳ subagent of <parent>`; in JSON the map is `sessionParents`.
+
+Use the global `--json` for the full report (`rows`, `breakdown`, `totals`, `pricingCatalog`, providers, and cache counts).
+
+#### Custom model prices
+
+Prices for models the catalogs don't know (local or private deployments), or negotiated rates, go in `~/.config/sidekick/cli-config.json`:
+
+```json
+{
+  "pricing": {
+    "models": {
+      "my-local-model": {
+        "inputCostPerMillion": 0.5,
+        "outputCostPerMillion": 1.5,
+        "cacheReadCostPerMillion": 0.05,
+        "cacheWriteCostPerMillion": 0.625
+      }
+    },
+    "onlyIfMissing": false
+  }
+}
+```
+
+Rates are USD per million tokens. A key matches the model's dated, `[1m]`, Bedrock and provider-prefixed spellings. Omitted cache rates are charged at the input rate, which usually overstates cache reads, so set them for accurate costs. By default these prices win over the catalogs. Set `onlyIfMissing: true` to use them only where no catalog has an exact price. Invalid entries are skipped with a warning, and `doctor` lists them. The report footer notes `+ N custom price(s)`.
 
 #### Examples
 

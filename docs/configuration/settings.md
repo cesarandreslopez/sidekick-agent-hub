@@ -153,12 +153,44 @@ Omitted fields retain their defaults. `sidekick.timeoutPerKb` and the other scal
 
 ## Pricing & Cost Tracking
 
-| Setting                               | Default | Description                                                                 |
-| ------------------------------------- | ------- | --------------------------------------------------------------------------- |
-| `sidekick.pricing.hydrateFromLiteLLM` | `true`  | Fetch the LiteLLM catalog — prices and context window sizes — on activation |
-| `sidekick.pricing.cacheTtlHours`      | `24`    | How long to cache the LiteLLM catalog (hours)                               |
+| Setting                                    | Default | Description                                                                 |
+| ------------------------------------------ | ------- | --------------------------------------------------------------------------- |
+| `sidekick.pricing.hydrateFromLiteLLM`      | `true`  | Fetch the LiteLLM catalog — prices and context window sizes — on activation |
+| `sidekick.pricing.cacheTtlHours`           | `24`    | How long to cache the LiteLLM catalog (hours)                               |
+| `sidekick.customModelPricing`              | `{}`    | Your own per-model prices, USD per million tokens (see below)               |
+| `sidekick.customModelPricingOnlyIfMissing` | `false` | Use custom prices only where no catalog has an exact price                  |
 
-The catalog is cached at `~/.config/sidekick/pricing-catalog.json` with a 3s fetch timeout and stale-cache fallback — if the network is down, the last good cache is used; if there is no cache, the static table ships as a fallback. Unknown models return `null` cost and render as `—` (yellow in the CLI; in the VS Code dashboard as `—` per row with a footer warning, and a `*` appended to the total when priced and unpriced rows are mixed).
+The catalog is cached at `~/.config/sidekick/pricing-catalog.json` with a 3s fetch timeout and stale-cache fallback. If the network is down, the last good cache is used; if there is no cache, the built-in table ships as a fallback.
+
+Costs never read `$0` when nothing was priced:
+
+- `—` when nothing was priced
+- `(partial)` when some calls had no price; the figure covers only the priced calls
+- `(est.)` marks catalog estimates (CLI only)
+
+The VS Code dashboard adds an "N model(s) unpriced" note. The dashboard Health tab and `Sidekick: Run Doctor` (`sidekick doctor` in the CLI) name the pricing basis: catalog source, age, entry count and a digest.
+
+### Custom model prices
+
+`sidekick.customModelPricing` prices models the catalogs don't know, such as local or private deployments, or applies negotiated rates:
+
+```json
+"sidekick.customModelPricing": {
+  "my-local-model": {
+    "inputCostPerMillion": 0.5,
+    "outputCostPerMillion": 1.5,
+    "cacheReadCostPerMillion": 0.05,
+    "cacheWriteCostPerMillion": 0.625
+  }
+}
+```
+
+- **Keys** are model ids as sessions report them. A key also matches the model's dated, `[1m]`, Bedrock and provider-prefixed spellings.
+- **Cache rates** default to the input rate when omitted, which usually overstates cache reads, so set them for accurate costs.
+- **Precedence:** by default these prices win over the catalogs. Enable `sidekick.customModelPricingOnlyIfMissing` to use them only to fill gaps.
+- **Applying and checking:** changes apply immediately, and the Health tab lists what was applied and any entry that was ignored.
+
+The CLI reads the same shape from `pricing.models` in `~/.config/sidekick/cli-config.json` (see [CLI → Usage reports](../features/cli.md#usage-reports)).
 
 ### Context window sizes
 

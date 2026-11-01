@@ -8,6 +8,15 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.29.0: honest costs and custom prices**
+  - **Cost display:** an unpriced session or billing block reads `—` instead of `$0.0000`. Every report uses one rule: `—` when nothing was priced, `$x (est.)` for catalog estimates, and `$x (partial)` when some calls had no price.
+  - **Pricing catalog:** the usage reports and `blocks` name it in their footer (`pricingCatalog` in `--json`). `doctor` warns when only the built-in table or a stale cache is active.
+  - **Custom prices:** `cli-config.json` `pricing.models` sets your own per-model prices.
+  - **Usage reports:** they add a Reasoning column and merge a model's dated, prefixed and Bedrock spellings into one row.
+  - **Sessions:** `sessions --breakdown` prints its sub-rows and tags Codex subagents `↳ subagent of <parent>`.
+  - **Prompt costs:** `dump --prompts` shows tokens and cost per prompt (`--no-usage` skips it).
+  - **OpenCode:** costs on the OpenAI provider are no longer under-counted.
+  - **Usage cache:** it moves to `*.v3.json` and is rebuilt once.
 - **0.28.3: Claude Ultra and the missing 5-hour limit** — on Ultra (formerly Max 20x), which has no 5-hour session limit since 2026-10-30, `sidekick quota` shows `Subscription Quota (plan: Ultra)` with the 7-Day row and a `Session  no 5-hour limit on Ultra` note, plus extra meters the endpoint reports (such as `7-Day (Fable)`) and an `Extra usage` row, instead of a fake `5-Hour 0%`. The status line leads with `7d 17% resets Fri 01:00`, the dashboard, `blocks`, and `quota history` follow, and cached quota no longer freezes at the pre-change sample. Codex windows read `Weekly` instead of `Primary` (a missing second window is hidden), and a cache whose windows have all reset, such as a months-old z.ai sample, is reported as expired.
 - **0.28.0: custom Claude homes and archived Codex sessions** — with `CLAUDE_CONFIG_DIR` set, `dashboard`, `dump`, `report`, the usage reports, `blocks`, `search`, and `doctor` read the home Claude Code writes to; Codex sessions moved to `archived_sessions/` stay visible; `dashboard` and `dump` read large or rewritten session files in bounded chunks; and the main bundle shrinks from 2.85 MB to 2.47 MB.
 - **0.27.6: one usable copy of every login** — Sidekick no longer causes Claude Code's "Not logged in · Please run /login": Keychain writes over about 4 KB are no longer truncated, the live login keeps no second copy, `accounts switch` saves the outgoing login first and is journaled so an interrupted switch finishes or rolls back, and keep-alive never refreshes a live copy. Codex switches are refused while Codex sessions run (even with `--force`), and keep-alive refreshes through `codex app-server`. `sidekick accounts doctor` is read-only and reports Claude and Codex credential stores; `--fix` repairs them after asking (`--yes` skips, `--json` lists the repairs).
@@ -23,7 +32,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 - **Usage reports from session logs** — `sidekick daily`, `weekly`, `monthly`, and `sessions` compute tokens and cost for every provider straight from session logs (local calendar days, `--breakdown`, `--by-project`, `--csv`, `--json`), so CLI-only users no longer need the extension's history store; `sidekick import` backfills that store when you want `stats` and `today` to see older sessions.
 - **`sidekick blocks`** — five-hour billing blocks with cache-inclusive totals, cost provenance, burn rate, and end-of-block projections, with the official status-line sample beside the local estimate.
 - **Official quota through the status line** — `sidekick statusline` reads the JSON Claude Code pipes on stdin, appends context %, session cost, and cache hit rate, and persists the official limits; `quota`, `quota --all`, and `mcp get_quota_status` share one resolution order and print a `Source` row naming where the numbers came from.
-- **`state.json`** — a public, versioned snapshot (account, quota with freshness, context including `context.totalTokens`, session cost, active billing block) written by `statusline` and the dashboard for tmux status bars and scripts.
+- **`state.json`** — a public, versioned snapshot (account, quota with freshness, context including `context.totalTokens`, session cost (`null` when nothing was priced), active billing block) written by `statusline` and the dashboard for tmux status bars and scripts.
 - **Scripting flags** — global `--offline` and `--output-file`, `--csv` on `stats`, `dump --list`, and `quota history`, `quota history --window 5h|7d|max`, and `--json` on the quick-capture commands and `report`; every token total is cache-inclusive and every cost carries its provenance.
 - **`sidekick history`** — list your most recent Codex prompts across every workspace, newest first; `--path <id-or-prefix>` resolves a session to its transcript file for `less`/`jq`, and `--json` emits full ids and timestamps. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound (default 50), so huge session histories list quickly.
 - **`sidekick statusline`, `today` & `doctor`** — a cache-only one-line account/quota/burn footer, a cache-only daily brief, and cross-provider health diagnostics.
@@ -104,7 +113,7 @@ sidekick statusline
 sidekick doctor
 ```
 
-Diagnose project identity, sessions, accounts, providers, and dependencies in one typed health report — the same diagnostics behind the VS Code `Sidekick: Run Doctor` command. Global flags `--project`, `--provider`, and `--json` also apply.
+Diagnose project identity, sessions, accounts, providers, dependencies, and the pricing catalog in one typed health report — the same diagnostics behind the VS Code `Sidekick: Run Doctor` command. It warns when only the built-in price table or a stale catalog cache is active, or when `cli-config.json` pricing has invalid entries; `--json` adds `pricingCatalog`. Global flags `--project`, `--provider`, and `--json` also apply.
 
 ## Billing Blocks
 
@@ -112,7 +121,7 @@ Diagnose project identity, sessions, accounts, providers, and dependencies in on
 sidekick blocks [--active | --recent | --since <time>] [--csv] [--no-cache]
 ```
 
-Five-hour billing blocks computed from session logs (ccusage-style: a block opens at the first usage event, aligned to the UTC hour, lasts five hours, and a longer gap opens a new one). Each block shows its cache-inclusive token total, cost with provenance, burn rate, and — for the open block — projected end-of-block tokens and cost plus the time remaining. Sessions are read once and cached by size and mtime under the Sidekick config directory. When the status line has persisted an official Claude Code rate-limit sample, it is shown beneath the local estimate for comparison (on Ultra, which has no 5-hour limit, it shows `7d N% used · resets in … · no 5-hour limit`). `--since` accepts an ISO date, `YYYY-MM-DD`, or a relative window such as `7d`; `--json` prints the full report and `--csv` one row per block.
+Five-hour billing blocks computed from session logs (ccusage-style: a block opens at the first usage event, aligned to the UTC hour, lasts five hours, and a longer gap opens a new one). Each block shows its cache-inclusive token total, cost (`—` when nothing was priced, `$x (est.)` for catalog estimates, `$x (partial)` when some calls had no price), burn rate, and — for the open block — projected end-of-block tokens and cost (`—` for an unpriced block) plus the time remaining. Sessions are read once and cached by size and mtime under `~/.config/sidekick/usage-cache/` (format v3 since 0.29.0, files `*.v3.json`; the first run after upgrading re-reads each session once). When the status line has persisted an official Claude Code rate-limit sample, it is shown beneath the local estimate for comparison (on Ultra, which has no 5-hour limit, it shows `7d N% used · resets in … · no 5-hour limit`). `--since` accepts an ISO date, `YYYY-MM-DD`, or a relative window such as `7d`. The footer names the pricing catalog, for example `Pricing: LiteLLM catalog, fetched 9h ago · fnv1a64:…`; `--json` prints the full report (including `pricingCatalog`) and `--csv` one row per block.
 
 ## Import History
 
@@ -128,7 +137,37 @@ Fold finished sessions from every provider into the history store that `sidekick
 sidekick daily|weekly|monthly|sessions [--since <time>] [--until <time>] [--breakdown] [--by-project] [--utc] [--csv] [--no-cache]
 ```
 
-Usage computed straight from session logs — no VS Code extension or history store required — for every provider with session data side by side (`--provider` narrows to one). Rows are bucketed by the time of each usage event on the local calendar (`--utc` for UTC), so a session that crosses midnight is split across both days; Claude Code subagent transcripts count toward their parent session; weeks start on Monday. `--breakdown` adds per-model sub-rows, `--by-project` groups by project, `sessions` prints one row per session, and `--json` / `--csv` feed scripts. Defaults: 30 days, 12 weeks, 12 calendar months, 30 days.
+Usage computed straight from session logs — no VS Code extension or history store required — for every provider with session data side by side (`--provider` narrows to one). Rows are bucketed by the time of each usage event on the local calendar (`--utc` for UTC), so a session that crosses midnight is split across both days; Claude Code subagent transcripts count toward their parent session; weeks start on Monday. Report options and output:
+
+- **Flags:** `--breakdown` adds per-model sub-rows (under each session too, for `sessions`), `--by-project` groups by project, and `--json` / `--csv` feed scripts.
+- **Sessions:** `sessions` prints one row per session and tags Codex subagent and fork sessions `↳ subagent of <parent>`.
+- **Models:** a model's dated, provider-prefixed and Bedrock ids share a row, and `<synthetic>` is left out.
+- **Reasoning:** a Reasoning column appears when any row has reasoning tokens (already in Total), and `--csv` appends a `reasoning` column last.
+- **Costs** follow the `—` / `(est.)` / `(partial)` rule, and the footer names the pricing catalog.
+- **JSON:** `--json` adds `pricingCatalog`, plus `sessionParents` for `sessions`.
+- **Default windows:** 30 days, 12 weeks, 12 calendar months, 30 days.
+
+### Custom model prices
+
+Prices for models the catalogs don't know (local or private deployments), or negotiated rates, go in `~/.config/sidekick/cli-config.json`:
+
+```json
+{
+  "pricing": {
+    "models": {
+      "my-local-model": {
+        "inputCostPerMillion": 0.5,
+        "outputCostPerMillion": 1.5,
+        "cacheReadCostPerMillion": 0.05,
+        "cacheWriteCostPerMillion": 0.625
+      }
+    },
+    "onlyIfMissing": false
+  }
+}
+```
+
+Rates are USD per million tokens. A key matches the model's dated, `[1m]`, Bedrock and provider-prefixed spellings. Omitted cache rates are charged at the input rate, which usually overstates cache reads, so set them for accurate costs. By default these prices win over the catalogs. Set `onlyIfMissing: true` to use them only where no catalog has an exact price. Invalid entries are skipped with a warning, and `doctor` lists them.
 
 ## Quick Capture
 
@@ -187,12 +226,13 @@ Export session data as text, markdown, or JSON. Token lines use "Total (incl. ca
 | `--since <time>` | With `--prompts`, sessions active since an ISO date, `YYYY-MM-DD`, or `7d`/`24h` (returned whole)        |
 | `--signals`      | With `--prompts`, add interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks |
 | `--replies`      | With `--prompts`, add the agent's final reply to each prompt                                             |
+| `--no-usage`     | With `--prompts`, skip the per-prompt token and cost lookup                                              |
 
 Global flags `--project`, `--provider`, and `--json` (the same as `--format json`) also apply.
 
 ### Prompts by session
 
-`sidekick dump --prompts` prints every prompt typed in Claude Code and Codex sessions, grouped by session, for reading or classifying a whole session. The default is the most recent session with prompts, and `--limit <n>` takes the n most recent instead. `--session <id-or-prefix>` picks one session, and `--all` takes every session of the project and its git worktrees (it cannot be combined with `--session`), optionally narrowed by `--since 7d` (sessions active since then, returned whole) and `--limit <n>`. `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks, and `--replies` adds the agent's final reply to each prompt. `--format` accepts `text`, `markdown`, `json` (full result with bounds and stats), or `jsonl` (one session per line). Both providers are read unless `--provider` names one; `--provider opencode` exits with an error.
+`sidekick dump --prompts` prints every prompt typed in Claude Code and Codex sessions, grouped by session, for reading or classifying a whole session. The default is the most recent session with prompts, and `--limit <n>` takes the n most recent instead. `--session <id-or-prefix>` picks one session, and `--all` takes every session of the project and its git worktrees (it cannot be combined with `--session`), optionally narrowed by `--since 7d` (sessions active since then, returned whole) and `--limit <n>`. `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks, and `--replies` adds the agent's final reply to each prompt. `--format` accepts `text`, `markdown`, `json` (full result with bounds and stats), or `jsonl` (one session per line). Both providers are read unless `--provider` names one; `--provider opencode` exits with an error. Each prompt shows the tokens and cost of the model calls that answered it (subagent calls included), and each session header its total, for example `#2  21:17:31  ·  4.9M tokens · $7.02 (est.)`; JSON adds `promptUsage` / `sessionUsage`. The lookup stops after 30 seconds with a notice, and `--no-usage` skips it.
 
 ```bash
 sidekick dump --prompts --all --since 7d --signals --replies --format jsonl > sessions.jsonl
