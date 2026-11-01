@@ -53,6 +53,63 @@ describe('formatStatusline', () => {
   });
 });
 
+describe('formatStatusline window selection', () => {
+  const now = new Date('2026-11-01T03:00:00.000Z');
+
+  it('leads with the weekly window when the plan has no five-hour limit', () => {
+    const result = formatStatusline({
+      accounts,
+      now,
+      claudeQuota: {
+        available: true,
+        capturedAt: now.toISOString(),
+        fiveHour: { utilization: 0, resetsAt: '', absent: true },
+        sevenDay: { utilization: 17, resetsAt: '2026-11-07T06:00:00.000Z' },
+      },
+    });
+    expect(result).toMatch(/^acct:work · 7d 17% resets \S+ \d{2}:\d{2}/);
+    expect(result).not.toMatch(/\b5h \d/);
+  });
+
+  it('never prints the current time as a reset for an idle window', () => {
+    const result = formatStatusline({
+      accounts,
+      now,
+      claudeQuota: {
+        available: true,
+        capturedAt: now.toISOString(),
+        fiveHour: { utilization: 0, resetsAt: '' },
+        sevenDay: { utilization: 40, resetsAt: '2026-11-07T06:00:00.000Z' },
+      },
+    });
+    expect(result).toBe('acct:work · 5h 0% · 7d 40%');
+  });
+
+  it('labels a Codex weekly primary window by its length', () => {
+    const result = formatStatusline({
+      accounts: {
+        ok: true,
+        claude: { present: false },
+        codex: { present: true, accountId: 'codex-id', label: 'cal' },
+      },
+      now,
+      codexQuota: {
+        available: true,
+        capturedAt: now.toISOString(),
+        fiveHour: {
+          utilization: 37,
+          resetsAt: '2026-11-07T00:20:19.000Z',
+          windowMs: 7 * 86_400_000,
+        },
+        sevenDay: { utilization: 0, resetsAt: '', absent: true },
+        fiveHourLabel: 'Weekly',
+      },
+    });
+    expect(result).toMatch(/^acct:cal · 7d 37% resets /);
+    expect(result).not.toMatch(/\b5h \d/);
+  });
+});
+
 describe('formatStatusline live segments', () => {
   const now = new Date('2026-07-18T13:00:00.000Z');
   const quota = {

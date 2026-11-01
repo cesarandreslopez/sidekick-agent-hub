@@ -88,6 +88,8 @@ export type {
 export {
   quotaWindowSchema,
   quotaStateSchema,
+  quotaLimitRowSchema,
+  quotaExtraUsageSchema,
   quotaFailureKindSchema,
   quotaProviderIdSchema,
   quotaSourceSchema,
@@ -199,6 +201,7 @@ export {
   stateFileContextSchema,
   stateFileQuotaSchema,
   stateFileQuotaWindowSchema,
+  stateFileQuotaLimitSchema,
   stateFileSessionSchema,
   stateFileWriterSchema,
 } from './stateFile';
@@ -209,6 +212,7 @@ export type {
   StateFileContext,
   StateFileQuota,
   StateFileQuotaWindow,
+  StateFileQuotaLimit,
   StateFileSession,
   StateFileWriter,
 } from '../stateFile';

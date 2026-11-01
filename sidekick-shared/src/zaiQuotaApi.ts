@@ -3,7 +3,12 @@ import os from 'os';
 import path from 'path';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import type { QuotaState } from './quota';
-import { FIVE_HOUR_WINDOW_MS, SEVEN_DAY_WINDOW_MS, withQuotaProjections } from './quota';
+import {
+  FIVE_HOUR_WINDOW_MS,
+  SEVEN_DAY_WINDOW_MS,
+  quotaSampleExpired,
+  withQuotaProjections,
+} from './quota';
 import type { ProviderQuotaState } from './providerQuota';
 
 const DEFAULT_ZAI_BASE_URL = 'https://api.z.ai/api/anthropic';
@@ -375,7 +380,9 @@ export async function resolveZaiQuota(
   }
 
   const cached = readSnapshot('zai', accountId);
-  if (cached) {
+  // Every window of the cached sample has reset since it was taken: it would
+  // only show old percentages with "resets now", so report the API failure.
+  if (cached && !quotaSampleExpired(cached)) {
     return enrichZaiQuota({
       ...cached,
       providerId: 'zai',

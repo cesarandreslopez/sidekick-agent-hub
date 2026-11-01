@@ -101,8 +101,13 @@ export function evaluateQuotaThresholds(
   memory: QuotaAlertMemory = {},
 ): QuotaThresholdEvaluation {
   if (!quota.available) return { alerts: [], memory };
-  const fiveHour = evaluateWindow('fiveHour', quota.fiveHour, config.fiveHour, memory.fiveHour);
-  const sevenDay = evaluateWindow('sevenDay', quota.sevenDay, config.sevenDay, memory.sevenDay);
+  // A window the plan does not have (Ultra's missing five-hour limit) never alerts.
+  const fiveHour = quota.fiveHour.absent
+    ? { alert: null, memory: memory.fiveHour ?? { resetsAt: '', level: 0 } }
+    : evaluateWindow('fiveHour', quota.fiveHour, config.fiveHour, memory.fiveHour);
+  const sevenDay = quota.sevenDay.absent
+    ? { alert: null, memory: memory.sevenDay ?? { resetsAt: '', level: 0 } }
+    : evaluateWindow('sevenDay', quota.sevenDay, config.sevenDay, memory.sevenDay);
   return {
     alerts: [fiveHour.alert, sevenDay.alert].filter(
       (alert): alert is QuotaThresholdAlert => alert !== null,

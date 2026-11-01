@@ -109,6 +109,51 @@ describe('writeStateFile', () => {
 });
 
 describe('state-file projections', () => {
+  it('marks an absent window and lists extra meters and the plan', () => {
+    expect(
+      quotaToStateFile(
+        {
+          fiveHour: { utilization: 0, resetsAt: '', absent: true },
+          sevenDay: { utilization: 17, resetsAt: '2026-11-07T06:00:00Z' },
+          available: true,
+          source: 'api',
+          capturedAt: NOW.toISOString(),
+          planLabel: 'Ultra',
+          limits: [
+            {
+              kind: 'weekly_all',
+              group: 'weekly',
+              label: '7-Day',
+              utilization: 17,
+              resetsAt: '2026-11-07T06:00:00Z',
+            },
+            {
+              kind: 'weekly_scoped',
+              group: 'weekly',
+              label: '7-Day (Fable)',
+              utilization: 3,
+              resetsAt: '2026-11-07T06:00:00Z',
+              scopeModel: 'Fable',
+            },
+          ],
+        },
+        NOW.getTime(),
+      ),
+    ).toMatchObject({
+      fiveHour: { utilization: 0, resetsAt: '', absent: true },
+      sevenDay: { utilization: 17, resetsAt: '2026-11-07T06:00:00Z' },
+      planLabel: 'Ultra',
+      extraLimits: [
+        {
+          kind: 'weekly_scoped',
+          label: '7-Day (Fable)',
+          utilization: 3,
+          resetsAt: '2026-11-07T06:00:00Z',
+        },
+      ],
+    });
+  });
+
   it('projects quota samples and billing blocks, dropping unavailable quota', () => {
     expect(quotaToStateFile(null)).toBeNull();
     expect(

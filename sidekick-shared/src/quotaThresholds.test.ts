@@ -20,6 +20,14 @@ function quota(
 }
 
 describe('evaluateQuotaThresholds', () => {
+  it('never alerts on a window the plan does not have', () => {
+    const result = evaluateQuotaThresholds(
+      quota(0, 95, { fiveHour: { utilization: 99, resetsAt: '', absent: true } }),
+    );
+    expect(result.alerts).toMatchObject([{ window: 'sevenDay', threshold: 90 }]);
+    expect(result.alerts.some((alert) => alert.window === 'fiveHour')).toBe(false);
+  });
+
   it('fires once per threshold on the rising edge', () => {
     let memory = {};
     let result = evaluateQuotaThresholds(quota(50, 10), DEFAULT_QUOTA_THRESHOLDS, memory);

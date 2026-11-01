@@ -13,6 +13,8 @@ import { z } from 'zod';
 import type {
   CodexResetCredit,
   CodexResetCreditsSnapshot,
+  QuotaExtraUsage,
+  QuotaLimitRow,
   QuotaWindow,
   QuotaState,
 } from '../quota';
@@ -26,7 +28,37 @@ import { QUOTA_PROVIDER_IDS, RUNTIME_QUOTA_PROVIDER_IDS } from '../providerIds';
 export const quotaWindowSchema = z.object({
   utilization: z.number(),
   resetsAt: z.string(),
+  absent: z.boolean().optional(),
+  windowMs: z.number().optional(),
 }) satisfies z.ZodType<QuotaWindow>;
+
+// ── QuotaLimitRow / QuotaExtraUsage ──
+
+export const quotaLimitRowSchema = z.object({
+  kind: z.string(),
+  group: z.string(),
+  label: z.string(),
+  utilization: z.number(),
+  resetsAt: z.string(),
+  windowMs: z.number().optional(),
+  projected: z.number().optional(),
+  scopeModel: z.string().optional(),
+  scopeSurface: z.string().optional(),
+  severity: z.string().optional(),
+  isActive: z.boolean().optional(),
+  allowancePercentOfWeekly: z.number().optional(),
+  usedPercentOfWeekly: z.number().optional(),
+}) satisfies z.ZodType<QuotaLimitRow>;
+
+export const quotaExtraUsageSchema = z.object({
+  enabled: z.boolean(),
+  monthlyLimit: z.number().nullable(),
+  usedCredits: z.number().nullable(),
+  utilization: z.number().nullable(),
+  currency: z.string().optional(),
+  decimalPlaces: z.number().optional(),
+  disabledReason: z.string().optional(),
+}) satisfies z.ZodType<QuotaExtraUsage>;
 
 // ── QuotaState ──
 
@@ -99,7 +131,10 @@ export const quotaStateSchema = z.object({
   credits: z.unknown().optional(),
   resetCredits: codexResetCreditsSnapshotSchema.optional(),
   planType: z.string().optional(),
+  planLabel: z.string().optional(),
   rateLimitReachedType: z.string().optional(),
+  limits: z.array(quotaLimitRowSchema).optional(),
+  extraUsage: quotaExtraUsageSchema.optional(),
 }) satisfies z.ZodType<QuotaState>;
 
 // ── PeakHoursState ──

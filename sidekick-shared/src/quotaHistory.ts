@@ -24,8 +24,9 @@ export interface QuotaHistorySample {
   runtimeProvider: QuotaHistoryRuntimeProvider;
   providerId: string;
   workspaceId: string;
-  fiveHour: { utilization: number; resetsAt: string };
-  sevenDay: { utilization: number; resetsAt: string };
+  /** `absent` marks a window the plan does not have (e.g. Ultra's five-hour limit). */
+  fiveHour: { utilization: number; resetsAt: string; absent?: boolean };
+  sevenDay: { utilization: number; resetsAt: string; absent?: boolean };
   available: boolean;
   error?: string;
   source?: 'session' | 'cache' | 'api' | 'statusline';
@@ -205,11 +206,28 @@ function pruneFileSync(filePath: string, retentionDays: number): { kept: number;
   return { kept: keptLines.length, pruned };
 }
 
+function historyWindowToQuota(window: QuotaHistorySample['fiveHour']): QuotaState['fiveHour'] {
+  return {
+    utilization: window.utilization,
+    resetsAt: window.resetsAt,
+    ...(window.absent ? { absent: true } : {}),
+  };
+}
+
+/**
+ * Project a quota window onto the history-sample shape, keeping the `absent`
+ * marker so summaries and the derived snapshot do not mistake "no such
+ * window" for "0% used".
+ */
+export function quotaHistoryWindow(window: QuotaState['fiveHour']): QuotaHistorySample['fiveHour'] {
+  return historyWindowToQuota(window);
+}
+
 function sampleToQuotaState(sample: QuotaHistorySample): QuotaState {
   const providerId = runtimeProviderToSnapshotProvider(sample.runtimeProvider);
   return {
-    fiveHour: { utilization: sample.fiveHour.utilization, resetsAt: sample.fiveHour.resetsAt },
-    sevenDay: { utilization: sample.sevenDay.utilization, resetsAt: sample.sevenDay.resetsAt },
+    fiveHour: historyWindowToQuota(sample.fiveHour),
+    sevenDay: historyWindowToQuota(sample.sevenDay),
     available: sample.available,
     error: sample.error,
     providerId,
@@ -394,12 +412,22 @@ export async function readQuotaHistoryDailyBuckets(
       let maxSeven = 0;
       let sumFive = 0;
       let sumSeven = 0;
+      // Averages count only samples where the window exists, so a plan without
+      // a five-hour limit does not drag the five-hour average toward zero.
+      let fiveCount = 0;
+      let sevenCount = 0;
       let anyUnavailable = false;
       for (const s of daySamples) {
-        maxFive = Math.max(maxFive, s.fiveHour.utilization);
-        maxSeven = Math.max(maxSeven, s.sevenDay.utilization);
-        sumFive += s.fiveHour.utilization;
-        sumSeven += s.sevenDay.utilization;
+        if (!s.fiveHour.absent) {
+          maxFive = Math.max(maxFive, s.fiveHour.utilization);
+          sumFive += s.fiveHour.utilization;
+          fiveCount += 1;
+        }
+        if (!s.sevenDay.absent) {
+          maxSeven = Math.max(maxSeven, s.sevenDay.utilization);
+          sumSeven += s.sevenDay.utilization;
+          sevenCount += 1;
+        }
         if (!s.available) anyUnavailable = true;
       }
       const n = daySamples.length;
@@ -408,8 +436,8 @@ export async function readQuotaHistoryDailyBuckets(
         samples: n,
         maxUtilizationFiveHour: maxFive,
         maxUtilizationSevenDay: maxSeven,
-        avgUtilizationFiveHour: Math.round((sumFive / n) * 100) / 100,
-        avgUtilizationSevenDay: Math.round((sumSeven / n) * 100) / 100,
+        avgUtilizationFiveHour: fiveCount ? Math.round((sumFive / fiveCount) * 100) / 100 : 0,
+        avgUtilizationSevenDay: sevenCount ? Math.round((sumSeven / sevenCount) * 100) / 100 : 0,
         anyUnavailable,
       });
     }

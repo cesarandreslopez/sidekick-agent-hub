@@ -350,3 +350,15 @@ export type { HandoffUrlIdentifiers } from './handoffUrl';
 // Tool categories across providers
 export { classifyTool, TOOL_CATEGORIES } from './toolCategory';
 export type { ClassifyToolOptions, ToolCategory } from './toolCategory';
+
+// Quota window helpers (pure; safe for webviews)
+export {
+  claudePlanLabel,
+  extraQuotaRows,
+  formatExtraUsage,
+  quotaWindowApplies,
+  quotaWindowHasData,
+  quotaWindowLabel,
+  quotaWindowShortLabel,
+} from './quota';
+export type { QuotaExtraUsage, QuotaLimitRow, QuotaWindow } from './quota';

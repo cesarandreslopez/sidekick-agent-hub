@@ -567,6 +567,57 @@ describe('resolveQuota', () => {
     ]);
   });
 
+  it('reports a months-old z.ai snapshot whose windows all reset as expired, not live', async () => {
+    const store = memoryStore({
+      'zai:default': sample({
+        source: 'api',
+        providerId: 'zai',
+        capturedAt: '2026-06-03T02:44:22.279Z',
+        fiveHour: { utilization: 1, resetsAt: '2026-06-03T05:06:24.689Z' },
+        sevenDay: { utilization: 1, resetsAt: '2026-06-08T02:08:34.998Z' },
+      }),
+    });
+    mockZaiApi.mockResolvedValue({
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+      available: false,
+      error: 'No z.ai credentials found.',
+      failureKind: 'auth',
+      providerId: 'zai',
+    });
+
+    const result = await resolveQuota({ providerId: 'zai', now: NOW, ...store });
+
+    expect(result.available).toBe(false);
+    expect(result.resolution).toBe('unavailable');
+    expect(result.error).toMatch(/from 2026-06-03 .*has expired/);
+  });
+
+  it('marks an absent five-hour window on a live Claude API answer and persists it', async () => {
+    const store = memoryStore();
+    const result = await resolveQuota({
+      providerId: 'claude-code',
+      now: NOW,
+      preferFresh: false,
+      resolveClaudeAccount: claudeAccount,
+      getClaudeAccessToken: async () => 'token',
+      fetchImpl: async () =>
+        okJson({
+          five_hour: null,
+          seven_day: { utilization: 17, resets_at: '2026-09-08T09:00:00Z' },
+        }),
+      ...store,
+    });
+
+    expect(result).toMatchObject({
+      resolution: 'api',
+      fiveHour: { absent: true },
+      sevenDay: { utilization: 17 },
+    });
+    expect(result.projectedFiveHour).toBeUndefined();
+    expect(store.writes[0].quota.fiveHour.absent).toBe(true);
+  });
+
   it('gives every caller the same answer from the same persisted store', async () => {
     // One fixture store, written the way the status line writes it.
     writeQuotaSnapshot('claude-code', 'claude-1', {

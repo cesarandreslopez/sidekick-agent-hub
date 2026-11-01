@@ -171,16 +171,25 @@ export interface QuotaFromStatuslineOptions {
   /** Capture time; defaults to now. */
   now?: Date;
   /**
-   * A previously known quota (typically the persisted snapshot). Windows the
-   * payload omits are carried over from it, since Claude Code drops a window
-   * from the document once its reset time has passed.
+   * A previously known quota (typically the persisted snapshot). A window the
+   * payload omits is carried over from it while the fallback window has not
+   * reset yet, or when the fallback marks it `absent` (the plan has no such
+   * window, e.g. Ultra's missing five-hour limit).
    */
   fallback?: QuotaState | null;
 }
 
+/**
+ * Claude Code leaves a window out of the document once its reset has passed,
+ * and always for a window the plan does not have (Ultra has no five-hour
+ * limit). A fallback is carried over only while it can still be current: an
+ * `absent` marker from an earlier API read, or a window that has not reset yet.
+ * An expired fallback would otherwise be re-saved as a fresh sample forever.
+ */
 function toWindow(
   live: ClaudeStatuslineRateLimitWindow | undefined,
   fallback: QuotaState['fiveHour'] | undefined,
+  nowMs: number,
 ): QuotaState['fiveHour'] {
   if (live) {
     return {
@@ -188,7 +197,10 @@ function toWindow(
       resetsAt: new Date(live.resetsAt * 1000).toISOString(),
     };
   }
-  return fallback ?? { utilization: 0, resetsAt: '' };
+  if (fallback?.absent) return { utilization: 0, resetsAt: '', absent: true };
+  const fallbackResetMs = fallback ? Date.parse(fallback.resetsAt) : NaN;
+  if (fallback && Number.isFinite(fallbackResetMs) && fallbackResetMs > nowMs) return fallback;
+  return { utilization: 0, resetsAt: '' };
 }
 
 /**
@@ -206,8 +218,8 @@ export function quotaFromStatuslinePayload(
   const now = options.now ?? new Date();
   const fallback = options.fallback ?? undefined;
   return {
-    fiveHour: toWindow(limits.fiveHour, fallback?.fiveHour),
-    sevenDay: toWindow(limits.sevenDay, fallback?.sevenDay),
+    fiveHour: toWindow(limits.fiveHour, fallback?.fiveHour, now.getTime()),
+    sevenDay: toWindow(limits.sevenDay, fallback?.sevenDay, now.getTime()),
     available: true,
     providerId: 'claude-code',
     source: 'statusline',

@@ -108,4 +108,40 @@ describe('quotaFromStatuslinePayload', () => {
     expect(quota?.fiveHour.utilization).toBe(5);
     expect(quota?.sevenDay).toEqual({ utilization: 60, resetsAt: '2026-02-05T00:00:00.000Z' });
   });
+
+  it('does not resurrect a fallback window that has already reset', () => {
+    const parsed = parseClaudeStatuslinePayload(
+      JSON.stringify({
+        rate_limits: { seven_day: { used_percentage: 17, resets_at: 1_770_000_000 } },
+      }),
+    )!;
+    const quota = quotaFromStatuslinePayload(parsed, {
+      now,
+      fallback: {
+        // A pre-reset five-hour sample: its window closed at 10:00, two hours ago.
+        fiveHour: { utilization: 3, resetsAt: '2026-02-01T10:00:00.000Z' },
+        sevenDay: { utilization: 1, resetsAt: '2026-02-05T00:00:00.000Z' },
+        available: true,
+      },
+    });
+    expect(quota?.fiveHour).toEqual({ utilization: 0, resetsAt: '' });
+    expect(quota?.sevenDay.utilization).toBe(17);
+  });
+
+  it('keeps an absent five-hour window absent (plans without a session limit)', () => {
+    const parsed = parseClaudeStatuslinePayload(
+      JSON.stringify({
+        rate_limits: { seven_day: { used_percentage: 17, resets_at: 1_770_000_000 } },
+      }),
+    )!;
+    const quota = quotaFromStatuslinePayload(parsed, {
+      now,
+      fallback: {
+        fiveHour: { utilization: 0, resetsAt: '', absent: true },
+        sevenDay: { utilization: 1, resetsAt: '2026-02-05T00:00:00.000Z' },
+        available: true,
+      },
+    });
+    expect(quota?.fiveHour).toEqual({ utilization: 0, resetsAt: '', absent: true });
+  });
 });

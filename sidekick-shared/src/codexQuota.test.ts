@@ -69,7 +69,7 @@ describe('codexQuota', () => {
       capturedAt: '2026-05-19T12:00:00Z',
       fiveHour: { utilization: 12, resetsAt: '' },
       sevenDay: { utilization: 34, resetsAt: '2030-03-17T17:46:40.000Z' },
-      fiveHourLabel: 'Primary',
+      fiveHourLabel: '5-Hour',
       sevenDayLabel: 'Secondary',
       planType: 'pro',
       rateLimitReachedType: 'workspace_member_usage_limit_reached',
@@ -99,6 +99,32 @@ describe('codexQuota', () => {
       projectedFiveHour: 67,
       projectedSevenDay: 82,
     });
+  });
+
+  it('names a weekly-only plan by its window length and marks the missing window absent', () => {
+    const quota = quotaFromCodexRateLimits(
+      {
+        limit_id: 'codex',
+        primary: {
+          used_percent: 37,
+          window_minutes: 10_080,
+          resets_at: Date.parse('2026-11-07T00:20:19Z') / 1000,
+        },
+        secondary: null,
+      },
+      'api',
+      '2026-11-01T02:59:06Z',
+    );
+
+    expect(quota).toMatchObject({
+      fiveHour: { utilization: 37, windowMs: 7 * 86_400_000 },
+      sevenDay: { utilization: 0, resetsAt: '', absent: true },
+      fiveHourLabel: 'Weekly',
+      sevenDayLabel: 'Secondary',
+    });
+    // Projected over the real seven-day window: ~1.1 days elapsed, 37% used.
+    expect(quota?.projectedFiveHour).toBe(200);
+    expect(quota?.projectedSevenDay).toBeUndefined();
   });
 
   it('uses 5-hour and 7-day projection defaults when Codex window lengths are missing', () => {
@@ -156,8 +182,8 @@ describe('codexQuota', () => {
       capturedAt: '2026-05-19T10:05:00Z',
       fiveHour: { utilization: 6 },
       sevenDay: { utilization: 1 },
-      fiveHourLabel: 'Primary',
-      sevenDayLabel: 'Secondary',
+      fiveHourLabel: '5-Hour',
+      sevenDayLabel: 'Weekly',
       credits: { hasCredits: true, unlimited: false, balance: '10.00' },
     });
   });

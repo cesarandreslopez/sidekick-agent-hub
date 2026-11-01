@@ -8,7 +8,7 @@
  */
 
 import { fetchQuota } from './quota';
-import type { QuotaState } from './quota';
+import type { ClaudePlanInfo, QuotaState } from './quota';
 import { onAccountsChanged, type AccountsChangedEvent } from './accountChanges';
 
 /** Disposable subscription handle. */
@@ -17,6 +17,11 @@ export interface Disposable {
 }
 
 /** Options for QuotaPoller construction. */
+/** Credential fields the poller reads when `getAccessToken` returns a record. */
+export interface QuotaPollerCredentials extends ClaudePlanInfo {
+  accessToken: string;
+}
+
 export interface QuotaPollerOptions {
   /** Polling interval when actively monitored (ms). Default: 60_000 (1 minute). */
   activeIntervalMs?: number;
@@ -24,8 +29,12 @@ export interface QuotaPollerOptions {
   idleIntervalMs?: number;
   /** Maximum backoff delay for retries (ms). Default: 120_000 (2 minutes). */
   maxBackoffMs?: number;
-  /** Returns the current access token. Called before each fetch. */
-  getAccessToken: () => Promise<string | null | undefined>;
+  /**
+   * Returns the current access token, or the credentials record itself so the
+   * poller can also stamp the subscription plan (`planLabel`, e.g. `Ultra`).
+   * Called before each fetch.
+   */
+  getAccessToken: () => Promise<string | QuotaPollerCredentials | null | undefined>;
   /** Optional cheap account-presence check performed before credential access. */
   hasAccount?: () => boolean | Promise<boolean>;
   /** Override the process-wide login/logout signal (primarily for embedded hosts/tests). */
@@ -56,7 +65,7 @@ export class QuotaPoller {
   private readonly activeIntervalMs: number;
   private readonly idleIntervalMs: number;
   private readonly maxBackoffMs: number;
-  private readonly getAccessToken: () => Promise<string | null | undefined>;
+  private readonly getAccessToken: QuotaPollerOptions['getAccessToken'];
   private readonly hasAccount?: () => boolean | Promise<boolean>;
   private readonly subscribeAccountsChanged: NonNullable<
     QuotaPollerOptions['subscribeAccountsChanged']
@@ -159,7 +168,8 @@ export class QuotaPoller {
         this.dormant = true;
         return;
       }
-      const token = await this.getAccessToken();
+      const credentials = await this.getAccessToken();
+      const token = typeof credentials === 'string' ? credentials : credentials?.accessToken;
       if (!token) {
         if (this.hasAccount) {
           // The account exists but its token was unreadable (locked keychain,
@@ -174,7 +184,9 @@ export class QuotaPoller {
         }
         return;
       }
-      const state = await fetchQuota(token);
+      const state = await fetchQuota(token, {
+        plan: typeof credentials === 'object' && credentials !== null ? credentials : null,
+      });
 
       if (state.available) {
         this.latest = state;

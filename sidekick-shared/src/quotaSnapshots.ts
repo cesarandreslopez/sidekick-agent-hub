@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigDir } from './paths';
 import { atomicWriteJsonSync, withFileLockSync } from './writers/atomic';
-import { classifyQuotaFreshness, type QuotaState } from './quota';
+import { classifyQuotaFreshness, extraQuotaRows, type QuotaState } from './quota';
 import type { AccountProviderId } from './accountRegistry';
 import { isAggregateCodexLimit } from './types/codex';
 
@@ -75,6 +75,33 @@ function windowResetMs(value: string): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+/**
+ * Rank two samples by one window's reset time. A later reset means a newer
+ * window, so it wins — except that an existing window which had already reset
+ * by the time the newer sample was captured is obsolete and always yields.
+ * Without that exception a pre-reset sample outranks every later sample whose
+ * window has not started yet (empty reset), and the snapshot freezes.
+ * Returns `undefined` when the reset times tie.
+ */
+function compareWindowResets(
+  existing: QuotaState['fiveHour'],
+  next: QuotaState['fiveHour'],
+  asOfMs: number,
+): boolean | undefined {
+  const existingReset = windowResetMs(existing.resetsAt);
+  const nextReset = windowResetMs(next.resetsAt);
+  if (existingReset === nextReset) return undefined;
+  if (existingReset > 0 && asOfMs > 0 && existingReset <= asOfMs) return false;
+  return existingReset > nextReset;
+}
+
+function windowPresenceChanged(existing: QuotaState, next: QuotaState): boolean {
+  return (
+    Boolean(existing.fiveHour.absent) !== Boolean(next.fiveHour.absent) ||
+    Boolean(existing.sevenDay.absent) !== Boolean(next.sevenDay.absent)
+  );
+}
+
 // Preserve the best-known same-window snapshot while still allowing lower
 // utilization after Codex advances to a newer reset window.
 function shouldKeepExistingSnapshot(existing: QuotaState, next: QuotaState): boolean {
@@ -87,20 +114,50 @@ function shouldKeepExistingSnapshot(existing: QuotaState, next: QuotaState): boo
   const nextAggregate = isAggregateCodexLimit(next.limitId);
   if (existingAggregate !== nextAggregate) return existingAggregate;
 
-  const existingPrimaryReset = windowResetMs(existing.fiveHour.resetsAt);
-  const nextPrimaryReset = windowResetMs(next.fiveHour.resetsAt);
-  if (existingPrimaryReset !== nextPrimaryReset) return existingPrimaryReset > nextPrimaryReset;
+  // The plan's window layout changed (a window appeared or disappeared): the
+  // reset times are not comparable, so the newer capture wins.
+  if (windowPresenceChanged(existing, next)) {
+    return snapshotTimeMs(existing) > snapshotTimeMs(next);
+  }
 
-  const existingSecondaryReset = windowResetMs(existing.sevenDay.resetsAt);
-  const nextSecondaryReset = windowResetMs(next.sevenDay.resetsAt);
-  if (existingSecondaryReset !== nextSecondaryReset)
-    return existingSecondaryReset > nextSecondaryReset;
+  const asOfMs = snapshotTimeMs(next);
+  const primary = compareWindowResets(existing.fiveHour, next.fiveHour, asOfMs);
+  if (primary !== undefined) return primary;
+
+  const secondary = compareWindowResets(existing.sevenDay, next.sevenDay, asOfMs);
+  if (secondary !== undefined) return secondary;
 
   const existingUtilization = existing.fiveHour.utilization + existing.sevenDay.utilization;
   const nextUtilization = next.fiveHour.utilization + next.sevenDay.utilization;
   if (existingUtilization !== nextUtilization) return existingUtilization > nextUtilization;
 
   return snapshotTimeMs(existing) > snapshotTimeMs(next);
+}
+
+/**
+ * Status-line and history samples only know the two headline windows. Keep
+ * the plan label, extra usage, and still-running extra meters (e.g. a Fable
+ * weekly cap) an earlier API sample recorded, so a fresh status-line write
+ * does not erase them from every snapshot reader.
+ */
+function carryApiOnlyFields(existing: QuotaState, next: QuotaState): QuotaState {
+  const merged: QuotaState = { ...next };
+  if (merged.planLabel === undefined && existing.planLabel !== undefined) {
+    merged.planLabel = existing.planLabel;
+  }
+  if (merged.planType === undefined && existing.planType !== undefined) {
+    merged.planType = existing.planType;
+  }
+  if (merged.extraUsage === undefined && existing.extraUsage !== undefined) {
+    merged.extraUsage = existing.extraUsage;
+  }
+  if (merged.limits === undefined && existing.limits !== undefined) {
+    const asOfMs = snapshotTimeMs(next);
+    // Headline meters duplicate the fresher windows on `next`; carry only the extras.
+    const running = extraQuotaRows(existing).filter((row) => windowResetMs(row.resetsAt) > asOfMs);
+    if (running.length > 0) merged.limits = running;
+  }
+  return merged;
 }
 
 export function writeQuotaSnapshot(
@@ -133,7 +190,11 @@ export function writeQuotaSnapshot(
 
     if (index >= 0 && shouldKeepExistingSnapshot(store.snapshots[index].quota, snapshot)) return;
 
-    const record: QuotaSnapshotRecord = { providerId, accountId, quota: snapshot };
+    const record: QuotaSnapshotRecord = {
+      providerId,
+      accountId,
+      quota: existingQuota ? carryApiOnlyFields(existingQuota, snapshot) : snapshot,
+    };
     if (index >= 0) store.snapshots[index] = record;
     else store.snapshots.push(record);
 

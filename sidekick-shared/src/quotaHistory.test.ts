@@ -158,6 +158,47 @@ describe('quotaHistory', { timeout: 30_000 }, () => {
     expect(bucket.anyUnavailable).toBe(false);
   });
 
+  it('averages only samples where the window exists and keeps the absent marker', async () => {
+    const day = '2026-05-19';
+    const samples = [
+      { five: 40, absent: false },
+      { five: 0, absent: true },
+      { five: 0, absent: true },
+    ];
+    let cursor = 0;
+    for (const { five, absent } of samples) {
+      const ts = `${day}T1${cursor}:00:00.000Z`;
+      await appendQuotaHistorySample(
+        makeSample({
+          timestamp: ts,
+          fiveHour: absent
+            ? { utilization: 0, resetsAt: '', absent: true }
+            : { utilization: five, resetsAt: ts },
+          sevenDay: { utilization: 20, resetsAt: '2026-05-26T12:00:00.000Z' },
+        }),
+        { minIntervalMs: 0 },
+      );
+      cursor += 1;
+    }
+
+    const [bucket] = await readQuotaHistoryDailyBuckets({
+      workspaceId: WORKSPACE,
+      provider: 'claude',
+      from: `${day}T09:00:00.000Z`,
+      to: `${day}T15:00:00.000Z`,
+    });
+    expect(bucket.avgUtilizationFiveHour).toBe(40);
+    expect(bucket.avgUtilizationSevenDay).toBe(20);
+
+    const range = await readQuotaHistoryRange({
+      workspaceId: WORKSPACE,
+      provider: 'claude',
+      from: `${day}T09:00:00.000Z`,
+      to: `${day}T15:00:00.000Z`,
+    });
+    expect(range.at(-1)?.fiveHour).toEqual({ utilization: 0, resetsAt: '', absent: true });
+  });
+
   it('emits empty buckets for days with no samples', async () => {
     await appendQuotaHistorySample(
       makeSample({

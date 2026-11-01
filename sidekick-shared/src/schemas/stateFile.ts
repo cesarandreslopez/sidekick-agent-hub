@@ -15,6 +15,7 @@ import type {
   StateFileBillingBlock,
   StateFileContext,
   StateFileQuota,
+  StateFileQuotaLimit,
   StateFileQuotaWindow,
   StateFileSession,
   StateFileWriter,
@@ -29,7 +30,15 @@ export const stateFileWriterSchema = z.enum([
 export const stateFileQuotaWindowSchema = z.object({
   utilization: z.number(),
   resetsAt: z.string(),
+  absent: z.boolean().optional(),
 }) satisfies z.ZodType<StateFileQuotaWindow>;
+
+export const stateFileQuotaLimitSchema = z.object({
+  kind: z.string(),
+  label: z.string(),
+  utilization: z.number(),
+  resetsAt: z.string(),
+}) satisfies z.ZodType<StateFileQuotaLimit>;
 
 export const stateFileQuotaSchema = z.object({
   fiveHour: stateFileQuotaWindowSchema,
@@ -39,6 +48,8 @@ export const stateFileQuotaSchema = z.object({
   capturedAt: z.string().nullable(),
   ageMs: z.number().nullable(),
   freshness: z.enum(['fresh', 'aging', 'stale']).nullable(),
+  planLabel: z.string().optional(),
+  extraLimits: z.array(stateFileQuotaLimitSchema).optional(),
 }) satisfies z.ZodType<StateFileQuota>;
 
 export const stateFileAccountSchema = z.object({

@@ -128,6 +128,7 @@ export type {
   StateFileContext,
   StateFileQuota,
   StateFileQuotaWindow,
+  StateFileQuotaLimit,
   StateFileSession,
   StateFileWriter,
   WriteStateFileOptions,
@@ -1059,13 +1060,26 @@ export {
   FIVE_HOUR_WINDOW_MS,
   QUOTA_PROVIDER_IDS,
   SEVEN_DAY_WINDOW_MS,
+  claudePlanLabel,
+  extraQuotaRows,
   fetchQuota,
+  formatExtraUsage,
   projectQuotaWindow,
+  quotaSampleExpired,
+  quotaStateFromClaudeUsagePayload,
+  quotaWindowApplies,
+  quotaWindowHasData,
+  quotaWindowLabel,
+  quotaWindowShortLabel,
+  withClaudePlan,
   withQuotaProjections,
 } from './quota';
 export type {
+  ClaudePlanInfo,
   CodexResetCredit,
   CodexResetCreditsSnapshot,
+  QuotaExtraUsage,
+  QuotaLimitRow,
   QuotaProjectionInput,
   QuotaProviderId,
   QuotaWindow,
@@ -1074,7 +1088,7 @@ export type {
 export { describeQuotaFailure } from './quotaPresentation';
 export type { QuotaFailureDescriptor } from './quotaPresentation';
 export { QuotaPoller } from './quotaPoller';
-export type { QuotaPollerOptions } from './quotaPoller';
+export type { QuotaPollerCredentials, QuotaPollerOptions } from './quotaPoller';
 export { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 export type { QuotaSnapshotRecord } from './quotaSnapshots';
 export { resolveQuota } from './quotaResolver';
@@ -1118,6 +1132,7 @@ export {
   readQuotaHistoryDailyBuckets,
   pruneQuotaHistory,
   getWorkspaceIdFromPath,
+  quotaHistoryWindow,
 } from './quotaHistory';
 export type {
   QuotaHistorySample,
@@ -1279,6 +1294,8 @@ export {
 export {
   quotaWindowSchema,
   quotaStateSchema,
+  quotaLimitRowSchema,
+  quotaExtraUsageSchema,
   quotaFailureKindSchema,
   quotaProviderIdSchema,
   quotaSourceSchema,

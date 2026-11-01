@@ -350,7 +350,7 @@ export class MultiProviderQuotaService implements Disposable {
       const creds = await this.readClaudeCredentials();
       if (!creds) {
         this.handleUnavailableState(
-          makeUnavailableClaudeState('Renew your Claude Max OAuth to view quota', 'auth'),
+          makeUnavailableClaudeState('Renew your Claude login to view quota', 'auth'),
         );
         return;
       }

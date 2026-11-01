@@ -31,8 +31,16 @@ export const quotaHistorySampleSchema = z.object({
   runtimeProvider: quotaHistoryRuntimeProviderSchema,
   providerId: z.string(),
   workspaceId: z.string(),
-  fiveHour: z.object({ utilization: z.number(), resetsAt: z.string() }),
-  sevenDay: z.object({ utilization: z.number(), resetsAt: z.string() }),
+  fiveHour: z.object({
+    utilization: z.number(),
+    resetsAt: z.string(),
+    absent: z.boolean().optional(),
+  }),
+  sevenDay: z.object({
+    utilization: z.number(),
+    resetsAt: z.string(),
+    absent: z.boolean().optional(),
+  }),
   available: z.boolean(),
   error: z.string().optional(),
   source: z.enum(['session', 'cache', 'api', 'statusline']).optional(),

@@ -16,7 +16,7 @@
 
 import * as fs from 'fs';
 import { getGlobalDataPath } from './paths';
-import { classifyQuotaFreshness } from './quota';
+import { classifyQuotaFreshness, extraQuotaRows } from './quota';
 import type { QuotaState } from './quota';
 import type { BillingBlock } from './usage/billingBlocks';
 import { atomicWriteJsonSync } from './writers/atomic';
@@ -31,6 +31,21 @@ export interface StateFileQuotaWindow {
   utilization: number;
   /** ISO timestamp when the window resets; empty when unknown. */
   resetsAt: string;
+  /**
+   * Present (true) only when the plan has no such window — e.g. Claude Ultra
+   * has no five-hour limit. `utilization`/`resetsAt` are then 0/''.
+   */
+  absent?: boolean;
+}
+
+/** An extra usage meter beyond the two headline windows, e.g. a Fable weekly cap. */
+export interface StateFileQuotaLimit {
+  /** Server meter kind, e.g. `weekly_scoped`. */
+  kind: string;
+  /** Display label, e.g. `7-Day (Fable)`. */
+  label: string;
+  utilization: number;
+  resetsAt: string;
 }
 
 export interface StateFileQuota {
@@ -43,6 +58,10 @@ export interface StateFileQuota {
   capturedAt: string | null;
   ageMs: number | null;
   freshness: 'fresh' | 'aging' | 'stale' | null;
+  /** Subscription plan name when known, e.g. `Ultra`. Omitted when unknown. */
+  planLabel?: string;
+  /** Extra meters (per-model weekly caps and similar). Omitted when there are none. */
+  extraLimits?: StateFileQuotaLimit[];
 }
 
 export interface StateFileAccount {
@@ -195,14 +214,30 @@ export function quotaToStateFile(
       freshness ??= classifyQuotaFreshness(ageMs);
     }
   }
+  const extraLimits = extraQuotaRows(quota).map((row) => ({
+    kind: row.kind,
+    label: row.label,
+    utilization: row.utilization,
+    resetsAt: row.resetsAt,
+  }));
   return {
-    fiveHour: { utilization: quota.fiveHour.utilization, resetsAt: quota.fiveHour.resetsAt },
-    sevenDay: { utilization: quota.sevenDay.utilization, resetsAt: quota.sevenDay.resetsAt },
+    fiveHour: stateFileWindow(quota.fiveHour),
+    sevenDay: stateFileWindow(quota.sevenDay),
     source: quota.source ?? null,
     capturedSource: quota.capturedSource ?? null,
     capturedAt: quota.capturedAt ?? null,
     ageMs,
     freshness,
+    ...(quota.planLabel ? { planLabel: quota.planLabel } : {}),
+    ...(extraLimits.length > 0 ? { extraLimits } : {}),
+  };
+}
+
+function stateFileWindow(window: QuotaState['fiveHour']): StateFileQuotaWindow {
+  return {
+    utilization: window.utilization,
+    resetsAt: window.resetsAt,
+    ...(window.absent ? { absent: true } : {}),
   };
 }
 

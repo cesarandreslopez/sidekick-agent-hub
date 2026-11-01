@@ -31,8 +31,14 @@ import {
 import { readClaudeMaxCredentials } from './credentials';
 import type { ProviderQuotaState } from './providerQuota';
 import type { CodexProvider } from './providers/codex';
-import { classifyQuotaFreshness, fetchQuota, withQuotaProjections } from './quota';
-import type { QuotaState } from './quota';
+import {
+  classifyQuotaFreshness,
+  fetchQuota,
+  formatQuotaAge,
+  quotaSampleExpired,
+  withQuotaProjections,
+} from './quota';
+import type { ClaudePlanInfo, QuotaState } from './quota';
 import { describeQuotaFailure } from './quotaPresentation';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import type { QuotaSnapshotProviderId } from './quotaSnapshots';
@@ -153,9 +159,20 @@ function resolveIdentity(options: ResolveQuotaOptions): ResolvedIdentity {
   }
 }
 
-async function defaultClaudeAccessToken(): Promise<string | null> {
+/** Token plus the plan facts stored beside it (the plan label needs no extra read). */
+async function claudeTokenAndPlan(
+  options: ResolveQuotaOptions,
+): Promise<{ token: string | null; plan: ClaudePlanInfo | null }> {
+  if (options.getClaudeAccessToken) {
+    return { token: await options.getClaudeAccessToken(), plan: null };
+  }
   const credentials = await readClaudeMaxCredentials();
-  return credentials?.accessToken ?? null;
+  return {
+    token: credentials?.accessToken ?? null,
+    plan: credentials
+      ? { subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier }
+      : null,
+  };
 }
 
 function zeroWindows(): Pick<QuotaState, 'fiveHour' | 'sevenDay'> {
@@ -185,7 +202,7 @@ async function fetchFromApi(
 ): Promise<QuotaState> {
   switch (options.providerId) {
     case 'claude-code': {
-      const token = await (options.getClaudeAccessToken ?? defaultClaudeAccessToken)();
+      const { token, plan } = await claudeTokenAndPlan(options);
       if (!token) {
         return {
           ...zeroWindows(),
@@ -197,7 +214,7 @@ async function fetchFromApi(
           capturedAt,
         };
       }
-      const state = await fetchQuota(token, { fetchImpl: options.fetchImpl });
+      const state = await fetchQuota(token, { fetchImpl: options.fetchImpl, plan });
       return { ...state, providerId: 'claude-code', source: 'api', capturedAt };
     }
     case 'codex':
@@ -291,7 +308,10 @@ export async function resolveQuota<T extends QuotaResolveProviderId>(
   const stored = identity.accountId
     ? readSnapshot(snapshotProviderId(providerId), identity.accountId, now)
     : null;
-  const snapshot = stored?.available ? stored : null;
+  // A sample whose every window has reset since says nothing about current
+  // usage; it is reported as expired instead of being shown as live numbers.
+  const storedExpired = Boolean(stored?.available && quotaSampleExpired(stored, now.getTime()));
+  const snapshot = stored?.available && !storedExpired ? stored : null;
 
   if (preferFresh && snapshot && snapshot.freshness === 'fresh') {
     return finish(snapshot, 'snapshot-fresh');
@@ -343,6 +363,13 @@ export async function resolveQuota<T extends QuotaResolveProviderId>(
     return apiState ? { ...fallback, failure: describeQuotaFailure(apiState) } : fallback;
   }
 
+  if (storedExpired && stored) {
+    const expired = unavailableState(providerId, expiredSampleMessage(stored, now), capturedAt);
+    return apiState
+      ? { ...finish(expired, 'unavailable'), failure: describeQuotaFailure(apiState) }
+      : finish(expired, 'unavailable');
+  }
+
   return finish(
     apiState ??
       unavailableState(
@@ -354,4 +381,12 @@ export async function resolveQuota<T extends QuotaResolveProviderId>(
       ),
     'unavailable',
   );
+}
+
+function expiredSampleMessage(stored: QuotaState, now: Date): string {
+  const capturedMs = stored.capturedAt ? Date.parse(stored.capturedAt) : NaN;
+  const when = Number.isFinite(capturedMs)
+    ? ` from ${new Date(capturedMs).toISOString().slice(0, 10)} (${formatQuotaAge(now.getTime() - capturedMs)})`
+    : '';
+  return `The last quota sample${when} has expired: every window has reset since. No current data.`;
 }

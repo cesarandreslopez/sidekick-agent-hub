@@ -150,6 +150,115 @@ describe('quotaSnapshots', { timeout: 30_000 }, () => {
     });
   });
 
+  it('replaces a pre-change Claude sample once the five-hour window disappears', () => {
+    // The real freeze: an Ultra account's last pre-rollout sample (5h reset in
+    // the past) outranked every later sample, whose five-hour window is gone.
+    writeQuotaSnapshot('claude-code', 'claude-1', {
+      fiveHour: { utilization: 3, resetsAt: '2026-10-31T15:50:00.132852+00:00' },
+      sevenDay: { utilization: 1, resetsAt: '2026-11-07T06:00:00.132877+00:00' },
+      available: true,
+      providerId: 'claude-code',
+      source: 'api',
+      capturedAt: '2026-10-31T13:51:33.774Z',
+    });
+    writeQuotaSnapshot('claude-code', 'claude-1', {
+      fiveHour: { utilization: 0, resetsAt: '', absent: true },
+      sevenDay: { utilization: 17, resetsAt: '2026-11-07T06:00:00.212680+00:00' },
+      available: true,
+      providerId: 'claude-code',
+      source: 'api',
+      capturedAt: '2026-11-01T03:10:06.000Z',
+    });
+
+    expect(readQuotaSnapshot('claude-code', 'claude-1')).toMatchObject({
+      capturedAt: '2026-11-01T03:10:06.000Z',
+      fiveHour: { absent: true },
+      sevenDay: { utilization: 17 },
+    });
+  });
+
+  it('lets a newer sample replace one whose window had already reset', () => {
+    writeQuotaSnapshot('claude-code', 'claude-1', {
+      fiveHour: { utilization: 60, resetsAt: '2026-10-30T15:00:00Z' },
+      sevenDay: { utilization: 40, resetsAt: '2026-11-03T00:00:00Z' },
+      available: true,
+      providerId: 'claude-code',
+      source: 'api',
+      capturedAt: '2026-10-30T14:00:00Z',
+    });
+    // The five-hour window closed and no new one has started yet.
+    writeQuotaSnapshot('claude-code', 'claude-1', {
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 40, resetsAt: '2026-11-03T00:00:00Z' },
+      available: true,
+      providerId: 'claude-code',
+      source: 'api',
+      capturedAt: '2026-10-30T16:00:00Z',
+    });
+
+    expect(readQuotaSnapshot('claude-code', 'claude-1')).toMatchObject({
+      capturedAt: '2026-10-30T16:00:00Z',
+      fiveHour: { utilization: 0, resetsAt: '' },
+    });
+  });
+
+  it('keeps the plan label and running extra meters when a status-line sample replaces an API one', () => {
+    writeQuotaSnapshot('claude-code', 'claude-1', {
+      fiveHour: { utilization: 0, resetsAt: '', absent: true },
+      sevenDay: { utilization: 17, resetsAt: '2026-11-07T06:00:00Z' },
+      available: true,
+      providerId: 'claude-code',
+      source: 'api',
+      capturedAt: '2026-11-01T03:00:00Z',
+      planType: 'max',
+      planLabel: 'Ultra',
+      extraUsage: { enabled: false, monthlyLimit: 20000, usedCredits: 0, utilization: 0 },
+      limits: [
+        {
+          kind: 'weekly_all',
+          group: 'weekly',
+          label: '7-Day',
+          utilization: 17,
+          resetsAt: '2026-11-07T06:00:00Z',
+        },
+        {
+          kind: 'weekly_scoped',
+          group: 'weekly',
+          label: '7-Day (Fable)',
+          utilization: 2,
+          resetsAt: '2026-11-07T06:00:00Z',
+          scopeModel: 'Fable',
+        },
+        {
+          kind: 'weekly_scoped',
+          group: 'weekly',
+          label: '7-Day (Old)',
+          utilization: 9,
+          resetsAt: '2026-10-31T00:00:00Z',
+        },
+      ],
+    });
+    writeQuotaSnapshot('claude-code', 'claude-1', {
+      fiveHour: { utilization: 0, resetsAt: '', absent: true },
+      sevenDay: { utilization: 18, resetsAt: '2026-11-07T06:00:00Z' },
+      available: true,
+      providerId: 'claude-code',
+      source: 'statusline',
+      capturedAt: '2026-11-01T03:05:00Z',
+    });
+
+    const cached = readQuotaSnapshot('claude-code', 'claude-1');
+    expect(cached).toMatchObject({
+      capturedAt: '2026-11-01T03:05:00Z',
+      sevenDay: { utilization: 18 },
+      planLabel: 'Ultra',
+      planType: 'max',
+      extraUsage: { monthlyLimit: 20000 },
+    });
+    // Only the still-running extra meter is carried; the headline row is not.
+    expect(cached?.limits?.map((row) => row.label)).toEqual(['7-Day (Fable)']);
+  });
+
   it('lets an aggregate codex snapshot replace a model-specific one with a later window', () => {
     // A per-model family at 0% whose window resets later would normally be "kept".
     writeQuotaSnapshot('codex', 'codex-1', {

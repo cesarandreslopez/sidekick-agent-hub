@@ -6,10 +6,20 @@ export type {
 } from '../accountStatus';
 export { readQuotaSnapshot, writeQuotaSnapshot } from '../quotaSnapshots';
 export type { QuotaSnapshotProviderId } from '../quotaSnapshots';
-export { appendQuotaHistorySample, getWorkspaceIdFromPath } from '../quotaHistory';
+export {
+  appendQuotaHistorySample,
+  getWorkspaceIdFromPath,
+  quotaHistoryWindow,
+} from '../quotaHistory';
 export type { QuotaHistorySample } from '../quotaHistory';
-export { classifyQuotaFreshness, formatQuotaAge } from '../quota';
-export type { QuotaFreshness, QuotaState } from '../quota';
+export {
+  classifyQuotaFreshness,
+  formatQuotaAge,
+  quotaWindowApplies,
+  quotaWindowHasData,
+  quotaWindowShortLabel,
+} from '../quota';
+export type { QuotaFreshness, QuotaState, QuotaWindow } from '../quota';
 export { BurnRateCalculator, estimateTimeToQuota } from './BurnRateCalculator';
 export { formatStatusline, selectStatuslineAccount } from './formatter';
 export type { StatuslineInput, StatuslineSelection } from './formatter';
@@ -38,6 +48,7 @@ export type {
   StateFileBillingBlock,
   StateFileContext,
   StateFileQuota,
+  StateFileQuotaLimit,
   StateFileQuotaWindow,
   StateFileSession,
   StateFileWriter,

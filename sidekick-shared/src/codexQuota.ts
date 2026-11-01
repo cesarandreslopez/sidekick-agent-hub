@@ -7,7 +7,12 @@ import {
 } from './codexProfiles';
 import { readQuotaSnapshot, writeQuotaSnapshot } from './quotaSnapshots';
 import type { CodexResetCreditsSnapshot, QuotaState } from './quota';
-import { FIVE_HOUR_WINDOW_MS, SEVEN_DAY_WINDOW_MS, withQuotaProjections } from './quota';
+import {
+  FIVE_HOUR_WINDOW_MS,
+  SEVEN_DAY_WINDOW_MS,
+  quotaWindowLabel,
+  withQuotaProjections,
+} from './quota';
 import { CodexProvider } from './providers/codex';
 import { walkRolloutFiles } from './providers/rolloutWalker';
 import type { ProviderQuotaState } from './providerQuota';
@@ -172,6 +177,12 @@ function isPreferredQuotaHit(candidate: RolloutQuotaHit, current: RolloutQuotaHi
 
 function normalizePercent(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function reportedWindowMs(value: number | null | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value * 60_000
+    : undefined;
 }
 
 function windowMinutesToMs(value: number | null | undefined, fallbackMs: number): number {
@@ -353,28 +364,36 @@ export function quotaFromCodexRateLimits(
   const primary = rateLimits?.primary;
   const secondary = rateLimits?.secondary;
   if (!primary && !secondary) return null;
+  const primaryMs = reportedWindowMs(primary?.window_minutes);
+  const secondaryMs = reportedWindowMs(secondary?.window_minutes);
 
   return withQuotaProjections(
     {
+      // A plan can report one window only (e.g. a weekly primary with no
+      // secondary); the missing one is marked `absent` rather than shown as 0%.
       fiveHour: primary
         ? {
             utilization: normalizePercent(primary.used_percent),
             resetsAt: timestampToIso(primary.resets_at),
+            ...(primaryMs !== undefined ? { windowMs: primaryMs } : {}),
           }
-        : { utilization: 0, resetsAt: '' },
+        : { utilization: 0, resetsAt: '', absent: true },
       sevenDay: secondary
         ? {
             utilization: normalizePercent(secondary.used_percent),
             resetsAt: timestampToIso(secondary.resets_at),
+            ...(secondaryMs !== undefined ? { windowMs: secondaryMs } : {}),
           }
-        : { utilization: 0, resetsAt: '' },
+        : { utilization: 0, resetsAt: '', absent: true },
       available: true,
       providerId: 'codex',
       source,
       capturedAt,
       stale: source === 'cache',
-      fiveHourLabel: 'Primary',
-      sevenDayLabel: 'Secondary',
+      // Name each window by its reported length (`5-Hour`, `Weekly`), falling
+      // back to the positional names when the length is not reported.
+      fiveHourLabel: quotaWindowLabel(primaryMs, 'Primary'),
+      sevenDayLabel: quotaWindowLabel(secondaryMs, 'Secondary'),
       limitId: rateLimits?.limit_id,
       limitName: rateLimits?.limit_name ?? undefined,
       credits: rateLimits?.credits,
