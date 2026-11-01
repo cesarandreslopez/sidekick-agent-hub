@@ -1,3 +1,4 @@
+import { setOwnValue } from './ownKey';
 import {
   _getModelContextIds,
   _setImportedResolvedContextWindows,
@@ -63,13 +64,13 @@ export function exportResolvedModelCatalog(ids?: readonly string[]): ResolvedMod
   const selectedIds = normalizedIds(ids);
   for (const id of selectedIds) {
     const canonicalId = resolveModelAlias(id);
-    models[id] = {
+    setOwnValue(models, id, {
       id,
       canonicalId,
       contextWindow: resolveModelContextWindow(id),
       // Registered prices are this realm's local configuration, never exported.
       pricing: resolveModelPricing(id, { includeRegistered: false }),
-    };
+    });
   }
 
   const selectedCanonicalIds = new Set(
@@ -123,8 +124,8 @@ export function importResolvedModelCatalog(snapshot: unknown): ImportResolvedMod
     }
     for (const id of new Set([normalizedKey, entry.id.trim().toLowerCase(), canonicalId])) {
       if (!id) continue;
-      if (contextResolved) contexts[id] = context;
-      if (pricingResolved) prices[id] = pricing;
+      if (contextResolved) setOwnValue(contexts, id, context);
+      if (pricingResolved) setOwnValue(prices, id, pricing);
     }
     imported++;
   }

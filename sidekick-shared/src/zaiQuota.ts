@@ -20,6 +20,7 @@
  * see `ZaiQuotaWatcher` for the bundled watcher.
  */
 import type { QuotaState, QuotaWindow } from './quota';
+import { ownValue } from './ownKey';
 
 // ── Tier budgets ──
 
@@ -384,7 +385,7 @@ export function parseZaiQuotaError(error: {
 }): ZaiQuotaError | null {
   if (!error) return null;
   const code = String(error.code ?? '');
-  const kind = ZAI_ERROR_CODES[code];
+  const kind = ownValue(ZAI_ERROR_CODES, code);
   if (!kind) return null;
 
   const message = error.message ?? '';

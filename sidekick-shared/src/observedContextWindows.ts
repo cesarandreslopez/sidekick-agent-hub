@@ -34,6 +34,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
 import { _setObservedContextWindows, _getObservedContextWindows } from './modelContext';
+import { setOwnValue } from './ownKey';
 import { getConfigDir } from './paths';
 import { updateJsonStoreAtomic } from './writers/atomic';
 
@@ -110,7 +111,7 @@ function toOverrideMap(
     if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) continue;
     const observedAt = typeof entry.observedAt === 'string' ? Date.parse(entry.observedAt) : NaN;
     if (Number.isFinite(observedAt) && now - observedAt > OBSERVED_CONTEXT_WINDOW_TTL_MS) continue;
-    out[modelId] = window;
+    setOwnValue(out, modelId, window);
   }
   return out;
 }

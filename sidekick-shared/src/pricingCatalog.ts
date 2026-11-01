@@ -22,6 +22,7 @@ import * as path from 'node:path';
 
 import { _setCatalogContextWindows } from './modelContext';
 import { _setPricingOverrides, getPricingCatalogInfo, type ModelPricing } from './modelInfo';
+import { setOwnValue } from './ownKey';
 import { getConfigDir } from './paths';
 import { atomicWriteJson } from './writers/atomic';
 
@@ -215,7 +216,7 @@ export function normalizeLiteLlmCatalog(raw: unknown): Record<string, ModelPrici
 
     // Catalog keys use both `provider/model` and bare `model` forms. Record both
     // the raw key and the bare-model form so lookups work regardless of caller.
-    out[key] = pricing;
+    setOwnValue(out, key, pricing);
     const bare = stripProviderPrefix(key);
     if (bare && bare !== key && !out[bare]) {
       out[bare] = pricing;
@@ -254,7 +255,7 @@ export function normalizeLiteLlmContextWindows(raw: unknown): Record<string, num
     const window = (entry as LiteLlmEntry).max_input_tokens;
     if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) continue;
 
-    out[key] = window;
+    setOwnValue(out, key, window);
 
     const bare = stripProviderPrefix(key);
     if (bare && bare !== key) {

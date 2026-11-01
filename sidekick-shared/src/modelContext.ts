@@ -29,6 +29,7 @@
  */
 
 import { resolveModelAlias } from './modelAliases';
+import { ownValue, setOwnValue } from './ownKey';
 
 /** Known model context window sizes (in tokens); current models verified 2026-09-05. */
 const MODEL_CONTEXT_SIZES: Record<string, number> = {
@@ -175,7 +176,7 @@ function normalizeOverrides(overrides: Record<string, number>): Record<string, n
   const out: Record<string, number> = {};
   for (const [key, value] of Object.entries(overrides)) {
     if (!Number.isFinite(value) || value <= 0) continue;
-    out[key.trim().toLowerCase()] = value;
+    setOwnValue(out, key.trim().toLowerCase(), value);
   }
   return out;
 }
@@ -254,7 +255,7 @@ export function _getModelContextIds(): string[] {
 
 /** Exact match against one table. */
 function exactWindow(table: Record<string, number>, modelId: string): number | null {
-  const hit = table[modelId];
+  const hit = ownValue(table, modelId);
   return hit === undefined ? null : hit;
 }
 
@@ -319,7 +320,7 @@ export function resolveModelContextWindow(modelId?: string): ResolvedModelContex
   // Imported resolutions rank below local observed data: a window this realm
   // saw first-hand is fresher than a snapshot transferred from another realm.
   if (!observedExact) {
-    const imported = importedTable[stripped] ?? importedTable[canonicalModelId];
+    const imported = ownValue(importedTable, stripped) ?? ownValue(importedTable, canonicalModelId);
     if (imported) {
       return { ...imported, modelId: rawModelId, canonicalModelId };
     }

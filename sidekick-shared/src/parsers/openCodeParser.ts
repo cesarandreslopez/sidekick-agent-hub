@@ -14,6 +14,7 @@
 import type { SessionEvent } from '../types/sessionEvent';
 import type { OpenCodeMessage, OpenCodePart, DbMessage, DbPart } from '../types/opencode';
 import { normalizeProviderUsage, type NormalizedUsage } from '../usageNormalization';
+import { ownValue } from '../ownKey';
 
 /**
  * OpenCode → Claude Code tool name mapping.
@@ -50,7 +51,7 @@ const TOOL_NAME_MAP: Record<string, string> = {
 export function normalizeToolName(name: string): string {
   if (!name) return name;
   // Check mapping (case-insensitive lookup via lowercase key)
-  const mapped = TOOL_NAME_MAP[name.toLowerCase()];
+  const mapped = ownValue(TOOL_NAME_MAP, name.toLowerCase());
   if (mapped) return mapped;
   // Already PascalCase (starts with uppercase)? Pass through.
   if (name[0] >= 'A' && name[0] <= 'Z') return name;

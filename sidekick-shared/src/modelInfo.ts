@@ -24,6 +24,7 @@
 
 import { getModelContextWindowSize } from './modelContext';
 import { resolveModelAlias } from './modelAliases';
+import { ownValue } from './ownKey';
 import type { ModelProviderId } from './providerIds';
 import type { PricingProvenance } from './usageNormalization';
 
@@ -1322,11 +1323,11 @@ export function resolveModelPricing(
   });
   if (registered && !registered.entry.onlyIfMissing) return registeredResult(registered);
 
-  const imported = importedTable[rawId] ?? importedTable[aliasId];
+  const imported = ownValue(importedTable, rawId) ?? ownValue(importedTable, aliasId);
   if (imported) return { ...imported, modelId, canonicalModelId: aliasId };
 
   for (const id of candidateIds) {
-    const exactOverride = overrideTable[id];
+    const exactOverride = ownValue(overrideTable, id);
     if (exactOverride) {
       return {
         modelId,
@@ -1343,7 +1344,7 @@ export function resolveModelPricing(
   }
 
   for (const id of candidateIds) {
-    const exactStatic = PRICING_TABLE[id];
+    const exactStatic = ownValue(PRICING_TABLE, id);
     if (exactStatic) {
       return {
         modelId,
