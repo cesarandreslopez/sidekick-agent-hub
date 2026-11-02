@@ -151,6 +151,11 @@
             "default": "",
             "description": "Custom path to the Sidekick CLI executable (sidekick-agent-hub). Leave empty to auto-detect."
           },
+          "sidekick.updateCheck.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Notify when a newer Sidekick Agent Hub extension is published (checked shortly after startup, then twice a day, against the Marketplace in VS Code or Open VSX in other editors). **Sidekick: Check for Updates** still works when this is off."
+          },
           "sidekick.accounts.autoSwitchThreshold": {
             "type": "number",
             "default": 0,
@@ -968,6 +973,11 @@
         "title": "Open CLI Dashboard",
         "category": "Sidekick",
         "icon": "$(terminal)"
+      },
+      {
+        "command": "sidekick.checkForUpdates",
+        "title": "Check for Updates",
+        "category": "Sidekick"
       },
       {
         "command": "sidekick.extractAssets",

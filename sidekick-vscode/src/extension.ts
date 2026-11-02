@@ -94,6 +94,7 @@ import { AccountKeepAliveService } from './services/AccountKeepAliveService';
 import { registerAccountCommands } from './commands/accountCommands';
 import { buildCommandCatalog } from './utils/commandCatalog';
 import { openCliDashboard, disposeDashboardTerminal } from './services/SidekickCliService';
+import { ExtensionUpdateNotifier } from './services/ExtensionUpdateNotifier';
 import { showExtractedSessionAssets } from './services/SessionAssetService';
 import { initLogger, log, logError, showLog } from './services/Logger';
 import {
@@ -188,6 +189,23 @@ export async function activate(context: vscode.ExtensionContext) {
   const outputChannel = initLogger();
   context.subscriptions.push(outputChannel);
   log('Sidekick Agent Hub extension activated');
+
+  // "A newer Sidekick is available" notification: first check 30 s after
+  // activation, then twice a day; Sidekick: Check for Updates asks on demand.
+  const updateNotifier = new ExtensionUpdateNotifier({
+    currentVersion: String(context.extension.packageJSON.version ?? '0.0.0'),
+    globalState: context.globalState,
+    uriScheme: vscode.env.uriScheme,
+    isEnabled: () =>
+      vscode.workspace.getConfiguration('sidekick').get<boolean>('updateCheck.enabled', true),
+  });
+  updateNotifier.start();
+  context.subscriptions.push(
+    updateNotifier,
+    vscode.commands.registerCommand('sidekick.checkForUpdates', () =>
+      updateNotifier.check({ manual: true }),
+    ),
+  );
 
   // Seed the account registry from live credentials in the background: it
   // can read the keychain, and nothing on the activation path needs the

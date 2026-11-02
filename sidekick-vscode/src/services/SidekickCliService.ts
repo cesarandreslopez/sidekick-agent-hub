@@ -17,7 +17,7 @@ import { findCli } from '../utils/cliPathResolver';
 const TERMINAL_NAME = 'Sidekick Dashboard';
 const DOCS_URL = 'https://github.com/cesarandreslopez/sidekick-agent-hub';
 const NPM_PACKAGE = 'sidekick-agent-hub';
-const EXTENSION_ID = 'CesarAndresLopez.sidekick-for-max';
+export const EXTENSION_ID = 'CesarAndresLopez.sidekick-for-max';
 
 let dashboardTerminal: vscode.Terminal | undefined;
 let versionCheckDone = false;
