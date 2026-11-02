@@ -8,7 +8,7 @@ declare const __CLI_VERSION__: string;
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { UpdateInfo } from '../UpdateCheckService';
+import type { UpdateInfo } from '../../updateCheck';
 import type { ProviderStatusState } from '../ProviderStatusService';
 import { BRAND_INLINE } from '../branding';
 import { parseBlessedTags } from './parseBlessedTags';

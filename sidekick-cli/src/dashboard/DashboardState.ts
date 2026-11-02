@@ -38,7 +38,7 @@ import { mergeModelUsage } from '../modelUsage';
 import { getContextWindowSize } from './modelContext';
 import type { QuotaState } from './QuotaService';
 import type { ProviderStatusState } from './ProviderStatusService';
-import type { UpdateInfo } from './UpdateCheckService';
+import type { UpdateInfo } from '../updateCheck';
 
 // ── Public metric types ──
 

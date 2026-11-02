@@ -12,7 +12,8 @@ import {
   ROOT_EXAMPLES,
 } from './help';
 import { firstCommandToken } from './argvScan';
-import { runStartupSideEffects } from './startup';
+import { isOfflineRun, needsFullStartup, runStartupSideEffects } from './startup';
+import { shouldRunUpdateNotice, startUpdateNotice, type UpdateNoticeHandle } from './updateCheck';
 import {
   quotaHistoryProviderOption,
   quotaProviderOption,
@@ -47,10 +48,27 @@ program
   .addOption(rootProviderOption())
   .addHelpText('after', ROOT_EXAMPLES);
 
+let updateNotice: UpdateNoticeHandle | null = null;
+
 // preAction fires for real action handlers and not for --help, --version, or a
 // bare invocation, so the network fetch and account bootstrap stay off those
 // paths entirely.
 program.hook('preAction', async (_program, actionCommand) => {
+  // Started first so the npm registry check overlaps startup and the command;
+  // postAction collects it. Cache-only commands and offline runs read the
+  // cached answer but never fetch.
+  const noticeContext = {
+    commandToken,
+    json: Boolean(program.opts().json),
+    env: process.env,
+    stdoutIsTTY: Boolean(process.stdout.isTTY),
+    stderrIsTTY: Boolean(process.stderr.isTTY),
+  };
+  if (shouldRunUpdateNotice(noticeContext)) {
+    updateNotice = startUpdateNotice({
+      allowFetch: needsFullStartup(commandToken) && !isOfflineRun(),
+    });
+  }
   const outputFile = program.opts().outputFile as string | undefined;
   if (outputFile) {
     const { installOutputRedirect, REDIRECT_UNSUPPORTED_COMMANDS } =
@@ -65,6 +83,13 @@ program.hook('preAction', async (_program, actionCommand) => {
     actionCommand.name() === 'doctor' &&
     ['accounts', 'account'].includes(actionCommand.parent?.name() ?? '');
   return runStartupSideEffects(commandToken, { accountDoctor });
+});
+
+// After the command's own output, on stderr so stdout stays clean. A command
+// that throws skips this, which is fine: the notice can wait for the next run.
+program.hook('postAction', async () => {
+  const notice = await updateNotice?.finish().catch(() => null);
+  if (notice) process.stderr.write(notice);
 });
 
 export function resolveProviderId(

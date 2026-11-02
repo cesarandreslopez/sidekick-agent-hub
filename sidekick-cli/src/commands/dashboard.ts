@@ -57,7 +57,7 @@ import { QuotaService } from '../dashboard/QuotaService';
 import { ProviderStatusService } from '../dashboard/ProviderStatusService';
 import { scopeDashboardProviderStatuses } from '../dashboard/providerStatusScope';
 import type { DashboardProviderId } from '../dashboard/providerStatusScope';
-import { UpdateCheckService } from '../dashboard/UpdateCheckService';
+import { UpdateCheckService } from '../updateCheck';
 import { SessionsPanel } from '../dashboard/panels/SessionsPanel';
 import { TasksPanel } from '../dashboard/panels/TasksPanel';
 import { KanbanPanel } from '../dashboard/panels/KanbanPanel';
