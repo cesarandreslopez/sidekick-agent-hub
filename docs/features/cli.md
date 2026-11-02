@@ -28,6 +28,21 @@ bash scripts/build-all.sh
 
 This compiles `sidekick-shared` (the data access library) and `sidekick-cli` (the binary). The CLI is output to `sidekick-cli/dist/sidekick-cli.mjs`.
 
+### Update notifications
+
+When a newer `sidekick-agent-hub` is on npm, one-shot commands such as `sidekick quota` end with a notice on stderr (since 0.30.1):
+
+```text
+Update available: sidekick 0.30.0 → 0.30.1 — run npm install -g sidekick-agent-hub
+Release notes: https://github.com/cesarandreslopez/sidekick-agent-hub/releases/tag/v0.30.1
+```
+
+- npm is asked at most every 4 hours; the answer, including a failed attempt, is cached in `update-check.json`. The request runs alongside the command and gives up after 2 seconds, so most runs only read the cache.
+- The same version is announced at most twice a day (every 12 hours); a newer one is announced right away.
+- The notice never appears with `--json`, when stdout or stderr is piped or redirected, in CI (`CI` set), or from `statusline` and `mcp`. The `dashboard` shows the newer version in its status bar instead.
+- The cache-only commands (`today`, `history`) and `--offline` runs show what is already cached but never ask npm.
+- `SIDEKICK_NO_UPDATE_NOTIFIER=1` (or the cross-tool `NO_UPDATE_NOTIFIER=1`) turns it off.
+
 ## Quick Start
 
 1. `cd` into your project directory
@@ -998,6 +1013,7 @@ The CLI reads from the same `~/.config/sidekick/` directory as the VS Code exten
 | `accounts/{claude,codex}/switch-journal.json` | Present only while a switch is in flight; the next sync finishes or rolls it back         |
 | `quota-snapshots.json`                        | Cached rate-limit snapshots per provider/account                                          |
 | `error-history.json`                          | Categorized per-session error rollups for post-mortem forensics                           |
+| `update-check.json`                           | Last npm version check and when the CLI's update notice was shown                         |
 
 Any data written by the VS Code extension is visible in the CLI, and vice versa. One-shot commands read the files fresh on every run; the dashboard re-reads persisted project data every 15 seconds, or immediately when you press `R`.
 
@@ -1006,3 +1022,4 @@ Any data written by the VS Code extension is visible in the CLI, and vice versa.
 The VS Code extension provides a command to launch the dashboard without leaving the editor:
 
 - **`Sidekick: Open CLI Dashboard`** — opens the TUI dashboard in an integrated terminal panel
+- **`Sidekick: Check for Updates`** — checks for a newer version of the extension; the extension also checks on its own shortly after startup and twice a day (`sidekick.updateCheck.enabled`)

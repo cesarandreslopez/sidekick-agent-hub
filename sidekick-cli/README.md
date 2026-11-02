@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.30.1: update notifications** — one-shot commands such as `sidekick quota` end with an "Update available" line on stderr when a newer `sidekick-agent-hub` is on npm. npm is asked at most every 4 hours, and the request overlaps the command. The same version is announced at most twice a day, never with `--json`, in pipes, in CI, or from `statusline` / `mcp`. `SIDEKICK_NO_UPDATE_NOTIFIER=1` turns it off.
 - **0.30.0: Codex subagents and agents that never report**
   - **Codex subagents:** the dashboard's Agents tab, mind map and task list show them, linked to their spawn calls and followed to completion.
   - **Settled agents:** stop markers, post-compaction task status and the subagent's meta file settle background agents that never got a completion notification. An agent whose transcript ended cleanly and stayed quiet for 2 minutes shows "finished (no report)", one in a session idle for more than 6 hours shows "ended", and stopped, killed and failed agents show distinctly.
@@ -71,6 +72,8 @@ npm install -g sidekick-agent-hub
 ```
 
 Requires **Node.js 20+**. Reading compressed Codex sessions (`.jsonl.zst`, which Codex writes for older sessions) needs Node 22.15 or later (built-in zstd); older Node versions skip them.
+
+When a newer version is published, one-shot commands end with an `Update available: sidekick 0.30.0 → 0.30.1 — run npm install -g sidekick-agent-hub` line and a release-notes link on stderr, at most twice a day per version. It is never shown with `--json`, when output is piped, in CI, or from `statusline` and `mcp`; the dashboard shows the newer version in its status bar. Set `SIDEKICK_NO_UPDATE_NOTIFIER=1` (or `NO_UPDATE_NOTIFIER=1`) to turn it off. See [Update notifications](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/#update-notifications).
 
 ## Quick Start
 

@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.30.1: update notifications** — the extension tells you when a newer version is published. It asks the Marketplace in VS Code and Open VSX in Cursor, VSCodium and other editors, 30 seconds after startup and then twice a day. The notification offers **Update**, **Release Notes**, and **Skip This Version**. **Sidekick: Check for Updates** checks on demand, and `sidekick.updateCheck.enabled` turns the automatic check off. The `sidekick` CLI now announces its own updates after one-shot commands.
 - **0.30.0: Codex subagents in the Subagents view, and agents that never report**
   - **Codex subagents:** children started with `spawn_agent` appear in the Subagents view with their nickname or task name, nested by depth, and open their rollout on click. Each is linked to its spawn call and followed from launch to completion, including follow-up tasks, interrupts, and failed spawns, and shows on the Kanban board. Their statistics count only the child's own work, and session following no longer switches to a subagent's rollout.
   - **Agents that never report:** stop markers, post-compaction task status, and the subagent's meta file settle background agents that never got a completion notification. An agent whose transcript ended cleanly and stayed quiet for 2 minutes shows "finished (no report)", and one in a session idle for more than 6 hours shows "ended"; both go back to running if the agent writes again. The view rechecks every 15 seconds while an agent is unresolved, and Kanban agent cards show the same state.
@@ -206,6 +207,7 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, and char
 | `sidekick.customModelPricingOnlyIfMissing`        | `false`        | Use custom prices only where no catalog has an exact price                                                                                                      |
 | `sidekick.peakHours.enabled`                      | `true`         | Show Claude peak-hours indicator in the dashboard and status bar (`claude-max` provider with Claude Code sessions)                                              |
 | `sidekick.peakHours.notifyOnTransition`           | `false`        | One-time toast when peak hours start or end (opt-in)                                                                                                            |
+| `sidekick.updateCheck.enabled`                    | `true`         | Notify when a newer Sidekick Agent Hub extension is published (checked after startup and twice a day)                                                           |
 
 Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — **Claude Opus 5.5** (`powerful`), **Sonnet 5** (`balanced`), and **Haiku 4.5** (`fast`) on Anthropic providers, and **GPT-6 Astra** (`powerful`), **GPT-6 Sol** (`balanced`), and **GPT-6 Luna** (`fast`) on Codex — with 1M-token context windows where available. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
 
@@ -244,6 +246,7 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Run Doctor                    | —                     | Cross-provider health diagnostics and the pricing basis; focuses the Health tab                                                            |
 | Open External Session Handoff | —                     | Open the configured handoff URL for the active session                                                                                     |
 | Browse Session Folders...     | —                     | Select session folder to monitor                                                                                                           |
+| Check for Updates             | —                     | Check for a newer version of the extension now (Update, Release Notes, or Skip This Version)                                               |
 
 Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS. Transform and Explain require a selection. Requires VS Code 1.85 or later.
 

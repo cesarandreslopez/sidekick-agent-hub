@@ -12,6 +12,14 @@ All settings use the `sidekick.*` prefix. Open VS Code Settings (`Ctrl+,`) and s
 
 `sidekick.authMode` is a deprecated compatibility setting (`max-subscription` or `api-key`, default `max-subscription`). Use `sidekick.inferenceProvider` for new configuration.
 
+## Updates
+
+| Setting                        | Default | Description                                                                  |
+| ------------------------------ | ------- | ---------------------------------------------------------------------------- |
+| `sidekick.updateCheck.enabled` | `true`  | Notify when a newer Sidekick Agent Hub extension is published (since 0.30.1) |
+
+The extension checks 30 seconds after startup and then twice a day. It asks the registry your editor installs from: the Visual Studio Marketplace in VS Code, and Open VSX in Cursor, VSCodium, Windsurf and other forks. The notification offers **Update** (installs the new version, then offers a window reload), **Release Notes**, and **Skip This Version**. The same version is announced at most every 12 hours, across all open windows. **Sidekick: Check for Updates** checks on demand, even with the setting off. The CLI announces its own updates in the terminal; see [CLI update notifications](../features/cli.md#update-notifications).
+
 ## Accounts
 
 | Setting                                 | Default | Description                                                                                                                                                                           |

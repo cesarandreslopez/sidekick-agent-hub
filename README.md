@@ -24,6 +24,7 @@ AI coding agents are powerful but opaque — tokens burn silently, context fills
 
 ## What's New
 
+- **0.30.1: update notifications** — the CLI's one-shot commands (`sidekick quota`, `sidekick stats` and the rest) end with an "Update available" line on stderr when a newer `sidekick-agent-hub` is on npm. It appears at most twice a day per version, never with `--json`, in pipes, or in CI, and `SIDEKICK_NO_UPDATE_NOTIFIER=1` turns it off. The VS Code extension announces a newer version of itself (from the Marketplace in VS Code, Open VSX elsewhere) with **Update**, **Release Notes**, and **Skip This Version** buttons; **Sidekick: Check for Updates** checks on demand, and `sidekick.updateCheck.enabled` turns the automatic check off.
 - **0.30.0: Codex subagents, settled background agents, compressed Codex sessions**
   - **Codex subagents:** children started with Codex's `spawn_agent` appear in the VS Code Subagents view (labelled by nickname or task name, nested under the agent that spawned them, click to open the child rollout), the CLI Agents tab and mind map, and both task boards. Each is linked to its spawn call and followed from launch to completion, including follow-up tasks, interrupts and failed spawns.
   - **Codex subagent statistics:** a forked child's tool calls and tokens count only its own work, not the parent history it embeds, and Codex session following no longer switches to a subagent's rollout.
