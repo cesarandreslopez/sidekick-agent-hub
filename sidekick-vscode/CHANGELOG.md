@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.1] - 2026-11-02
+
+### Added
+
+- **Update notification.** The extension announces a newer version of itself 30 seconds after startup and then twice a day, with **Update** (installs it, then offers a window reload), **Release Notes**, and **Skip This Version**. It asks the registry the editor installs from: the Visual Studio Marketplace in VS Code, Open VSX in Cursor, VSCodium, Windsurf and other forks. The state is shared across windows, so a version is announced at most every 12 hours, and a failed check waits 12 hours before retrying.
+- **Sidekick: Check for Updates** checks on demand, reports when you are up to date, and works with the automatic check turned off.
+- **`sidekick.updateCheck.enabled`** (default `true`) turns the automatic check off.
+
 ## [0.30.0] - 2026-11-01
 
 ### Added

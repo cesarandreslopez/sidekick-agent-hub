@@ -5,6 +5,17 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.1] - 2026-11-02
+
+### Added
+
+- **Update notice.** When a newer `sidekick-agent-hub` is on npm, one-shot commands such as `sidekick quota` end with `Update available: sidekick X → Y — run npm install -g sidekick-agent-hub` and a release-notes link on stderr. The same version is announced at most twice a day, and a newer one right away. The notice never appears with `--json`, with piped or redirected output, in CI, or from `statusline`, `mcp` or `dashboard`. `SIDEKICK_NO_UPDATE_NOTIFIER=1` (or `NO_UPDATE_NOTIFIER=1`) turns it off.
+- npm is asked at most every 4 hours, and the request runs alongside the command with a 2-second cap, so most runs only read `update-check.json`. `today`, `history` and `--offline` runs show the cached answer without asking npm.
+
+### Changed
+
+- The dashboard's version badge uses the same cache and check, and a failed npm check is no longer retried until the 4-hour interval passes.
+
 ## [0.30.0] - 2026-11-01
 
 ### Added

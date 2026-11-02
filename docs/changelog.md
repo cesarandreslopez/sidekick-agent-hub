@@ -5,6 +5,17 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.1] - 2026-11-02
+
+### Added
+
+- **CLI update notice.** When a newer `sidekick-agent-hub` is on npm, one-shot commands such as `sidekick quota` end with `Update available: sidekick X → Y — run npm install -g sidekick-agent-hub` and a release-notes link on stderr. npm is asked at most every 4 hours. The answer, including a failed attempt, is cached in `update-check.json`, and the request runs alongside the command with a 2-second cap. The same version is announced at most twice a day, and a newer one right away. The notice never appears with `--json`, with piped or redirected output, in CI, or from `statusline`, `mcp` or `dashboard`. `today`, `history` and `--offline` runs only read the cache. `SIDEKICK_NO_UPDATE_NOTIFIER=1` (or `NO_UPDATE_NOTIFIER=1`) turns it off.
+- **VS Code extension update notification.** The extension announces a newer version of itself 30 seconds after startup and then twice a day, with **Update** (installs it, then offers a window reload), **Release Notes**, and **Skip This Version**. It asks the registry the editor installs from: the Marketplace in VS Code, Open VSX in Cursor, VSCodium and other forks. The state is shared across windows, so a version is announced at most every 12 hours. **Sidekick: Check for Updates** checks on demand, and `sidekick.updateCheck.enabled` turns the automatic check off.
+
+### Changed
+
+- The CLI dashboard's version badge uses the same cache and check as the one-shot notice, and a failed npm check is no longer retried until the 4-hour interval passes.
+
 ## [0.30.0] - 2026-11-01
 
 ### Added
