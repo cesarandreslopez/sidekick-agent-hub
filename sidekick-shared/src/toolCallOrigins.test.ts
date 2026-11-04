@@ -202,3 +202,105 @@ describe('findToolCallOrigins', () => {
     ).rejects.toBeDefined();
   });
 });
+
+it.each(['spawn', 'fork'])(
+  'resolves large %s headers, embedded metadata and completed items',
+  async (kind) => {
+    const parent = codexFile();
+    const parentId = /-([0-9a-f-]{36})\.jsonl$/.exec(parent)![1];
+    writeJsonl(parent, [codexMeta(repo), codexUser(['delegate'], 1)]);
+    const child = codexFile();
+    const meta = codexMeta(repo, { subagent: { thread_spawn: { parent_thread_id: parentId } } });
+    const payload = meta.payload as Record<string, unknown>;
+    payload.base_instructions = { text: 'x'.repeat(300 * 1024) };
+    if (kind === 'fork') {
+      payload.source = 'cli';
+      payload.forked_from_id = parentId;
+    }
+    const call = codexCall('call_enclosing', 3, 'custom_tool_call');
+    (call.payload as Record<string, unknown>).internal_chat_message_metadata_passthrough = {
+      turn_id: 'turn1',
+    };
+    const output = codexCallOutput('call_enclosing', 5);
+    Object.assign(output.payload as object, {
+      type: 'custom_tool_call_output',
+      internal_chat_message_metadata_passthrough: { turn_id: 'turn1' },
+    });
+    writeJsonl(child, [
+      meta,
+      codexMeta('/elsewhere'),
+      call,
+      {
+        timestamp: ts(4),
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          turn_id: 'turn1',
+          item: { id: 'exec-item', type: 'FileChange' },
+        },
+      },
+      output,
+    ]);
+    for (const ids of [['exec-item'], ['exec-item', 'call_enclosing']]) {
+      const found = await findToolCallOrigins({ ids, workspacePaths: [repo] });
+      expect(found.get('exec-item')).toMatchObject({
+        sessionId: parentId,
+        afterOrdinal: 0,
+        timestamp: ts(4),
+        toolName: 'FileChange',
+        enclosingCallId: 'call_enclosing',
+        enclosingToolName: 'exec_command',
+      });
+    }
+  },
+);
+
+it.each(['missing-output', 'wrong-turn', 'overlap'])(
+  'omits ambiguous enclosure: %s',
+  async (kind) => {
+    const file = codexFile();
+    const call = codexCall('call_a', 2);
+    Object.assign(call.payload as object, {
+      internal_chat_message_metadata_passthrough: { turn_id: 't' },
+    });
+    const other = codexCall('call_b', 3);
+    Object.assign(other.payload as object, {
+      internal_chat_message_metadata_passthrough: { turn_id: 't' },
+    });
+    const output = codexCallOutput('call_a', 5);
+    Object.assign(output.payload as object, {
+      internal_chat_message_metadata_passthrough: {
+        turn_id: kind === 'wrong-turn' ? 'other' : 't',
+      },
+    });
+    writeJsonl(file, [
+      codexMeta(repo),
+      codexUser(['edit'], 1),
+      call,
+      ...(kind === 'overlap' ? [other] : []),
+      {
+        timestamp: ts(4),
+        type: 'event_msg',
+        payload: {
+          type: 'item_completed',
+          turn_id: 't',
+          item: { id: 'exec-item', type: 'FileChange' },
+        },
+      },
+      ...(kind === 'missing-output' ? [] : [output]),
+    ]);
+    const origin = (await findToolCallOrigins({ ids: ['exec-item'], workspacePaths: [repo] })).get(
+      'exec-item',
+    );
+    expect(origin?.afterOrdinal).toBe(0);
+    expect(origin?.enclosingCallId).toBeUndefined();
+  },
+);
+
+it('collects prompts after a large interactive metadata header', async () => {
+  const meta = codexMeta(repo);
+  Object.assign(meta.payload as object, { base_instructions: { text: '界'.repeat(110000) } });
+  writeJsonl(codexFile(), [meta, codexUser(['large header prompt'], 1)]);
+  const history = await collectPromptHistory({ workspacePaths: [repo] });
+  expect(history.entries).toHaveLength(1);
+});

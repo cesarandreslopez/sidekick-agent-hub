@@ -1,7 +1,7 @@
 /**
  * Locates the session record that issued each of a set of tool calls, by id.
  *
- * Given Claude Code `tool_use` ids (`toolu_…`) and/or Codex `call_id`s, finds
+ * Given Claude Code `tool_use` ids and Codex call or completed-item ids, finds
  * the session file, session id and time of each call, plus the ordinal of the
  * human prompt the call answered, so a downstream record (an edit, a commit)
  * can be tied back to the prompt that caused it. Scope, listing, session keys
@@ -10,7 +10,7 @@
  *
  * Cost: one listing of the workspace-scoped session files (`since` prunes by
  * modification time), then a streaming pass over each candidate file in which
- * a line is only parsed when it contains one of the wanted ids. Claude Code
+ * Codex call boundaries are parsed to identify enclosing calls. Claude Code
  * subagent transcripts of each session are searched too. Stops as soon as
  * every id is found. Prompt ordinals are read only for files that matched.
  *
@@ -23,11 +23,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import { Readable } from 'stream';
-import {
-  isCompressedRolloutPath,
-  readRolloutBufferAsync,
-  readRolloutHeadAsync,
-} from './providers/compressedRollouts';
+import { isCompressedRolloutPath, readRolloutBufferAsync } from './providers/compressedRollouts';
 import {
   listCandidates,
   readPromptOrdinalMarks,
@@ -37,10 +33,11 @@ import {
   type PromptOrdinalMark,
 } from './promptHistory';
 import { codexRolloutOrigin } from './parsers/codexRolloutOrigin';
+import { readFirstLineAsync } from './providers/codexRollouts';
 import { realpathOrNull } from './workspaceRoots';
 
 export interface FindToolCallOriginsOptions {
-  /** Tool-call ids to locate: Claude `tool_use` ids and/or Codex `call_id`s. */
+  /** Tool-call ids to locate: Claude `tool_use` ids, Codex `call_id`s or completed-item ids. */
   ids: Iterable<string>;
   /** Workspace roots that scope the search (as for `collectPromptHistory`). */
   workspacePaths: string[];
@@ -81,6 +78,8 @@ export interface ToolCallOrigin {
    */
   afterOrdinal: number | null;
   toolName?: string;
+  enclosingCallId?: string;
+  enclosingToolName?: string;
   /** Set when a subagent issued the call. */
   subagent?: { agentId: string; parentSessionId: string };
 }
@@ -90,6 +89,8 @@ interface Hit {
   timestamp: string;
   timestampMs: number;
   toolName?: string;
+  enclosingCallId?: string;
+  enclosingToolName?: string;
 }
 
 interface ScanTarget {
@@ -207,6 +208,9 @@ export async function findToolCallOrigins(
           timestamp: hit.timestamp,
           afterOrdinal,
           ...(hit.toolName ? { toolName: hit.toolName } : {}),
+          ...(hit.enclosingCallId
+            ? { enclosingCallId: hit.enclosingCallId, enclosingToolName: hit.enclosingToolName }
+            : {}),
           ...(subagent ? { subagent } : {}),
         });
         // A fork's copy might be replaced by the original later; keep looking.
@@ -252,7 +256,8 @@ function claudeSubagentTranscripts(
 async function readFirstRecord(filePath: string): Promise<unknown> {
   try {
     // A compressed rollout's head is decompressed.
-    const text = (await readRolloutHeadAsync(filePath, 256 * 1024)).toString('utf8');
+    const { line: text } = await readFirstLineAsync(filePath);
+    if (!text) return undefined;
     const newline = text.indexOf('\n');
     return JSON.parse(newline === -1 ? text : text.slice(0, newline));
   } catch {
@@ -299,12 +304,62 @@ async function scanForIds(
   const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
   // Codex records a working directory per session/turn, not per line.
   let codexCwd: unknown;
+  let sawMeta = false;
+  const calls = new Map<string, { turn: string; family: string; name: string; hits: Hit[] }>();
   try {
     for await (const line of lines) {
       throwIfAborted(signal);
-      if (provider === 'codex' && line.includes('"cwd"')) {
-        const cwd = codexCwdOf(line);
-        if (cwd !== undefined) codexCwd = cwd;
+      let boundary:
+        | {
+            type?: string;
+            payload?: {
+              type?: string;
+              cwd?: unknown;
+              call_id?: string;
+              name?: string;
+              turn_id?: string;
+              internal_chat_message_metadata_passthrough?: { turn_id?: string };
+            };
+          }
+        | undefined;
+      if (provider === 'codex') {
+        try {
+          boundary = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (boundary?.type === 'session_meta' && !sawMeta) {
+          sawMeta = true;
+          codexCwd = boundary.payload?.cwd;
+        } else if (boundary?.type === 'turn_context' && boundary.payload?.cwd !== undefined) {
+          codexCwd = boundary.payload.cwd;
+        }
+        const p = boundary?.payload;
+        const turn = p?.internal_chat_message_metadata_passthrough?.turn_id;
+        if (
+          boundary?.type === 'response_item' &&
+          typeof p?.call_id === 'string' &&
+          typeof turn === 'string' &&
+          turn
+        ) {
+          if (typeof p.type === 'string' && p.type.endsWith('_call')) {
+            calls.set(p.call_id, {
+              turn,
+              family: p.type,
+              name: p.name ?? p.type.replace(/_call$/, ''),
+              hits: [],
+            });
+          } else if (typeof p.type === 'string' && p.type.endsWith('_call_output')) {
+            const call = calls.get(p.call_id);
+            if (call && call.turn === turn && p.type === call.family + '_output') {
+              for (const hit of call.hits) {
+                hit.enclosingCallId = p.call_id;
+                hit.enclosingToolName = call.name;
+              }
+              calls.delete(p.call_id);
+            }
+          }
+        }
       }
       let match = false;
       for (const found of line.matchAll(ID_PATTERN)) {
@@ -325,6 +380,12 @@ async function scanForIds(
       if (lineHits.length === 0) continue;
       const cwd = provider === 'claude-code' ? (record as { cwd?: unknown }).cwd : codexCwd;
       if (!inScope(cwd, roots, realpaths)) continue;
+      if (boundary?.type === 'event_msg' && boundary.payload?.type === 'item_completed') {
+        const active = [...calls.values()].filter(
+          (call) => call.turn === boundary?.payload?.turn_id,
+        );
+        if (active.length === 1) active[0].hits.push(...lineHits);
+      }
       hits.push(...lineHits);
     }
   } catch (error) {
@@ -335,18 +396,6 @@ async function scanForIds(
     stream.destroy();
   }
   return hits;
-}
-
-function codexCwdOf(line: string): unknown {
-  try {
-    const record = JSON.parse(line) as { type?: unknown; payload?: { cwd?: unknown } };
-    if (record.type === 'session_meta' || record.type === 'turn_context') {
-      return record.payload?.cwd;
-    }
-  } catch {
-    // Not a complete record.
-  }
-  return undefined;
 }
 
 function timeOf(record: unknown): { timestamp: string; timestampMs: number } | null {
@@ -382,8 +431,21 @@ function claudeToolUses(record: unknown, wanted: ReadonlySet<string>): Hit[] {
 function codexToolCall(record: unknown, wanted: ReadonlySet<string>): Hit[] {
   const row = record as {
     type?: unknown;
-    payload?: { type?: unknown; call_id?: unknown; name?: unknown };
+    payload?: {
+      type?: unknown;
+      call_id?: unknown;
+      name?: unknown;
+      item?: { id?: unknown; type?: unknown };
+    };
   };
+  if (row?.type === 'event_msg' && row.payload?.type === 'item_completed') {
+    const item = row.payload.item;
+    const time = timeOf(record);
+    if (!time || typeof item?.id !== 'string' || !wanted.has(item.id)) return [];
+    return [
+      { id: item.id, ...time, ...(typeof item.type === 'string' ? { toolName: item.type } : {}) },
+    ];
+  }
   const payloadType = row?.payload?.type;
   if (
     row?.type !== 'response_item' ||
