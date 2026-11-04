@@ -7,6 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { StringDecoder } from 'string_decoder';
 import { getCodexSessionsDirs } from '../codexPaths';
 import type { CodexRolloutLine, CodexSessionMeta } from '../types/codex';
 import { DirectoryListingCache } from './directoryListingCache';
@@ -33,7 +34,18 @@ export function readFirstLines(
   maxLines: number,
   maxBytes = 256 * 1024,
 ): string[] {
-  if (isCompressedRolloutPath(filePath)) return readRolloutFirstLines(filePath, maxLines, maxBytes);
+  if (isCompressedRolloutPath(filePath)) {
+    if (maxBytes === Infinity) {
+      let limit = 64 * 1024;
+      let head = readRolloutHead(filePath, limit);
+      while (!head.includes(0x0a) && head.length === limit) {
+        limit *= 2;
+        head = readRolloutHead(filePath, limit);
+      }
+      return head.toString('utf8').split('\n').slice(0, maxLines);
+    }
+    return readRolloutFirstLines(filePath, maxLines, maxBytes);
+  }
   const lines: string[] = [];
   let fd: number;
   try {
@@ -43,6 +55,7 @@ export function readFirstLines(
   }
 
   let pending = '';
+  const decoder = new StringDecoder('utf8');
   let totalRead = 0;
   const chunkSize = 16384;
 
@@ -53,7 +66,7 @@ export function readFirstLines(
       if (bytesRead === 0) break;
 
       totalRead += bytesRead;
-      pending += buf.toString('utf-8', 0, bytesRead);
+      pending += decoder.write(buf.subarray(0, bytesRead));
 
       let nlIdx: number;
       while ((nlIdx = pending.indexOf('\n')) !== -1 && lines.length < maxLines) {
@@ -75,7 +88,7 @@ export function readFirstLines(
 /** Read session_meta from the beginning of a rollout file. */
 export function readSessionMeta(rolloutPath: string): CodexSessionMeta | null {
   try {
-    const lines = readFirstLines(rolloutPath, 1);
+    const lines = readFirstLines(rolloutPath, 1, Infinity);
     const firstLine = lines[0]?.trim();
     if (!firstLine) return null;
 
@@ -90,8 +103,7 @@ export function readSessionMeta(rolloutPath: string): CodexSessionMeta | null {
 }
 
 /**
- * First line of a rollout, chunk-read under the same 256 KiB cap as
- * readFirstLines(). `complete` is false while the line has no newline yet
+ * First line of a rollout, chunk-read without a fixed size cap. `complete` is false while the line has no newline yet
  * (a rollout that was just created) or the file could not be read, so
  * callers know not to cache the answer.
  */
@@ -99,13 +111,18 @@ export async function readFirstLineAsync(
   rolloutPath: string,
 ): Promise<{ line: string | null; complete: boolean }> {
   // Mirrors readSessionMeta()/readFirstLines(): chunk-read until the first
-  // line is complete under the same 256 KiB cap — session_meta carries
+  // line is complete — session_meta carries
   // `instructions` and can far exceed a single chunk.
-  const maxBytes = 256 * 1024;
+  const maxBytes = Infinity;
   const chunkSize = 64 * 1024;
   if (isCompressedRolloutPath(rolloutPath)) {
     // Compressed rollouts are complete: their first line is final.
-    const head = readRolloutHead(rolloutPath, maxBytes);
+    let limit = 64 * 1024;
+    let head = readRolloutHead(rolloutPath, limit);
+    while (!head.includes(0x0a) && head.length === limit) {
+      limit *= 2;
+      head = readRolloutHead(rolloutPath, limit);
+    }
     if (head.length === 0) return { line: null, complete: false };
     const firstLine = head.toString('utf8').split('\n', 1)[0]?.trim();
     return { line: firstLine || null, complete: true };
@@ -126,7 +143,7 @@ export async function readFirstLineAsync(
       newlineFound = chunk.includes(0x0a);
     }
     const firstLine = Buffer.concat(chunks).toString('utf8').split('\n', 1)[0]?.trim();
-    return { line: firstLine || null, complete: newlineFound || totalRead >= maxBytes };
+    return { line: firstLine || null, complete: newlineFound };
   } catch {
     return { line: null, complete: false };
   } finally {
@@ -165,7 +182,7 @@ export function readSessionCwd(rolloutPath: string): string | null {
 
   const meta = readSessionMeta(rolloutPath);
   const cwd = meta?.cwd || null;
-  rememberCwd(rolloutPath, cwd);
+  if (cwd !== null) rememberCwd(rolloutPath, cwd);
   return cwd;
 }
 

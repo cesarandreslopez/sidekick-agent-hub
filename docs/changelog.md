@@ -5,6 +5,13 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.2] - 2026-11-03
+
+### Fixed
+
+- Codex child-rollout tool origins retain their workspace when embedded ancestor metadata is present, and metadata headers larger than 256 KiB no longer hide sessions or parent links (#20).
+- Codex completed-item IDs now resolve to their session and prompt, with optional enclosing-call metadata when matching turn and call boundaries establish the relationship (#19).
+
 ## [0.30.1] - 2026-11-02
 
 ### Added

@@ -431,7 +431,7 @@ for (const exclusion of result.exclusions) console.warn('record left out', exclu
 
 ### Find where a tool call came from
 
-`findToolCallOrigins()` (Node-only) maps Claude Code `tool_use` ids and Codex `call_id`s to the record that issued them. It uses the scope, listing and session keys of `collectPromptHistory()`, so results join with prompt entries:
+`findToolCallOrigins()` (Node-only) maps Claude Code `tool_use` ids and Codex `call_id`s or `item_completed` item IDs to the record that issued them. It uses the scope, listing and session keys of `collectPromptHistory()`, so results join with prompt entries:
 
 ```typescript
 import { findToolCallOrigins } from 'sidekick-shared/node';
@@ -446,7 +446,7 @@ for (const [id, origin] of origins) {
 }
 ```
 
-Only lines containing a wanted id are parsed, Claude Code subagent transcripts are searched too, and the walk stops once every id is found. `afterOrdinal` counts in the prompt history of `sessionId`. For a Codex subagent or fork, that is the parent session; the call's own rollout is in `filePath` and `subagent.agentId`. Ids that are not found are absent from the map.
+Codex call boundaries are tracked to populate optional `enclosingCallId` and `enclosingToolName` fields for unambiguous completed items; Claude Code subagent transcripts are searched too, and the walk stops once every id is found. `afterOrdinal` counts in the prompt history of `sessionId`. For a Codex subagent or fork, that is the parent session; the call's own rollout is in `filePath` and `subagent.agentId`. Ids that are not found are absent from the map.
 
 ### Collect whole sessions of prompts
 
