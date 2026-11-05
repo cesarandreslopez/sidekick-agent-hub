@@ -28,6 +28,7 @@ import {
   claudeKeychainAccountName,
   isClaudeProfileAuthenticated,
   readClaudeProfileIdentity,
+  readLiveClaudeOrganizationUuid,
 } from './claudeProfiles';
 
 function setPlatform(platform: NodeJS.Platform): void {
@@ -129,6 +130,27 @@ describe('claudeProfiles', () => {
     fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ other: true }));
 
     expect(readClaudeProfileIdentity(home)).toBeNull();
+  });
+
+  it('reads the organization uuid of the login in a Claude home', () => {
+    const home = getClaudeProfileHome('uuid-work');
+    expect(readLiveClaudeOrganizationUuid(home)).toBeNull();
+
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(
+      path.join(home, '.claude.json'),
+      JSON.stringify({
+        oauthAccount: {
+          emailAddress: 'work@example.com',
+          accountUuid: 'uuid-work',
+          organizationUuid: ' c7ee1e0f-3b12-4605-baa8-716501af5257 ',
+        },
+      }),
+    );
+    expect(readLiveClaudeOrganizationUuid(home)).toBe('c7ee1e0f-3b12-4605-baa8-716501af5257');
+
+    writeClaudeProfileIdentity(home);
+    expect(readLiveClaudeOrganizationUuid(home)).toBeNull();
   });
 
   it('requires credentials and identity for non-Darwin profile authentication', () => {

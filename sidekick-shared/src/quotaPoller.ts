@@ -20,6 +20,12 @@ export interface Disposable {
 /** Credential fields the poller reads when `getAccessToken` returns a record. */
 export interface QuotaPollerCredentials extends ClaudePlanInfo {
   accessToken: string;
+  /**
+   * Organization of the same login (`oauthAccount.organizationUuid`, see
+   * `readLiveClaudeOrganizationUuid()`). When set, plans with usage credits also
+   * get their prepaid balance in `extraUsage.balance`.
+   */
+  organizationUuid?: string | null;
 }
 
 export interface QuotaPollerOptions {
@@ -184,8 +190,10 @@ export class QuotaPoller {
         }
         return;
       }
+      const record = typeof credentials === 'object' && credentials !== null ? credentials : null;
       const state = await fetchQuota(token, {
-        plan: typeof credentials === 'object' && credentials !== null ? credentials : null,
+        plan: record,
+        organizationUuid: record?.organizationUuid ?? null,
       });
 
       if (state.available) {

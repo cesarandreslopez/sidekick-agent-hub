@@ -62,15 +62,23 @@ export interface QuotaLimitRow {
   usedPercentOfWeekly?: number;
 }
 
-/** Claude extra-usage (usage credits) spend for the billing period. */
+/**
+ * Claude usage credits (extra usage): the prepaid balance that keeps requests
+ * going past the plan limits, and the monthly spend limit on how much of it
+ * may be used. The two are independent — a $100 balance under a $40 spend
+ * limit can cover only $40 a month.
+ */
 export interface QuotaExtraUsage {
   /** Whether extra usage can currently cover requests. */
   enabled: boolean;
-  /** Monthly cap in minor units of `currency` (cents for USD); null when uncapped. */
+  /**
+   * Monthly spend limit in minor units of `currency` (cents for USD); null when
+   * uncapped. This is a cap on spend, not the credit balance — see `balance`.
+   */
   monthlyLimit: number | null;
-  /** Spend so far this period, in minor units of `currency`. */
+  /** Spend so far this month, in minor units of `currency`. */
   usedCredits: number | null;
-  /** Share of the monthly cap used, 0–100. */
+  /** Share of the monthly spend limit used, 0–100. */
   utilization: number | null;
   /** ISO 4217 currency code, e.g. `USD`. */
   currency?: string;
@@ -78,6 +86,24 @@ export interface QuotaExtraUsage {
   decimalPlaces?: number;
   /** Server reason extra usage is off, e.g. `out_of_credits`. */
   disabledReason?: string;
+  /**
+   * Prepaid usage credits left, in minor units of `currency`. Read from the
+   * organization's prepaid-credits endpoint; absent when it was not fetched
+   * (no organization id) or could not be read.
+   */
+  balance?: number;
+  /** ISO timestamp when the earliest-expiring credits in `balance` expire. */
+  balanceExpiresAt?: string;
+}
+
+/** The prepaid usage-credit balance of a Claude organization. */
+export interface ClaudePrepaidCredits {
+  /** Credits left, in minor units of `currency` (cents for USD). */
+  balance: number;
+  /** ISO 4217 currency code, e.g. `USD`. */
+  currency?: string;
+  /** ISO timestamp when the earliest-expiring credits expire. */
+  expiresAt?: string;
 }
 
 export interface CodexResetCredit {
@@ -170,7 +196,9 @@ export interface ClaudePlanInfo {
 }
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
+const ORGANIZATIONS_URL = 'https://api.anthropic.com/api/oauth/organizations';
 const BETA_HEADER = 'oauth-2025-04-20';
+const ORGANIZATION_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FETCH_TIMEOUT_MS = 10_000;
 export const FIVE_HOUR_WINDOW_MS = 5 * 3_600_000;
 export const SEVEN_DAY_WINDOW_MS = 7 * 86_400_000;
@@ -287,11 +315,7 @@ function formatMinorUnits(amount: number, currency: string | undefined, decimals
   return value.toFixed(decimals);
 }
 
-/**
- * One-line extra-usage summary, e.g. `$12.40 of $200.00 used` or
- * `$0.00 of $200.00 used · off (out of credits)`.
- */
-export function formatExtraUsage(extra: QuotaExtraUsage): string {
+function extraUsageMoney(extra: QuotaExtraUsage, amount: number): string {
   const decimals =
     typeof extra.decimalPlaces === 'number' &&
     Number.isInteger(extra.decimalPlaces) &&
@@ -299,14 +323,74 @@ export function formatExtraUsage(extra: QuotaExtraUsage): string {
     extra.decimalPlaces <= 6
       ? extra.decimalPlaces
       : 2;
-  const used = formatMinorUnits(extra.usedCredits ?? 0, extra.currency, decimals);
-  const amount =
-    extra.monthlyLimit !== null
-      ? `${used} of ${formatMinorUnits(extra.monthlyLimit, extra.currency, decimals)} used`
-      : `${used} used`;
-  if (extra.enabled) return amount;
+  return formatMinorUnits(amount, extra.currency, decimals);
+}
+
+function extraUsageOffNote(extra: QuotaExtraUsage): string | undefined {
+  if (extra.enabled) return undefined;
   const reason = extra.disabledReason ? ` (${extra.disabledReason.replace(/_/g, ' ')})` : '';
-  return `${amount} · off${reason}`;
+  return `off${reason}`;
+}
+
+function hasBalance(extra: QuotaExtraUsage): extra is QuotaExtraUsage & { balance: number } {
+  return typeof extra.balance === 'number' && Number.isFinite(extra.balance);
+}
+
+function balanceExpiryDate(extra: QuotaExtraUsage): string | undefined {
+  if (!extra.balanceExpiresAt) return undefined;
+  const ms = Date.parse(extra.balanceExpiresAt);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : undefined;
+}
+
+/**
+ * The usage-credit balance, e.g. `$100.00 available`,
+ * `$25.00 available · expires 2026-12-01`, or `$0.00 available · off (out of credits)`.
+ * When the balance is unknown it never substitutes the spend limit: it reports
+ * the month's spend if no spend limit is set (`$12.40 spent this month`), and
+ * otherwise only whether credits are on (`on`, `off (out of credits)`), leaving
+ * the amounts to {@link formatExtraUsageSpendLimit}.
+ */
+export function formatUsageCreditBalance(extra: QuotaExtraUsage): string {
+  const parts: string[] = [];
+  if (hasBalance(extra)) {
+    parts.push(`${extraUsageMoney(extra, extra.balance)} available`);
+    const expires = balanceExpiryDate(extra);
+    if (expires) parts.push(`expires ${expires}`);
+  } else if (extra.monthlyLimit === null) {
+    parts.push(`${extraUsageMoney(extra, extra.usedCredits ?? 0)} spent this month`);
+  }
+  const off = extraUsageOffNote(extra);
+  if (off) parts.push(off);
+  return parts.length > 0 ? parts.join(' · ') : 'on';
+}
+
+/**
+ * The monthly spend limit on usage credits, e.g. `$0.00 of $40.00 used this month`;
+ * undefined when no limit is set. This is a cap on spend, not the balance.
+ */
+export function formatExtraUsageSpendLimit(extra: QuotaExtraUsage): string | undefined {
+  if (extra.monthlyLimit === null) return undefined;
+  const used = extraUsageMoney(extra, extra.usedCredits ?? 0);
+  return `${used} of ${extraUsageMoney(extra, extra.monthlyLimit)} used this month`;
+}
+
+/**
+ * One-line usage-credit summary that keeps the balance and the monthly spend
+ * limit apart, e.g. `$100.00 available · $0.00 of $40.00 monthly spend limit used`
+ * or, without a known balance, `$0.00 of $200.00 monthly spend limit used · off (out of credits)`.
+ */
+export function formatExtraUsage(extra: QuotaExtraUsage): string {
+  const parts: string[] = [];
+  if (hasBalance(extra)) parts.push(`${extraUsageMoney(extra, extra.balance)} available`);
+  const used = extraUsageMoney(extra, extra.usedCredits ?? 0);
+  parts.push(
+    extra.monthlyLimit !== null
+      ? `${used} of ${extraUsageMoney(extra, extra.monthlyLimit)} monthly spend limit used`
+      : `${used} spent this month`,
+  );
+  const off = extraUsageOffNote(extra);
+  if (off) parts.push(off);
+  return parts.join(' · ');
 }
 
 /** Compact age label for status lines and table footers: `just now`, `3m ago`, `2h ago`, `3d ago`. */
@@ -592,6 +676,43 @@ function parseExtraUsage(value: unknown): QuotaExtraUsage | undefined {
   };
 }
 
+/**
+ * Normalize a Claude `organizations/<uuid>/prepaid/credits` reply. `amount` is
+ * the remaining balance in minor units of `currency` — the same field Claude
+ * Code reads; a reply without a numeric `amount` is unsupported.
+ */
+export function parsePrepaidCredits(payload: unknown): ClaudePrepaidCredits | undefined {
+  if (!isRecord(payload)) return undefined;
+  const amount = finiteNumber(payload.amount);
+  if (amount === undefined || amount < 0) return undefined;
+  const currency = shortString(payload.currency);
+  const expiresAt = shortString(payload.next_expires_at);
+  return {
+    balance: amount,
+    ...(currency ? { currency } : {}),
+    ...(expiresAt && Number.isFinite(Date.parse(expiresAt)) ? { expiresAt } : {}),
+  };
+}
+
+/** Attach a prepaid balance to `extraUsage`; a balance in another currency is dropped. */
+function withPrepaidCredits<T extends QuotaState>(
+  state: T,
+  credits: ClaudePrepaidCredits | undefined,
+): T {
+  const extra = state.extraUsage;
+  if (!extra || !credits) return state;
+  if (credits.currency && extra.currency && credits.currency !== extra.currency) return state;
+  return {
+    ...state,
+    extraUsage: {
+      ...extra,
+      ...(extra.currency || !credits.currency ? {} : { currency: credits.currency }),
+      balance: credits.balance,
+      ...(credits.expiresAt ? { balanceExpiresAt: credits.expiresAt } : {}),
+    },
+  };
+}
+
 function windowFromMeter(row: QuotaLimitRow | undefined): QuotaWindow | null {
   return row ? { utilization: row.utilization, resetsAt: row.resetsAt } : null;
 }
@@ -692,6 +813,47 @@ function parseRetryAfterMs(retryAfter: string | null): number | undefined {
   return Math.max(retryAt - Date.now(), 0);
 }
 
+function claudeOAuthHeaders(accessToken: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    'anthropic-beta': BETA_HEADER,
+    'Content-Type': 'application/json',
+  };
+}
+
+/**
+ * Fetch the prepaid usage-credit balance of a Claude organization. Best
+ * effort: resolves `undefined` on a malformed organization id, any HTTP or
+ * network failure, a timeout, or an unsupported reply. Never throws.
+ *
+ * @param accessToken - OAuth access token of an account in the organization
+ * @param organizationUuid - `oauthAccount.organizationUuid` of the same login
+ */
+export async function fetchClaudePrepaidCredits(
+  accessToken: string,
+  organizationUuid: string,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<ClaudePrepaidCredits | undefined> {
+  if (!ORGANIZATION_UUID_PATTERN.test(organizationUuid)) return undefined;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  timeout.unref?.();
+  try {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const res = await fetchImpl(`${ORGANIZATIONS_URL}/${organizationUuid}/prepaid/credits`, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: claudeOAuthHeaders(accessToken),
+    });
+    if (!res.ok) return undefined;
+    return parsePrepaidCredits(await res.json());
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /**
  * Fetch current quota utilization from the Anthropic OAuth usage API.
  *
@@ -701,25 +863,29 @@ function parseRetryAfterMs(retryAfter: string | null): number | undefined {
  * @param accessToken - OAuth access token from `readClaudeMaxCredentials()`
  * @param options.fetchImpl - Fetch implementation (defaults to the global `fetch`; tests inject a stub)
  * @param options.plan - Plan facts from the same credentials; stamps `planType` and `planLabel`
+ * @param options.organizationUuid - Organization of the same login. When the
+ *   plan reports usage credits, one more request reads the prepaid balance into
+ *   `extraUsage.balance`; without it the balance stays unknown.
  * @returns QuotaState with utilization data and elapsed-time projections
  */
 export async function fetchQuota(
   accessToken: string,
-  options: { fetchImpl?: typeof fetch; plan?: ClaudePlanInfo | null } = {},
+  options: {
+    fetchImpl?: typeof fetch;
+    plan?: ClaudePlanInfo | null;
+    organizationUuid?: string | null;
+  } = {},
 ): Promise<QuotaState> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   timeout.unref();
+  const fetchImpl = options.fetchImpl ?? fetch;
+  let state: QuotaState;
   try {
-    const fetchImpl = options.fetchImpl ?? fetch;
     const res = await fetchImpl(USAGE_URL, {
       method: 'GET',
       signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'anthropic-beta': BETA_HEADER,
-        'Content-Type': 'application/json',
-      },
+      headers: claudeOAuthHeaders(accessToken),
     });
 
     if (!res.ok) {
@@ -751,11 +917,19 @@ export async function fetchQuota(
       });
     }
 
-    const state = quotaStateFromClaudeUsagePayload(await res.json());
-    return withClaudePlan(state, options.plan);
+    state = quotaStateFromClaudeUsagePayload(await res.json());
   } catch {
     return unavailableState('Network error', { failureKind: 'network' });
   } finally {
     clearTimeout(timeout);
   }
+
+  // Only plans that report usage credits pay for the balance request.
+  if (state.extraUsage && options.organizationUuid) {
+    const credits = await fetchClaudePrepaidCredits(accessToken, options.organizationUuid, {
+      fetchImpl,
+    });
+    state = withPrepaidCredits(state, credits);
+  }
+  return withClaudePlan(state, options.plan);
 }

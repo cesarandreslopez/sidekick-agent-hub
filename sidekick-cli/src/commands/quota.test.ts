@@ -114,7 +114,8 @@ async function pureQuotaHelpers() {
   const actual = await vi.importActual<typeof import('sidekick-shared')>('sidekick-shared');
   return {
     extraQuotaRows: actual.extraQuotaRows,
-    formatExtraUsage: actual.formatExtraUsage,
+    formatExtraUsageSpendLimit: actual.formatExtraUsageSpendLimit,
+    formatUsageCreditBalance: actual.formatUsageCreditBalance,
     quotaWindowApplies: actual.quotaWindowApplies,
     quotaWindowHasData: actual.quotaWindowHasData,
   };
@@ -366,7 +367,7 @@ describe('quotaAction', () => {
     expect(stdoutData).toContain('85%');
   });
 
-  it('prints a plan without a five-hour limit: weekly row, extra meters, plan, and extra usage', async () => {
+  it('prints a plan without a five-hour limit: weekly row, extra meters, plan, and usage credits', async () => {
     const weeklyReset = new Date(Date.now() + 6 * 86400_000).toISOString();
     mockFetchOnce.mockResolvedValue({
       fiveHour: { utilization: 0, resetsAt: '', absent: true },
@@ -413,11 +414,38 @@ describe('quotaAction', () => {
     expect(stdoutData).toMatch(/7-Day \(Fable\)\s+[█░]+\s+4%/);
     expect(stdoutData).toContain('no 5-hour limit on Ultra');
     expect(stdoutData).toContain('may use up to 50% of the weekly limit');
-    expect(stdoutData).toContain('$0.00 of $200.00 used · off (out of credits)');
+    // Without a known balance the spend limit is never shown as the credit amount.
+    expect(stdoutData).toMatch(/Usage credits\s+off \(out of credits\)/);
+    expect(stdoutData).toMatch(/Spend limit\s+\$0\.00 of \$200\.00 used this month/);
+    expect(stdoutData).not.toContain('Extra usage');
     // Peak hours only drain a five-hour session limit, which this plan does not have.
     expect(stdoutData).not.toContain('Peak');
     // The headline weekly meter is not repeated as an extra row.
     expect(stdoutData.match(/7-Day\s+[█░]/g)).toHaveLength(1);
+  });
+
+  it('shows the usage-credit balance apart from the monthly spend limit', async () => {
+    mockFetchOnce.mockResolvedValue({
+      fiveHour: { utilization: 0, resetsAt: '', absent: true },
+      sevenDay: { utilization: 95, resetsAt: new Date(Date.now() + 3 * 86400_000).toISOString() },
+      available: true,
+      planLabel: 'Ultra',
+      extraUsage: {
+        enabled: true,
+        monthlyLimit: 4000,
+        usedCredits: 0,
+        utilization: null,
+        currency: 'USD',
+        decimalPlaces: 2,
+        balance: 10000,
+      },
+    });
+
+    const { quotaAction } = await import('./quota');
+    await quotaAction({}, makeCmd());
+
+    expect(stdoutData).toMatch(/Usage credits\s+\$100\.00 available/);
+    expect(stdoutData).toMatch(/Spend limit\s+\$0\.00 of \$40\.00 used this month/);
   });
 
   it('labels a weekly-only Codex plan by its window and hides the missing window', async () => {

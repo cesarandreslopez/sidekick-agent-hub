@@ -6,8 +6,9 @@ import type { Command } from 'commander';
 import chalk, { type ChalkInstance } from 'chalk';
 import {
   extraQuotaRows,
-  formatExtraUsage,
+  formatExtraUsageSpendLimit,
   formatQuotaAge,
+  formatUsageCreditBalance,
   describeQuotaFailure,
   quotaWindowApplies,
   quotaWindowHasData,
@@ -394,11 +395,22 @@ function claudeQuotaMetaRows(quota: ClaudeQuota, peak: PeakHoursState): QuotaMet
     });
   }
   if (quota.extraUsage) {
+    // The balance and the monthly spend limit are separate numbers: a $100
+    // balance under a $40 limit can cover only $40 a month.
+    const credits = quota.extraUsage;
     metaRows.push({
-      label: 'Extra usage',
-      value: formatExtraUsage(quota.extraUsage),
-      color: quota.extraUsage.enabled ? (value) => value : chalk.dim,
+      label: 'Usage credits',
+      value: formatUsageCreditBalance(credits),
+      color: credits.enabled ? (value) => value : chalk.dim,
     });
+    const spendLimit = formatExtraUsageSpendLimit(credits);
+    if (spendLimit) {
+      metaRows.push({
+        label: 'Spend limit',
+        value: spendLimit,
+        color: credits.enabled ? (value) => value : chalk.dim,
+      });
+    }
   }
   // Peak hours drain the five-hour session limit faster; a plan without one
   // (Ultra) is unaffected, so the row would only mislead.

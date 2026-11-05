@@ -434,6 +434,8 @@ export {
   claudePlanLabel,
   extraQuotaRows,
   formatExtraUsage,
+  formatExtraUsageSpendLimit,
+  formatUsageCreditBalance,
   quotaWindowApplies,
   quotaWindowHasData,
   quotaWindowLabel,

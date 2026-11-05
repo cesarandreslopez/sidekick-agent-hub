@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.30.3: usage credits balance vs spend limit** — `sidekick quota` used to print `Extra usage $0.00 of $40.00 used`, where $40 is the monthly spend limit, not your balance. It now prints `Usage credits $100.00 available` (the prepaid balance) and `Spend limit $0.00 of $40.00 used this month` on separate rows, and `--json` adds `extraUsage.balance`.
 - **0.30.1: update notifications** — one-shot commands such as `sidekick quota` end with an "Update available" line on stderr when a newer `sidekick-agent-hub` is on npm. npm is asked at most every 4 hours, and the request overlaps the command. The same version is announced at most twice a day, never with `--json`, in pipes, in CI, or from `statusline` / `mcp`. `SIDEKICK_NO_UPDATE_NOTIFIER=1` turns it off.
 - **0.30.0: Codex subagents and agents that never report**
   - **Codex subagents:** the dashboard's Agents tab, mind map and task list show them, linked to their spawn calls and followed to completion.
@@ -103,14 +104,14 @@ sidekick tasks add|tasks done|note add|decision add [args]
 
 Most commands run one-shot queries and print to stdout; `dashboard` opens the full-screen TUI, `accounts` and `extract -i` open interactive pickers, and `mcp` serves stdio until closed. Every command except `statusline` accepts the global flags below.
 
-| Flag                   | Description                                                               |
-| ---------------------- | ------------------------------------------------------------------------- |
-| `--json`               | Machine-readable JSON output (commands that support it)                   |
-| `--project <path>`     | Override project path (default: current working directory)                |
-| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default) |
-| `--no-color`           | Disable colored output (also honors `NO_COLOR`)                           |
-| `--offline`            | Price from the cached catalog only (also `SIDEKICK_OFFLINE=1`)            |
-| `--output-file <path>` | Write a command's stdout to a file, without colour codes                  |
+| Flag                   | Description                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `--json`               | Machine-readable JSON output (commands that support it)                                     |
+| `--project <path>`     | Override project path (default: current working directory)                                  |
+| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)                   |
+| `--no-color`           | Disable colored output (also honors `NO_COLOR`)                                             |
+| `--offline`            | Price from the cached catalog only (also `SIDEKICK_OFFLINE=1`)                              |
+| `--output-file <path>` | Write a command's stdout to a file, without colour codes (ignored by `dashboard` and `mcp`) |
 
 Per-command: `--session <id>` follows a specific session by ID (`dashboard`, `dump`, `report`, `handoff open`), and `--replay` replays existing events from the beginning before streaming live (`dashboard` only).
 
@@ -349,7 +350,7 @@ sidekick quota
 
 Provider-aware quota and rate-limit display. The command auto-detects the active provider:
 
-- **Claude Code**: Shows Claude subscription quota (Pro, Max, or Ultra), titled with the plan — the 5-hour window when the plan has one (Ultra shows `Session  no 5-hour limit on Ultra` instead), the 7-day window, any extra meters the usage endpoint reports (such as `7-Day (Fable)`), and an `Extra usage` row, with color-coded progress bars, projections, and reset countdowns. Plans with a 5-hour limit also get a peak-hours summary line.
+- **Claude Code**: Shows Claude subscription quota (Pro, Max, or Ultra), titled with the plan — the 5-hour window when the plan has one (Ultra shows `Session  no 5-hour limit on Ultra` instead), the 7-day window, any extra meters the usage endpoint reports (such as `7-Day (Fable)`), and usage credits as two rows (`Usage credits` for the prepaid balance, `Spend limit` for the monthly cap on spending it), with color-coded progress bars, projections, and reset countdowns. Plans with a 5-hour limit also get a peak-hours summary line.
 - **Codex**: Fetches the Codex usage API on every command — the windows the plan reports, named by length (`5-Hour`, `Weekly`), with progress bars, projected end-of-window utilization, and reset countdowns. The output also lists available **reset credits** and each credit's expiration. Session logs and cached samples are fallbacks if the API fails.
 - **OpenCode / z.ai**: OpenCode has no native rate-limit data, but when z.ai Coding Plan credentials are available, `sidekick quota --provider opencode` can auto-route to authoritative z.ai quota (5-Hour / Weekly, with projected end-of-window utilization). Use `--provider zai` to request it explicitly. z.ai quota is read from z.ai's quota API using OpenCode's stored token, with fallback support for `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`.
 
@@ -374,14 +375,15 @@ Subscription Quota (plan: Ultra)                now projected resets
   Source        Anthropic usage API
   Session       no 5-hour limit on Ultra
   Fable         may use up to 50% of the weekly limit
-  Extra usage   $0.00 of $200.00 used · off (out of credits)
+  Usage credits $100.00 available
+  Spend limit   $0.00 of $40.00 used this month
 ```
 
 When quota data is unavailable, `sidekick quota` shows structured auth, rate-limit, network, server, or unexpected-failure messaging instead of a generic raw error. The dashboard Sessions panel also keeps a compact inline quota/rate-limit state visible instead of hiding the section entirely.
 
 Codex quota commands and `sidekick mcp`'s `get_quota_status` always ask the API first, even when a fresh local sample exists. If the API fails, the newer session or cached sample is shown; equal capture times favor the cache. The `Source` row identifies the sample and its age, and a `Refresh` row explains a failed Codex API attempt. Claude and z.ai may reuse a persisted sample younger than five minutes; add `--refresh` to ask their APIs first too. Dashboard refresh schedules are unchanged.
 
-Use `--json` for machine-readable output; it includes `resolution`, `source`, `capturedSource`, `freshness`, and `ageMs`, plus `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses, and for Claude `fiveHour.absent`, `planLabel`, `limits`, and `extraUsage`. A cached sample whose windows have all reset is reported as expired rather than shown. The `failure` descriptor explains an API failure even when fallback data is available. Claude Code requires active credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows).
+Use `--json` for machine-readable output; it includes `resolution`, `source`, `capturedSource`, `freshness`, and `ageMs`, plus `failureKind`, `httpStatus`, and `retryAfterMs` on unavailable responses, and for Claude `fiveHour.absent`, `planLabel`, `limits`, and `extraUsage` (`balance` is the prepaid usage-credit balance and `monthlyLimit` the spend limit, both in minor units). A cached sample whose windows have all reset is reported as expired rather than shown. The `failure` descriptor explains an API failure even when fallback data is available. Claude Code requires active credentials (read from the system Keychain on macOS, or `~/.claude/.credentials.json` on Linux/Windows).
 
 `sidekick quota` shows the currently logged-in account email above the quota bars — resolved live from the provider's auth, so it stays correct even after a native `claude login` / `codex login`.
 

@@ -58,6 +58,8 @@ export const quotaExtraUsageSchema = z.object({
   currency: z.string().optional(),
   decimalPlaces: z.number().optional(),
   disabledReason: z.string().optional(),
+  balance: z.number().optional(),
+  balanceExpiresAt: z.string().optional(),
 }) satisfies z.ZodType<QuotaExtraUsage>;
 
 // ── QuotaState ──

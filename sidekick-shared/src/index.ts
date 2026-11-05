@@ -1097,6 +1097,7 @@ export {
   isClaudeProfileAuthenticated,
   readClaudeProfileIdentity,
   readLiveClaudeIdentity,
+  readLiveClaudeOrganizationUuid,
 } from './claudeProfiles';
 export type { ClaudeProfileIdentity } from './claudeProfiles';
 export {
@@ -1146,8 +1147,12 @@ export {
   SEVEN_DAY_WINDOW_MS,
   claudePlanLabel,
   extraQuotaRows,
+  fetchClaudePrepaidCredits,
   fetchQuota,
   formatExtraUsage,
+  formatExtraUsageSpendLimit,
+  formatUsageCreditBalance,
+  parsePrepaidCredits,
   projectQuotaWindow,
   quotaSampleExpired,
   quotaStateFromClaudeUsagePayload,
@@ -1160,6 +1165,7 @@ export {
 } from './quota';
 export type {
   ClaudePlanInfo,
+  ClaudePrepaidCredits,
   CodexResetCredit,
   CodexResetCreditsSnapshot,
   QuotaExtraUsage,

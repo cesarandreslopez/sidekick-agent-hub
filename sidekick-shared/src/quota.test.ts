@@ -4,8 +4,12 @@ import {
   SEVEN_DAY_WINDOW_MS,
   claudePlanLabel,
   extraQuotaRows,
+  fetchClaudePrepaidCredits,
   fetchQuota,
   formatExtraUsage,
+  formatExtraUsageSpendLimit,
+  formatUsageCreditBalance,
+  parsePrepaidCredits,
   projectQuotaWindow,
   quotaSampleExpired,
   quotaStateFromClaudeUsagePayload,
@@ -14,6 +18,7 @@ import {
   quotaWindowShortLabel,
   withQuotaProjections,
 } from './quota';
+import type { QuotaExtraUsage } from './quota';
 
 describe('projectQuotaWindow', () => {
   it('projects utilization from captured time, reset time, and window duration', () => {
@@ -340,7 +345,7 @@ describe('quotaStateFromClaudeUsagePayload', () => {
       disabledReason: 'out_of_credits',
     });
     expect(formatExtraUsage(state.extraUsage!)).toBe(
-      '$0.00 of $200.00 used · off (out of credits)',
+      '$0.00 of $200.00 monthly spend limit used · off (out of credits)',
     );
   });
 
@@ -462,6 +467,193 @@ describe('fetchQuota plan facts', () => {
 
     expect(state).toMatchObject({ available: true, planType: 'max', planLabel: 'Ultra' });
     expect(state.fiveHour.absent).toBe(true);
+  });
+});
+
+// Shapes captured from a live Ultra account on 2026-11-05: a $100 prepaid
+// balance under a $40 monthly spend limit (`spend.balance` is null there).
+const ORG_UUID = 'c7ee1e0f-3b12-4605-baa8-716501af5257';
+const CREDITS_USAGE_PAYLOAD = {
+  five_hour: null,
+  seven_day: { utilization: 95, resets_at: '2026-11-08T14:59:59.838470+00:00' },
+  extra_usage: {
+    is_enabled: true,
+    monthly_limit: 4000,
+    used_credits: 0,
+    utilization: null,
+    currency: 'USD',
+    decimal_places: 2,
+    disabled_reason: null,
+    user_disabled: false,
+    spend_limit_reached: false,
+    credits_ever_enabled: true,
+    daily: null,
+    weekly: null,
+  },
+  spend: {
+    used: { amount_minor: 0, currency: 'USD', exponent: 2 },
+    limit: { amount_minor: 4000, currency: 'USD', exponent: 2 },
+    percent: 0,
+    enabled: true,
+    cap: { money: null, credits: { amount_minor: 4000, exponent: 2 } },
+    balance: null,
+  },
+};
+const PREPAID_CREDITS_PAYLOAD = {
+  amount: 10000,
+  currency: 'USD',
+  balance: { money: null, credits: { amount_minor: 10000, exponent: 2 } },
+  balance_credits: 100,
+  amount_without_scoped_credits: null,
+  auto_reload_settings: null,
+  expiry_policy_months: null,
+  tranches: [
+    {
+      remaining_amount_minor_units: 10000,
+      currency: 'USD',
+      expires_at: null,
+      granted_amount_minor_units: 10000,
+    },
+  ],
+  promo_tranches: [],
+  next_expires_at: null,
+};
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+}
+
+/** A fetch stub that answers the usage and prepaid-credit endpoints separately. */
+function routedFetch(routes: { usage: unknown; prepaid?: () => Promise<Response> | Response }) {
+  return vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith('/api/oauth/usage')) return jsonResponse(routes.usage);
+    if (url.endsWith(`/organizations/${ORG_UUID}/prepaid/credits`) && routes.prepaid) {
+      return routes.prepaid();
+    }
+    throw new Error(`unexpected request: ${url}`);
+  });
+}
+
+describe('usage credits', () => {
+  const credits: QuotaExtraUsage = {
+    enabled: true,
+    monthlyLimit: 4000,
+    usedCredits: 0,
+    utilization: null,
+    currency: 'USD',
+    decimalPlaces: 2,
+  };
+
+  it('parses the prepaid-credit balance from amount', () => {
+    expect(parsePrepaidCredits(PREPAID_CREDITS_PAYLOAD)).toEqual({
+      balance: 10000,
+      currency: 'USD',
+    });
+    expect(parsePrepaidCredits({ amount: 2500, next_expires_at: '2026-12-01T22:22:47Z' })).toEqual({
+      balance: 2500,
+      expiresAt: '2026-12-01T22:22:47Z',
+    });
+  });
+
+  it('rejects prepaid replies without a usable amount', () => {
+    expect(parsePrepaidCredits(null)).toBeUndefined();
+    expect(parsePrepaidCredits([])).toBeUndefined();
+    expect(parsePrepaidCredits({ balance_credits: 100 })).toBeUndefined();
+    expect(parsePrepaidCredits({ amount: '10000' })).toBeUndefined();
+    expect(parsePrepaidCredits({ amount: -1 })).toBeUndefined();
+    expect(parsePrepaidCredits({ amount: 1, next_expires_at: 'soon' })).toEqual({ balance: 1 });
+  });
+
+  it('keeps the balance and the monthly spend limit apart', () => {
+    const withBalance = { ...credits, balance: 10000 };
+    expect(formatUsageCreditBalance(withBalance)).toBe('$100.00 available');
+    expect(formatExtraUsageSpendLimit(withBalance)).toBe('$0.00 of $40.00 used this month');
+    expect(formatExtraUsage(withBalance)).toBe(
+      '$100.00 available · $0.00 of $40.00 monthly spend limit used',
+    );
+    expect(
+      formatUsageCreditBalance({ ...withBalance, balanceExpiresAt: '2026-12-01T22:22:47Z' }),
+    ).toBe('$100.00 available · expires 2026-12-01');
+  });
+
+  it('never presents the spend limit as the balance when the balance is unknown', () => {
+    expect(formatUsageCreditBalance(credits)).toBe('on');
+    expect(formatExtraUsage(credits)).toBe('$0.00 of $40.00 monthly spend limit used');
+
+    const off = { ...credits, enabled: false, disabledReason: 'out_of_credits', balance: 0 };
+    expect(formatUsageCreditBalance(off)).toBe('$0.00 available · off (out of credits)');
+    expect(formatUsageCreditBalance({ ...credits, enabled: false })).toBe('off');
+
+    const uncapped = { ...credits, monthlyLimit: null, usedCredits: 1240 };
+    expect(formatUsageCreditBalance(uncapped)).toBe('$12.40 spent this month');
+    expect(formatExtraUsageSpendLimit(uncapped)).toBeUndefined();
+    expect(formatExtraUsage(uncapped)).toBe('$12.40 spent this month');
+  });
+
+  it('adds the prepaid balance when the organization is known', async () => {
+    const fetchImpl = routedFetch({
+      usage: CREDITS_USAGE_PAYLOAD,
+      prepaid: () => jsonResponse(PREPAID_CREDITS_PAYLOAD),
+    });
+
+    const state = await fetchQuota('token', { fetchImpl, organizationUuid: ORG_UUID });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const [, init] = fetchImpl.mock.calls[1] as [string, RequestInit];
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer token' });
+    expect(state.available).toBe(true);
+    expect(state.extraUsage).toMatchObject({ monthlyLimit: 4000, balance: 10000 });
+    expect(formatUsageCreditBalance(state.extraUsage!)).toBe('$100.00 available');
+  });
+
+  it('skips the balance request without an organization or usage credits', async () => {
+    const noOrg = routedFetch({ usage: CREDITS_USAGE_PAYLOAD });
+    const state = await fetchQuota('token', { fetchImpl: noOrg });
+    expect(noOrg).toHaveBeenCalledTimes(1);
+    expect(state.extraUsage).not.toHaveProperty('balance');
+
+    const { extra_usage: _extra, ...withoutCredits } = CREDITS_USAGE_PAYLOAD;
+    const noCredits = routedFetch({ usage: withoutCredits });
+    await fetchQuota('token', { fetchImpl: noCredits, organizationUuid: ORG_UUID });
+    expect(noCredits).toHaveBeenCalledTimes(1);
+
+    const badOrg = routedFetch({ usage: CREDITS_USAGE_PAYLOAD });
+    await fetchQuota('token', { fetchImpl: badOrg, organizationUuid: '../usage' });
+    expect(badOrg).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the quota when the balance cannot be read', async () => {
+    for (const prepaid of [
+      () => jsonResponse({ error: 'forbidden' }, 403),
+      () => Promise.reject(new Error('socket hang up')),
+      () => jsonResponse({ amount: 'n/a' }),
+      () => jsonResponse({ ...PREPAID_CREDITS_PAYLOAD, currency: 'EUR' }),
+    ]) {
+      const state = await fetchQuota('token', {
+        fetchImpl: routedFetch({ usage: CREDITS_USAGE_PAYLOAD, prepaid }),
+        organizationUuid: ORG_UUID,
+      });
+      expect(state.available).toBe(true);
+      expect(state.sevenDay.utilization).toBe(95);
+      expect(state.extraUsage).toMatchObject({ monthlyLimit: 4000 });
+      expect(state.extraUsage).not.toHaveProperty('balance');
+    }
+  });
+
+  it('fetches the balance on its own and never throws', async () => {
+    const ok = routedFetch({
+      usage: CREDITS_USAGE_PAYLOAD,
+      prepaid: () => jsonResponse(PREPAID_CREDITS_PAYLOAD),
+    });
+    await expect(fetchClaudePrepaidCredits('token', ORG_UUID, { fetchImpl: ok })).resolves.toEqual({
+      balance: 10000,
+      currency: 'USD',
+    });
+    const failing = vi.fn().mockRejectedValue(new Error('offline'));
+    await expect(
+      fetchClaudePrepaidCredits('token', ORG_UUID, { fetchImpl: failing }),
+    ).resolves.toBeUndefined();
   });
 });
 

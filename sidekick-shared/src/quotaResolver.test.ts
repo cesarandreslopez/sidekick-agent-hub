@@ -6,11 +6,14 @@ import type { QuotaState } from './quota';
 import { classifyQuotaFreshness } from './quota';
 import type { QuotaSnapshotProviderId } from './quotaSnapshots';
 
-const { mockLocalCodex, mockCodexApi, mockZaiApi } = vi.hoisted(() => ({
-  mockLocalCodex: vi.fn(),
-  mockCodexApi: vi.fn(),
-  mockZaiApi: vi.fn(),
-}));
+const { mockLocalCodex, mockCodexApi, mockZaiApi, mockClaudeCredentials, mockOrganizationUuid } =
+  vi.hoisted(() => ({
+    mockLocalCodex: vi.fn(),
+    mockCodexApi: vi.fn(),
+    mockZaiApi: vi.fn(),
+    mockClaudeCredentials: vi.fn(async () => null),
+    mockOrganizationUuid: vi.fn((): string | null => null),
+  }));
 
 let tmpDir: string;
 
@@ -22,6 +25,16 @@ vi.mock('./codexQuota', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./codexQuota')>()),
   resolveCodexQuotaFromLocalSources: (...args: unknown[]) => mockLocalCodex(...args),
   fetchCodexQuotaFromApi: (...args: unknown[]) => mockCodexApi(...args),
+}));
+
+vi.mock('./credentials', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./credentials')>()),
+  readClaudeMaxCredentials: () => mockClaudeCredentials(),
+}));
+
+vi.mock('./claudeProfiles', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./claudeProfiles')>()),
+  readLiveClaudeOrganizationUuid: () => mockOrganizationUuid(),
 }));
 
 vi.mock('./zaiQuotaApi', async (importOriginal) => ({
@@ -616,6 +629,50 @@ describe('resolveQuota', () => {
     });
     expect(result.projectedFiveHour).toBeUndefined();
     expect(store.writes[0].quota.fiveHour.absent).toBe(true);
+  });
+
+  it('adds the usage-credit balance for the live login only', async () => {
+    const usage = {
+      five_hour: null,
+      seven_day: { utilization: 95, resets_at: '2026-09-08T09:00:00Z' },
+      extra_usage: { is_enabled: true, monthly_limit: 4000, used_credits: 0, currency: 'USD' },
+    };
+    const fetchImpl = vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith('/prepaid/credits')
+        ? okJson({ amount: 10000, currency: 'USD' })
+        : okJson(usage),
+    );
+    mockClaudeCredentials.mockResolvedValueOnce({ accessToken: 'live-token' } as never);
+    mockOrganizationUuid.mockReturnValueOnce('c7ee1e0f-3b12-4605-baa8-716501af5257');
+
+    const live = await resolveQuota({
+      providerId: 'claude-code',
+      now: NOW,
+      preferFresh: false,
+      resolveClaudeAccount: claudeAccount,
+      fetchImpl,
+      ...memoryStore(),
+    });
+
+    expect(String(fetchImpl.mock.calls[1]?.[0])).toBe(
+      'https://api.anthropic.com/api/oauth/organizations/c7ee1e0f-3b12-4605-baa8-716501af5257/prepaid/credits',
+    );
+    expect(live.extraUsage).toMatchObject({ monthlyLimit: 4000, balance: 10000 });
+
+    // A caller-supplied token may belong to another login: no organization lookup.
+    fetchImpl.mockClear();
+    const supplied = await resolveQuota({
+      providerId: 'claude-code',
+      now: NOW,
+      preferFresh: false,
+      resolveClaudeAccount: claudeAccount,
+      getClaudeAccessToken: async () => 'token',
+      fetchImpl,
+      ...memoryStore(),
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(supplied.extraUsage).not.toHaveProperty('balance');
   });
 
   it('gives every caller the same answer from the same persisted store', async () => {

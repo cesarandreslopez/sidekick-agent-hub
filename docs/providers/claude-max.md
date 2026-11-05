@@ -29,7 +29,7 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 Claude Code sessions are monitored from `~/.claude/projects/`, or from `$CLAUDE_CONFIG_DIR/projects/` when `CLAUDE_CONFIG_DIR` is set, the same home the `claude` CLI writes to. The dashboard shows:
 
 - Token usage with elapsed-time quota projections
-- 5-hour and 7-day subscription quota gauges with projected end-of-window utilization. The quota section names your plan (Pro, Max, or Ultra). On Ultra, which has no 5-hour session limit, the 5-hour gauge is replaced by a "No 5-hour limit on Ultra" note. Extra meters the usage endpoint reports, such as the weekly Fable cap, and your extra-usage (usage credit) spend appear below the gauges
+- 5-hour and 7-day subscription quota gauges with projected end-of-window utilization. The quota section names your plan (Pro, Max, or Ultra). On Ultra, which has no 5-hour session limit, the 5-hour gauge is replaced by a "No 5-hour limit on Ultra" note. Extra meters the usage endpoint reports, such as the weekly Fable cap, and your usage credits appear below the gauges as two separate notes: `Usage credits` is the prepaid balance (`$100.00 available`) and `Spend limit` is the monthly cap on how much of it may be spent (`$0.00 of $40.00 used this month`). A $100 balance under a $40 spend limit can only cover $40 a month
 - Cost tracking (included in subscription)
 
 If quota data becomes unavailable, Sidekick now keeps the quota surface visible and classifies the failure: missing credentials / expired Claude Code sign-in, rate limits, transient network or server failures, and unexpected API responses are shown as distinct states instead of a single generic error.

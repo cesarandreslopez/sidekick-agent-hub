@@ -146,6 +146,16 @@ export function readLiveClaudeIdentity(
   return identityFromOauthAccount(readOauthAccount(getClaudeConfigPath(home)));
 }
 
+/**
+ * Organization uuid (`oauthAccount.organizationUuid`) of the account logged in
+ * to a Claude home (default: the live home), or null when there is none. It
+ * addresses organization-scoped endpoints such as the prepaid usage-credit balance.
+ */
+export function readLiveClaudeOrganizationUuid(home: string = getLiveClaudeHome()): string | null {
+  const uuid = readOauthAccount(getClaudeConfigPath(home))?.organizationUuid;
+  return typeof uuid === 'string' && uuid.trim() ? uuid.trim() : null;
+}
+
 export function readClaudeProfileIdentity(home: string): ClaudeProfileIdentity | null {
   return identityFromOauthAccount(readOauthAccount(path.join(home, '.claude.json')));
 }

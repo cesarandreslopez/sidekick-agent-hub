@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.30.3: usage credits balance vs spend limit** — the dashboard's quota card used to show `Extra usage: $0.00 of $40.00 used`, where $40 is the monthly spend limit, not your balance. It now shows `Usage credits: $100.00 available` (the prepaid balance) and `Spend limit: $0.00 of $40.00 used this month` as separate notes.
 - **0.30.1: update notifications** — the extension tells you when a newer version is published. It asks the Marketplace in VS Code and Open VSX in Cursor, VSCodium and other editors, 30 seconds after startup and then twice a day. The notification offers **Update**, **Release Notes**, and **Skip This Version**. **Sidekick: Check for Updates** checks on demand, and `sidekick.updateCheck.enabled` turns the automatic check off. The `sidekick` CLI now announces its own updates after one-shot commands.
 - **0.30.0: Codex subagents in the Subagents view, and agents that never report**
   - **Codex subagents:** children started with `spawn_agent` appear in the Subagents view with their nickname or task name, nested by depth, and open their rollout on click. Each is linked to its spawn call and followed from launch to completion, including follow-up tasks, interrupts, and failed spawns, and shows on the Kanban board. Their statistics count only the child's own work, and session following no longer switches to a subagent's rollout.

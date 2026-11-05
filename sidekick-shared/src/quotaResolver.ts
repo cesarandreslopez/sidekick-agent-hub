@@ -29,6 +29,7 @@ import {
   resolveCodexQuotaFromLocalSources,
 } from './codexQuota';
 import { readClaudeMaxCredentials } from './credentials';
+import { readLiveClaudeOrganizationUuid } from './claudeProfiles';
 import type { ProviderQuotaState } from './providerQuota';
 import type { CodexProvider } from './providers/codex';
 import {
@@ -160,11 +161,15 @@ function resolveIdentity(options: ResolveQuotaOptions): ResolvedIdentity {
 }
 
 /** Token plus the plan facts stored beside it (the plan label needs no extra read). */
-async function claudeTokenAndPlan(
-  options: ResolveQuotaOptions,
-): Promise<{ token: string | null; plan: ClaudePlanInfo | null }> {
+async function claudeTokenAndPlan(options: ResolveQuotaOptions): Promise<{
+  token: string | null;
+  plan: ClaudePlanInfo | null;
+  organizationUuid: string | null;
+}> {
   if (options.getClaudeAccessToken) {
-    return { token: await options.getClaudeAccessToken(), plan: null };
+    // A caller-supplied token need not belong to the live login, so its
+    // organization is unknown and the usage-credit balance is not fetched.
+    return { token: await options.getClaudeAccessToken(), plan: null, organizationUuid: null };
   }
   const credentials = await readClaudeMaxCredentials();
   return {
@@ -172,6 +177,7 @@ async function claudeTokenAndPlan(
     plan: credentials
       ? { subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier }
       : null,
+    organizationUuid: credentials ? readLiveClaudeOrganizationUuid() : null,
   };
 }
 
@@ -202,7 +208,7 @@ async function fetchFromApi(
 ): Promise<QuotaState> {
   switch (options.providerId) {
     case 'claude-code': {
-      const { token, plan } = await claudeTokenAndPlan(options);
+      const { token, plan, organizationUuid } = await claudeTokenAndPlan(options);
       if (!token) {
         return {
           ...zeroWindows(),
@@ -214,7 +220,11 @@ async function fetchFromApi(
           capturedAt,
         };
       }
-      const state = await fetchQuota(token, { fetchImpl: options.fetchImpl, plan });
+      const state = await fetchQuota(token, {
+        fetchImpl: options.fetchImpl,
+        plan,
+        organizationUuid,
+      });
       return { ...state, providerId: 'claude-code', source: 'api', capturedAt };
     }
     case 'codex':

@@ -72,9 +72,32 @@ describe('renderQuotaExtrasHtml', () => {
     expect(html).toContain('width: 4%');
     expect(html).toContain('Fable may use up to 50% of the weekly limit');
     expect(html).toContain('No 5-hour limit on Ultra');
-    expect(html).toContain('Extra usage: $0.00 of $200.00 used · off (out of credits)');
+    expect(html).toContain('Usage credits: off (out of credits)');
+    expect(html).toContain('Spend limit: $0.00 of $200.00 used this month');
+    expect(html).not.toContain('Extra usage');
     // The headline weekly meter is already a gauge.
     expect(html.match(/quota-extra-row/g)).toHaveLength(1);
+  });
+
+  it('shows the usage-credit balance apart from the monthly spend limit', () => {
+    const html = renderQuotaExtrasHtml(
+      {
+        ...ULTRA,
+        extraUsage: {
+          enabled: true,
+          monthlyLimit: 4000,
+          usedCredits: 0,
+          utilization: null,
+          currency: 'USD',
+          decimalPlaces: 2,
+          balance: 10000,
+        },
+      },
+      'claude-code',
+      () => '',
+    );
+    expect(html).toContain('Usage credits: $100.00 available');
+    expect(html).toContain('Spend limit: $0.00 of $40.00 used this month');
   });
 
   it('is empty for the classic two-window shape', () => {

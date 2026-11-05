@@ -1,13 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockReadClaudeMaxCredentials, mockFetchQuota, mockLog, mockPollerStart, mockPollerStop } =
-  vi.hoisted(() => ({
-    mockReadClaudeMaxCredentials: vi.fn(),
-    mockFetchQuota: vi.fn(),
-    mockLog: vi.fn(),
-    mockPollerStart: vi.fn(),
-    mockPollerStop: vi.fn(),
-  }));
+const {
+  mockReadClaudeMaxCredentials,
+  mockFetchQuota,
+  mockLog,
+  mockPollerStart,
+  mockPollerStop,
+  mockReadLiveClaudeOrganizationUuid,
+} = vi.hoisted(() => ({
+  mockReadClaudeMaxCredentials: vi.fn(),
+  mockFetchQuota: vi.fn(),
+  mockLog: vi.fn(),
+  mockPollerStart: vi.fn(),
+  mockPollerStop: vi.fn(),
+  mockReadLiveClaudeOrganizationUuid: vi.fn(),
+}));
 
 vi.mock('vscode', () => ({
   default: {},
@@ -32,6 +39,8 @@ vi.mock('vscode', () => ({
 vi.mock('sidekick-shared', () => ({
   readClaudeMaxCredentials: (...args: unknown[]) => mockReadClaudeMaxCredentials(...args),
   fetchQuota: (...args: unknown[]) => mockFetchQuota(...args),
+  readLiveClaudeOrganizationUuid: (...args: unknown[]) =>
+    mockReadLiveClaudeOrganizationUuid(...args),
   quotaHistoryWindow: (window: { utilization: number; resetsAt: string; absent?: boolean }) => ({
     utilization: window.utilization,
     resetsAt: window.resetsAt,
@@ -172,13 +181,14 @@ describe('QuotaService', () => {
     });
   });
 
-  it('passes the credential plan facts so the quota carries a plan label', async () => {
+  it('passes the plan facts and the live organization so the quota carries a plan label and credit balance', async () => {
     const creds = {
       accessToken: 'token',
       subscriptionType: 'max',
       rateLimitTier: 'default_claude_max_20x',
     };
     mockReadClaudeMaxCredentials.mockResolvedValue(creds);
+    mockReadLiveClaudeOrganizationUuid.mockReturnValue('c7ee1e0f-3b12-4605-baa8-716501af5257');
     mockFetchQuota.mockResolvedValueOnce({
       fiveHour: { utilization: 0, resetsAt: '', absent: true },
       sevenDay: { utilization: 17, resetsAt: '2026-11-07T06:00:00Z' },
@@ -189,7 +199,10 @@ describe('QuotaService', () => {
     const service = new QuotaService();
     const result = await service.fetchQuota();
 
-    expect(mockFetchQuota).toHaveBeenCalledWith('token', { plan: creds });
+    expect(mockFetchQuota).toHaveBeenCalledWith('token', {
+      plan: creds,
+      organizationUuid: 'c7ee1e0f-3b12-4605-baa8-716501af5257',
+    });
     expect(result).toMatchObject({ planLabel: 'Ultra', fiveHour: { absent: true } });
   });
 

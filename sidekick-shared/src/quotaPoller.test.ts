@@ -51,6 +51,36 @@ describe('QuotaPoller', () => {
     poller.stop();
   });
 
+  it('forwards the plan facts and organization from a credentials record', async () => {
+    mockFetchQuota.mockResolvedValue(unavailable('network'));
+    const credentials = {
+      accessToken: 'token',
+      subscriptionType: 'max',
+      organizationUuid: 'c7ee1e0f-3b12-4605-baa8-716501af5257',
+    };
+    const poller = new QuotaPoller({ getAccessToken: async () => credentials });
+
+    poller.start();
+    await flushPoll();
+
+    expect(mockFetchQuota).toHaveBeenCalledWith('token', {
+      plan: credentials,
+      organizationUuid: 'c7ee1e0f-3b12-4605-baa8-716501af5257',
+    });
+    poller.stop();
+  });
+
+  it('fetches without an organization when only a token is returned', async () => {
+    mockFetchQuota.mockResolvedValue(unavailable('network'));
+    const poller = new QuotaPoller({ getAccessToken: async () => 'token' });
+
+    poller.start();
+    await flushPoll();
+
+    expect(mockFetchQuota).toHaveBeenCalledWith('token', { plan: null, organizationUuid: null });
+    poller.stop();
+  });
+
   it('keeps polling at idle cadence after an auth response', async () => {
     mockFetchQuota.mockResolvedValue(unavailable('auth'));
     const poller = new QuotaPoller({

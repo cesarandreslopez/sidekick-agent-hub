@@ -1,14 +1,18 @@
 /**
  * Quota windows (typed): which headline quota cards a plan actually has, the
  * extra meters beyond them (e.g. a Fable weekly cap), and the plan and
- * extra-usage notes under the gauges.
+ * usage-credit notes under the gauges.
  *
  * Claude Ultra has no five-hour session limit (the usage endpoint reports
  * `five_hour: null`, normalized to `fiveHour.absent`), and a Codex plan can
  * report a single weekly window. Drawing a 0% gauge for a window that does not
  * exist reads as "unused", so the card is hidden instead.
  *
- * Window presence, extra rows, and the extra-usage text come from
+ * Usage credits get two notes because they are two numbers: the prepaid
+ * balance and the monthly spend limit on it (a $100 balance under a $40 limit
+ * covers only $40 a month).
+ *
+ * Window presence, extra rows, and the usage-credit text come from
  * sidekick-shared/browser; the webview bundle resolves its ES-module build and
  * keeps only these helpers.
  *
@@ -17,7 +21,8 @@
 
 import {
   extraQuotaRows,
-  formatExtraUsage,
+  formatExtraUsageSpendLimit,
+  formatUsageCreditBalance,
   quotaWindowApplies,
   quotaWindowHasData,
   type QuotaExtraUsage,
@@ -114,8 +119,12 @@ export function renderQuotaExtrasHtml(
   }
   if (quota.extraUsage) {
     parts.push(
-      `<div class="quota-extra-note">Extra usage: ${escapeHtml(formatExtraUsage(quota.extraUsage))}</div>`,
+      `<div class="quota-extra-note">Usage credits: ${escapeHtml(formatUsageCreditBalance(quota.extraUsage))}</div>`,
     );
+    const spendLimit = formatExtraUsageSpendLimit(quota.extraUsage);
+    if (spendLimit) {
+      parts.push(`<div class="quota-extra-note">Spend limit: ${escapeHtml(spendLimit)}</div>`);
+    }
   }
   return parts.join('');
 }
