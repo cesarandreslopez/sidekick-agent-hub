@@ -5,6 +5,22 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.3] - 2026-11-05
+
+### Fixed
+
+- `formatExtraUsage()` no longer presents the monthly spend limit as the usage-credit pool: it leads with the balance when known and names the cap (`$100.00 available · $0.00 of $40.00 monthly spend limit used`; without a balance, `$0.00 of $40.00 monthly spend limit used`). `QuotaExtraUsage.monthlyLimit` is documented as the spend limit, not the balance.
+
+### Added
+
+- `QuotaExtraUsage.balance` (prepaid usage credits left, in minor units of `currency`) and `balanceExpiresAt`.
+- `fetchQuota(token, { organizationUuid })`: when the usage reply includes `extra_usage`, one more request reads the organization's prepaid-credit balance into `extraUsage.balance`. Without an organization id, or if that request fails, the state is unchanged. `resolveQuota()` passes the live login's organization; a caller-supplied `getClaudeAccessToken` does not.
+- `fetchClaudePrepaidCredits(token, organizationUuid)` (best effort, never throws) and the pure `parsePrepaidCredits()`; type `ClaudePrepaidCredits`.
+- `readLiveClaudeOrganizationUuid(home?)` reads `oauthAccount.organizationUuid` from a Claude home's config.
+- `formatUsageCreditBalance()` and `formatExtraUsageSpendLimit()`, also on `sidekick-shared/browser`.
+- `QuotaPollerCredentials.organizationUuid`, forwarded to `fetchQuota()`.
+- `quotaExtraUsageSchema` accepts `balance` and `balanceExpiresAt`; persisted snapshots carry them.
+
 ## [0.30.2] - 2026-11-03
 
 ### Fixed

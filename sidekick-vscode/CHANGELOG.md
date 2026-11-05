@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.3] - 2026-11-05
+
+### Fixed
+
+- The dashboard quota card no longer shows the monthly spend limit as the usage-credit amount. The `Extra usage: $0.00 of $40.00 used` note is replaced by `Usage credits: $100.00 available` (the prepaid balance) and `Spend limit: $0.00 of $40.00 used this month`.
+
 ## [0.30.2] - 2026-11-03
 
 ### Fixed

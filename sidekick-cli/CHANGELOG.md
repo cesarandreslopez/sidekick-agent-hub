@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.3] - 2026-11-05
+
+### Fixed
+
+- `sidekick quota` no longer shows the monthly spend limit as the usage-credit amount. The `Extra usage $0.00 of $40.00 used` row is replaced by `Usage credits $100.00 available` (the prepaid balance, read from the organization's prepaid-credits endpoint) and `Spend limit $0.00 of $40.00 used this month`. `--json` adds `extraUsage.balance` (minor units). If the balance cannot be read, the usage-credits row shows only whether credits are on.
+
 ## [0.30.2] - 2026-11-03
 
 ### Fixed

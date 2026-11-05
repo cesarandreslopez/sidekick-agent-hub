@@ -5,6 +5,16 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.3] - 2026-11-05
+
+### Fixed
+
+- Claude usage credits now show the balance apart from the spend limit. Sidekick printed `Extra usage $0.00 of $40.00 used`, where $40 is the organization's monthly spend limit (`extra_usage.monthly_limit`), so a $100 credit purchase looked like $40. `sidekick quota` and the VS Code dashboard now show `Usage credits $100.00 available`, read from the organization's prepaid-credits endpoint (the one Claude Code uses), and `Spend limit $0.00 of $40.00 used this month` on separate lines. When the balance cannot be read, the usage-credits line shows only whether credits are on and never substitutes the cap. The balance request is made only for plans that report usage credits.
+
+### Added
+
+- `sidekick-shared`: `QuotaExtraUsage.balance` / `balanceExpiresAt`, `fetchQuota(token, { organizationUuid })`, `fetchClaudePrepaidCredits()`, `parsePrepaidCredits()`, `readLiveClaudeOrganizationUuid()`, `formatUsageCreditBalance()`, `formatExtraUsageSpendLimit()`, and `QuotaPollerCredentials.organizationUuid`.
+
 ## [0.30.2] - 2026-11-03
 
 ### Fixed
