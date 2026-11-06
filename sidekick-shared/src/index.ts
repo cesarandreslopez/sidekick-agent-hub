@@ -110,6 +110,13 @@ export type {
   PromptHistorySignal,
   PromptHistorySignalKind,
 } from './sessionPromptSignals';
+// Structured tool-error signals (0.31)
+export {
+  SIGNAL_COMMAND_CHARS,
+  SIGNAL_OUTPUT_CHARS,
+  SIGNAL_TEXT_CHARS,
+} from './sessionPromptSignals';
+export type { SessionPromptSignalLimits } from './sessionPromptSignals';
 export {
   HUMAN_CLAUDE_ENTRYPOINTS,
   HUMAN_CODEX_SOURCES,
@@ -117,6 +124,8 @@ export {
   isHumanPrompt,
 } from './humanPrompt';
 export type { HumanPromptProvider } from './humanPrompt';
+// Prompt-ordinal scheme (0.31)
+export { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
 export {
   computeSessionFileStats,
   firstUserPrompt,
@@ -537,6 +546,24 @@ export type {
 } from './parsers/codexParser';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
+// Codex inherited-history boundary (0.31)
+export {
+  codexInheritedHistoryBoundary,
+  isCodexInheritedRecord,
+} from './parsers/codexInheritedHistory';
+export type {
+  CodexHistoryBase,
+  CodexInheritedHistoryBoundary,
+  CodexInheritedHistoryOptions,
+  CodexInheritedHistoryProof,
+  CodexInheritedHistoryReason,
+  CodexInheritedHistoryStatus,
+} from './parsers/codexInheritedHistory';
+export { readCodexInheritedHistoryBoundary } from './providers/codexRollouts';
+export type {
+  CodexInheritedHistoryRead,
+  ReadCodexInheritedHistoryBoundaryOptions,
+} from './providers/codexRollouts';
 export {
   SUBAGENT_ACTIVITY_BLOCK_TYPE,
   SUBAGENT_ACTIVITY_ORIGIN_KIND,
@@ -550,6 +577,31 @@ export type {
   SubagentActivity,
   SubagentActivityKind,
 } from './subagentActivity';
+// Codex turn lifecycle events (0.31)
+export {
+  TURN_LIFECYCLE_BLOCK_TYPE,
+  TURN_LIFECYCLE_ORIGIN_KIND,
+  describeTurnLifecycle,
+  isTurnLifecycleSystemEvent,
+  turnLifecycleFromEvent,
+} from './turnLifecycle';
+export type { TurnLifecycle, TurnLifecycleKind } from './turnLifecycle';
+// Turn state: working / waiting / idle / ended (0.31)
+export {
+  DEFAULT_TURN_STATE_IDLE_MS,
+  DEFAULT_TURN_STATE_STALE_MS,
+  TURN_STATE_REPLY_GRACE_MS,
+  classifyTurnState,
+  createTurnStateTracker,
+} from './turnState';
+export type {
+  TurnState,
+  TurnStateOptions,
+  TurnStateReason,
+  TurnStateResult,
+  TurnStateSnapshot,
+  TurnStateTracker,
+} from './turnState';
 
 // Parsers — Subagent scanning
 export { scanSubagentDir, extractTaskInfo, readAgentMeta } from './parsers/subagentScanner';
@@ -783,6 +835,37 @@ export type {
   JsonlTailReset,
   JsonlTailResetReason,
 } from './watchers/jsonlTail';
+// JSONL tail gaps (0.31)
+export type { JsonlTailGap, JsonlTailGapReason } from './watchers/jsonlTail';
+
+// Headless agent output: claude -p stream-json, codex exec --json (0.31)
+export {
+  createClaudeStreamJsonParser,
+  createCodexExecJsonParser,
+  DEFAULT_HEADLESS_MAX_LINE_BYTES,
+  parseClaudeStreamMessage,
+  parseCodexExecEvent,
+} from './headless';
+export type {
+  HeadlessCompactionEvent,
+  HeadlessErrorEvent,
+  HeadlessEvent,
+  HeadlessHookEvent,
+  HeadlessParseOptions,
+  HeadlessProvider,
+  HeadlessResultEvent,
+  HeadlessSessionEvent,
+  HeadlessStatusEvent,
+  HeadlessStreamOptions,
+  HeadlessStreamParser,
+  HeadlessStreamState,
+  HeadlessTextEvent,
+  HeadlessTokenUsage,
+  HeadlessToolEvent,
+  HeadlessToolStatus,
+  HeadlessUnknownEvent,
+  HeadlessUsageEvent,
+} from './headless';
 
 // Formatters
 export {

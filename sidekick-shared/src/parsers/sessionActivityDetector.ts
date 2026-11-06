@@ -12,6 +12,7 @@
 
 import * as fs from 'fs';
 import type { SessionEvent } from '../types/sessionEvent';
+import { turnLifecycleFromEvent } from '../turnLifecycle';
 
 // ── Types ──
 
@@ -164,13 +165,22 @@ function hasToolResultBlock(event: SessionEvent): boolean {
  * The same signals the tail scanner derives from raw JSONL lines, read from
  * canonical events instead: assistant, tool-use, and tool-result events (and
  * user events carrying tool results) are AI activity; an assistant turn that
- * stopped with `end_turn` or a user prompt is an ending event.
+ * stopped with `end_turn` or a user prompt is an ending event. Codex records
+ * no stop reason: its turn-lifecycle events (`includeTurnLifecycle`) say
+ * when a turn started (activity) and when it completed or was aborted
+ * (ending).
  */
 function signalsFromEvents(events: readonly SessionEvent[]): ActivitySignals {
   let lastAiActivityIndex = -1;
   let lastEndingIndex = -1;
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
+    const lifecycle = turnLifecycleFromEvent(event);
+    if (lifecycle) {
+      if (lifecycle.kind === 'task_started') lastAiActivityIndex = i;
+      else lastEndingIndex = i;
+      continue;
+    }
     const carriesToolResult = event.type === 'user' && hasToolResultBlock(event);
     if (
       event.type === 'assistant' ||

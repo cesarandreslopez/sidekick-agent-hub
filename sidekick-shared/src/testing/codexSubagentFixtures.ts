@@ -255,10 +255,19 @@ export function parentRollout(options: ParentFixtureOptions): CodexFixtureRow[] 
 /** Records the child inherits from the parent (re-stamped at fork time, as Codex does). */
 const INHERITED_RECORDS = 5;
 
+export interface ChildFixtureOptions {
+  cwd: string;
+  /**
+   * Leave out the `thread_settings_applied` record Codex writes at the
+   * child's first own ordinal (`subagent_history_start_ordinal`).
+   */
+  withoutStartMarker?: boolean;
+}
+
 /** The forked child's rollout: its meta, the parent's history, then its own records. */
-export function childRollout(options: { cwd: string }): CodexFixtureRow[] {
+export function childRollout(options: ChildFixtureOptions): CodexFixtureRow[] {
   const start = 1 + INHERITED_RECORDS;
-  return numbered([
+  const rows: Array<CodexFixtureRow | null> = [
     {
       timestamp: at(40, 33),
       type: 'session_meta',
@@ -314,7 +323,18 @@ export function childRollout(options: { cwd: string }): CodexFixtureRow[] {
         content: [{ type: 'input_text', text: 'You are now a newly spawned child agent.' }],
       },
     },
-    // The child's own records.
+    // The child's own records, from ordinal `start`.
+    options.withoutStartMarker
+      ? null
+      : {
+          timestamp: at(40, 34),
+          type: 'event_msg',
+          payload: {
+            type: 'thread_settings_applied',
+            thread_id: CHILD_ID,
+            thread_settings: { model: 'gpt-test', cwd: options.cwd },
+          },
+        },
     {
       timestamp: at(40, 34),
       type: 'event_msg',
@@ -336,7 +356,8 @@ export function childRollout(options: { cwd: string }): CodexFixtureRow[] {
     }),
     output(at(40, 39), CALL_SPAWN_GRANDCHILD, JSON.stringify({ task_name: GRANDCHILD_PATH })),
     tokenCount(at(42, 20), 500, 200),
-  ]);
+  ];
+  return numbered(rows.filter((row): row is CodexFixtureRow => row !== null));
 }
 
 /** The grandchild's rollout (depth 2): a fork of the child. */

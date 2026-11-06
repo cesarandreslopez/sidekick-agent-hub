@@ -1,6 +1,28 @@
 /**
  * Low-level JSONL tail reader for consumers that need raw parsed events plus
  * their own aggregation lifecycle.
+ *
+ * Every place the tail cannot hand over a contiguous run of events is
+ * reported as a {@link JsonlTailGap}, through `onGap` (in order with the
+ * events) and in each `read()` result's `gaps`: a reset (the file was
+ * truncated, rewritten, or replaced), a checkpoint `resumeFrom()` rejected,
+ * a line over `maxLineBytes`, and a line that is not a JSON object, does not
+ * parse, or fails `schema`.
+ *
+ * To continue a stream across restarts, persist the tail's checkpoint
+ * together with the consumer's own state, both taken after the same events:
+ *
+ * ```ts
+ * const result = await tail.read();
+ * for (const { event } of result.events) parser.convertLine(event);
+ * store.save({ tail: result.checkpoint, parser: parser.exportResumeState() });
+ * // Later, in a new process:
+ * if (tail.resumeFrom(saved.tail)) parser.importResumeState(saved.parser);
+ * else parser.reset(); // a checkpoint-rejected gap: the tail starts over
+ * ```
+ *
+ * On a gap with `discontinuity: true`, state derived from earlier events no
+ * longer applies to what follows; reset it.
  */
 
 import * as fs from 'fs';
@@ -95,12 +117,55 @@ export interface JsonlTailEntry<T> {
   line: JsonlTailLine;
 }
 
+/** Why a {@link JsonlTailGap} happened. */
+export type JsonlTailGapReason =
+  | JsonlTailResetReason
+  | 'checkpoint-rejected'
+  | 'oversized-line'
+  | 'malformed-line';
+
+/**
+ * Bytes of the file the tail did not turn into events. A reset or a rejected
+ * checkpoint moves the tail (`discontinuity: true`; `toOffset` may be below
+ * `fromOffset`); a skipped line leaves the stream continuous around it.
+ */
+export interface JsonlTailGap {
+  reason: JsonlTailGapReason;
+  /**
+   * A skipped line: where it starts. A reset: the committed offset before it.
+   * A rejected checkpoint: the checkpoint's offset (0 when it was unreadable).
+   */
+  fromOffset: number;
+  /** Where events continue: after the skipped line's newline, or the new position. */
+  toOffset: number;
+  /**
+   * Events after the gap do not continue those before it (a reset or a
+   * rejected checkpoint): state built from earlier events must be reset.
+   * `false` for a skipped line in an otherwise continuous read.
+   */
+  discontinuity: boolean;
+  /** What went wrong, for skipped lines and failed resumes. */
+  error?: string;
+}
+
 /** What one {@link JsonlTail.read} call read. */
 export interface JsonlTailReadResult<T> extends JsonlTailBatch {
   /** Events from the lines that became complete, in file order: the same ones `onEvent` received. */
   events: JsonlTailEntry<T>[];
   /** Present when the tail reset before reading; `onReset` received the same object. */
   reset?: JsonlTailReset;
+  /**
+   * Gaps since the previous `read()`, in file order with `events` (the same
+   * ones `onGap` received), including a checkpoint `resumeFrom()` rejected
+   * before this read. Absent when there were none.
+   */
+  gaps?: JsonlTailGap[];
+  /**
+   * The resume point just after this read's last event (or where it started,
+   * when it read none). Persist it with any state built from exactly these
+   * events. Always set by tails from {@link createJsonlTail}.
+   */
+  checkpoint?: JsonlTailCheckpoint;
 }
 
 /**
@@ -148,6 +213,13 @@ export interface JsonlTailOptions<T> {
   onError?: (error: Error, line?: string) => void;
   /** Called after the tail resets (see `onRewrite`); events from the new position follow. */
   onReset?: (reset: JsonlTailReset) => void;
+  /**
+   * Called for each {@link JsonlTailGap}, in order with `onEvent`: after the
+   * events before it and before the events after it. An oversized line's
+   * gap fires when its skip ends; a rejected checkpoint's during
+   * `resumeFrom()`.
+   */
+  onGap?: (gap: JsonlTailGap) => void;
   /** Bytes read per chunk (default 1 MiB); one poll reads chunk by chunk to the end. */
   maxReadBytes?: number;
   /** Longest line parsed (default 16 MiB); a longer line is skipped and reported to `onError`. */
@@ -270,7 +342,13 @@ class JsonlTailReader<T> implements JsonlTail<T> {
   private pendingBytes = Buffer.alloc(0);
   /** Inside a line over `maxLineBytes`: drop bytes until its newline. */
   private skippingLine = false;
+  /** Where the line being skipped starts, and why, for its gap. */
+  private skipped: { offset: number; error: string } | null = null;
   private currentLine: JsonlTailLine = { offset: 0, length: 0 };
+  /** Collects gaps while a `read()` is running. */
+  private gapCollector: JsonlTailGap[] | null = null;
+  /** Gaps from `resumeFrom()`, returned by the next `read()`. */
+  private pendingGaps: JsonlTailGap[] = [];
   /** Identity, mtime, and prefix of the file the offsets refer to, once read. */
   private readonly continuity = new FileContinuity();
   private readonly maxReadBytes: number;
@@ -306,10 +384,30 @@ class JsonlTailReader<T> implements JsonlTail<T> {
           this.collector?.push({ event, line: this.currentLine });
           this.options.onEvent(event, this.currentLine);
         },
-        onError: (error, line) => this.options.onError?.(error, line),
+        onError: (error, line) => {
+          this.options.onError?.(error, line);
+          // A line that did not parse or failed the schema produced no event.
+          this.lineGap('malformed-line', this.currentLine, error.message);
+        },
       },
       { schema: options.schema },
     );
+  }
+
+  private emitGap(gap: JsonlTailGap): void {
+    this.gapCollector?.push(gap);
+    this.options.onGap?.(gap);
+  }
+
+  /** A skipped line from `line.offset` through its newline. */
+  private lineGap(reason: JsonlTailGapReason, line: JsonlTailLine, error: string): void {
+    this.emitGap({
+      reason,
+      fromOffset: line.offset,
+      toOffset: line.offset + line.length + 1,
+      discontinuity: false,
+      error,
+    });
   }
 
   get isActive(): boolean {
@@ -420,10 +518,24 @@ class JsonlTailReader<T> implements JsonlTail<T> {
   private async readAsync(): Promise<JsonlTailReadResult<T>> {
     const generation = this.generation;
     const events: JsonlTailEntry<T>[] = [];
+    const gaps = this.pendingGaps;
+    this.pendingGaps = [];
     let reset: JsonlTailReset | undefined;
     let bytesRead = 0;
     let eventsRead = 0;
     let handle: fs.promises.FileHandle | null = null;
+    // Where the events below end; advanced only while this read owns the position.
+    let checkpoint = this.checkpoint();
+    // Gaps are collected only while this read runs synchronously, so a
+    // `resumeFrom()` during one of its awaits is reported by the next read.
+    const collecting = (run: () => void): void => {
+      this.gapCollector = gaps;
+      try {
+        run();
+      } finally {
+        this.gapCollector = null;
+      }
+    };
     try {
       handle = await this.openAsync();
       const stat = await handle.stat();
@@ -435,8 +547,9 @@ class JsonlTailReader<T> implements JsonlTail<T> {
             ? await lastCompleteLineOffsetAsync(handle, stat.size)
             : 0;
         if (generation === this.generation) {
-          if (reason !== null) reset = this.reset(reason, offset);
+          if (reason !== null) collecting(() => (reset = this.reset(reason, offset)));
           this.adoptFile(stat, probe);
+          checkpoint = this.checkpoint();
           if (stat.size > this.readOffset) {
             this.eventsInCurrentBatch = 0;
             const chunk = Buffer.alloc(Math.min(this.maxReadBytes, stat.size - this.readOffset));
@@ -447,12 +560,13 @@ class JsonlTailReader<T> implements JsonlTail<T> {
               if (count <= 0 || generation !== this.generation) break;
               this.collector = events;
               try {
-                this.consume(chunk.subarray(0, count), position);
+                collecting(() => this.consume(chunk.subarray(0, count), position));
               } finally {
                 this.collector = null;
               }
               this.readOffset += count;
               bytesRead += count;
+              checkpoint = this.checkpoint();
             }
             eventsRead = this.eventsInCurrentBatch;
             if (bytesRead > 0) {
@@ -481,6 +595,8 @@ class JsonlTailReader<T> implements JsonlTail<T> {
       offset: this.committedOffset,
       events,
       ...(reset ? { reset } : {}),
+      ...(gaps.length > 0 ? { gaps } : {}),
+      checkpoint,
     };
   }
 
@@ -527,6 +643,7 @@ class JsonlTailReader<T> implements JsonlTail<T> {
   private reset(reason: JsonlTailResetReason, offset: number): JsonlTailReset {
     const previousOffset = this.committedOffset;
     this.position(offset);
+    this.emitGap({ reason, fromOffset: previousOffset, toOffset: offset, discontinuity: true });
     this.continuity.discardHead();
     if (reason === 'replaced' && this.active) {
       // fs.watch follows the old inode; watch the file now at the path.
@@ -548,6 +665,7 @@ class JsonlTailReader<T> implements JsonlTail<T> {
     this.committedOffset = offset;
     this.pendingBytes = Buffer.alloc(0);
     this.skippingLine = false;
+    this.skipped = null;
     this.parser.reset();
   }
 
@@ -560,6 +678,17 @@ class JsonlTailReader<T> implements JsonlTail<T> {
       this.skippingLine = false;
       start = newline + 1;
       this.committedOffset = position + start;
+      const skipped = this.skipped;
+      this.skipped = null;
+      if (skipped) {
+        this.emitGap({
+          reason: 'oversized-line',
+          fromOffset: skipped.offset,
+          toOffset: this.committedOffset,
+          discontinuity: false,
+          error: skipped.error,
+        });
+      }
     }
     let lineStart = this.committedOffset;
     let cursor = start;
@@ -570,11 +699,19 @@ class JsonlTailReader<T> implements JsonlTail<T> {
       const line = this.pendingBytes.length > 0 ? Buffer.concat([this.pendingBytes, piece]) : piece;
       this.pendingBytes = Buffer.alloc(0);
       const lineEnd = position + newline + 1;
+      this.currentLine = { offset: lineStart, length: line.length };
       if (line.length > this.maxLineBytes) {
-        this.reportOversized(lineStart, line.length);
+        const error = this.reportOversized(lineStart, line.length);
+        this.lineGap('oversized-line', this.currentLine, error);
       } else {
-        this.currentLine = { offset: lineStart, length: line.length };
-        this.parser.processChunk(line.toString('utf8') + '\n');
+        const text = line.toString('utf8');
+        const trimmed = text.trim();
+        if (trimmed && !trimmed.startsWith('{')) {
+          // The parser drops these silently; the tail reports them.
+          this.lineGap('malformed-line', this.currentLine, 'Line is not a JSON object.');
+        } else {
+          this.parser.processChunk(text + '\n');
+        }
       }
       this.committedOffset = lineEnd;
       lineStart = lineEnd;
@@ -583,20 +720,19 @@ class JsonlTailReader<T> implements JsonlTail<T> {
     const rest = bytes.subarray(cursor);
     if (rest.length === 0) return;
     if (this.pendingBytes.length + rest.length > this.maxLineBytes) {
-      this.reportOversized(lineStart, this.pendingBytes.length + rest.length);
+      const error = this.reportOversized(lineStart, this.pendingBytes.length + rest.length);
       this.pendingBytes = Buffer.alloc(0);
       this.skippingLine = true;
+      this.skipped = { offset: lineStart, error };
       return;
     }
     this.pendingBytes = Buffer.concat([this.pendingBytes, rest]);
   }
 
-  private reportOversized(offset: number, atLeast: number): void {
-    this.options.onError?.(
-      new Error(
-        `JSONL line at byte ${offset} is over ${this.maxLineBytes} bytes (${atLeast} so far); skipped.`,
-      ),
-    );
+  private reportOversized(offset: number, atLeast: number): string {
+    const message = `JSONL line at byte ${offset} is over ${this.maxLineBytes} bytes (${atLeast} so far); skipped.`;
+    this.options.onError?.(new Error(message));
+    return message;
   }
 
   getOffset(): number {
@@ -633,15 +769,42 @@ class JsonlTailReader<T> implements JsonlTail<T> {
           : 0;
       this.position(offset);
       this.continuity.adoptPrefix(stat, prefix);
+      if (!matches) {
+        this.rejectedCheckpoint(
+          parsed,
+          offset,
+          parsed === null
+            ? 'Not a valid checkpoint.'
+            : 'The file no longer matches the checkpoint.',
+        );
+      }
       return matches;
     } catch (error) {
       this.position(0);
       this.continuity.forget();
       this.options.onError?.(toError(error));
+      this.rejectedCheckpoint(parsed, 0, toError(error).message);
       return false;
     } finally {
       closeQuietly(fd);
     }
+  }
+
+  /** Reports a checkpoint `resumeFrom()` could not use, now and in the next `read()`. */
+  private rejectedCheckpoint(
+    checkpoint: JsonlTailCheckpoint | null,
+    toOffset: number,
+    error: string,
+  ): void {
+    const gap: JsonlTailGap = {
+      reason: 'checkpoint-rejected',
+      fromOffset: checkpoint?.offset ?? 0,
+      toOffset,
+      discontinuity: true,
+      error,
+    };
+    this.pendingGaps.push(gap);
+    this.options.onGap?.(gap);
   }
 
   private openFlags(): string | number {

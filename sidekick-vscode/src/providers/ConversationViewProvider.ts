@@ -20,6 +20,7 @@ import {
   canonicalModelId,
   isSubagentActivitySystemEvent,
   isTaskNotificationSystemEvent,
+  isTurnLifecycleSystemEvent,
   parseModelId,
   segmentAssistantTurn,
 } from 'sidekick-shared';
@@ -107,8 +108,14 @@ export function conversationChunksFromSessionEvents(
       continue;
     }
     // A mid-turn background-task notice: not part of the conversation, and it
-    // must not split the assistant turn around it.
-    if (isTaskNotificationSystemEvent(event) || isSubagentActivitySystemEvent(event)) continue;
+    // must not split the assistant turn around it. Nor are Codex turn boundaries.
+    if (
+      isTaskNotificationSystemEvent(event) ||
+      isSubagentActivitySystemEvent(event) ||
+      isTurnLifecycleSystemEvent(event)
+    ) {
+      continue;
+    }
 
     flushAssistantEvents();
 

@@ -66,6 +66,13 @@ export type {
   PromptHistorySignal,
   PromptHistorySignalKind,
 } from './sessionPromptSignals';
+// Structured tool-error signals (0.31)
+export {
+  SIGNAL_COMMAND_CHARS,
+  SIGNAL_OUTPUT_CHARS,
+  SIGNAL_TEXT_CHARS,
+} from './sessionPromptSignals';
+export type { SessionPromptSignalLimits } from './sessionPromptSignals';
 export {
   HUMAN_CLAUDE_ENTRYPOINTS,
   HUMAN_CODEX_SOURCES,
@@ -73,6 +80,8 @@ export {
   isHumanPrompt,
 } from './humanPrompt';
 export type { HumanPromptProvider } from './humanPrompt';
+// Prompt-ordinal scheme (0.31)
+export { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
 export {
   computeSessionFileStats,
   firstUserPrompt,
@@ -295,6 +304,24 @@ export { parseClaudeAuthStatus, parseCodexLoginStatus } from './authStatus';
 export type { ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
+// Codex inherited-history boundary (0.31)
+export {
+  codexInheritedHistoryBoundary,
+  isCodexInheritedRecord,
+} from './parsers/codexInheritedHistory';
+export type {
+  CodexHistoryBase,
+  CodexInheritedHistoryBoundary,
+  CodexInheritedHistoryOptions,
+  CodexInheritedHistoryProof,
+  CodexInheritedHistoryReason,
+  CodexInheritedHistoryStatus,
+} from './parsers/codexInheritedHistory';
+export { readCodexInheritedHistoryBoundary } from './providers/codexRollouts';
+export type {
+  CodexInheritedHistoryRead,
+  ReadCodexInheritedHistoryBoundaryOptions,
+} from './providers/codexRollouts';
 export {
   SUBAGENT_ACTIVITY_BLOCK_TYPE,
   SUBAGENT_ACTIVITY_ORIGIN_KIND,
@@ -308,6 +335,15 @@ export type {
   SubagentActivity,
   SubagentActivityKind,
 } from './subagentActivity';
+// Codex turn lifecycle events (0.31)
+export {
+  TURN_LIFECYCLE_BLOCK_TYPE,
+  TURN_LIFECYCLE_ORIGIN_KIND,
+  describeTurnLifecycle,
+  isTurnLifecycleSystemEvent,
+  turnLifecycleFromEvent,
+} from './turnLifecycle';
+export type { TurnLifecycle, TurnLifecycleKind } from './turnLifecycle';
 export {
   getPricingCatalogInfo,
   registerModelPricing,
@@ -363,3 +399,5 @@ export type {
   JsonlTailReset,
   JsonlTailResetReason,
 } from './watchers/jsonlTail';
+// JSONL tail gaps (0.31)
+export type { JsonlTailGap, JsonlTailGapReason } from './watchers/jsonlTail';

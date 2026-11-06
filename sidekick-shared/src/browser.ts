@@ -412,6 +412,19 @@ export type {
 } from './parsers/codexParser';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
+// Codex inherited-history boundary (0.31)
+export {
+  codexInheritedHistoryBoundary,
+  isCodexInheritedRecord,
+} from './parsers/codexInheritedHistory';
+export type {
+  CodexHistoryBase,
+  CodexInheritedHistoryBoundary,
+  CodexInheritedHistoryOptions,
+  CodexInheritedHistoryProof,
+  CodexInheritedHistoryReason,
+  CodexInheritedHistoryStatus,
+} from './parsers/codexInheritedHistory';
 export {
   SUBAGENT_ACTIVITY_BLOCK_TYPE,
   SUBAGENT_ACTIVITY_ORIGIN_KIND,
@@ -425,6 +438,31 @@ export type {
   SubagentActivity,
   SubagentActivityKind,
 } from './subagentActivity';
+// Codex turn lifecycle events (0.31)
+export {
+  TURN_LIFECYCLE_BLOCK_TYPE,
+  TURN_LIFECYCLE_ORIGIN_KIND,
+  describeTurnLifecycle,
+  isTurnLifecycleSystemEvent,
+  turnLifecycleFromEvent,
+} from './turnLifecycle';
+export type { TurnLifecycle, TurnLifecycleKind } from './turnLifecycle';
+// Turn state: working / waiting / idle / ended (0.31)
+export {
+  DEFAULT_TURN_STATE_IDLE_MS,
+  DEFAULT_TURN_STATE_STALE_MS,
+  TURN_STATE_REPLY_GRACE_MS,
+  classifyTurnState,
+  createTurnStateTracker,
+} from './turnState';
+export type {
+  TurnState,
+  TurnStateOptions,
+  TurnStateReason,
+  TurnStateResult,
+  TurnStateSnapshot,
+  TurnStateTracker,
+} from './turnState';
 
 export {
   HUMAN_CLAUDE_ENTRYPOINTS,
@@ -433,6 +471,8 @@ export {
   isHumanPrompt,
 } from './humanPrompt';
 export type { HumanPromptProvider } from './humanPrompt';
+// Prompt-ordinal scheme (0.31)
+export { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
 
 export { renderHandoffUrlTemplate } from './handoffUrl';
 export type { HandoffUrlIdentifiers } from './handoffUrl';

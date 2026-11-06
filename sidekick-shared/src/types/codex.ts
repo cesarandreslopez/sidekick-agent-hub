@@ -60,6 +60,16 @@ export interface CodexSessionMeta {
    * own; earlier records are the parent's history the fork embeds.
    */
   subagent_history_start_ordinal?: number;
+  /**
+   * Referenced forks: the prefix of another rollout this thread inherits
+   * without copying it (`thread_id`, `end_ordinal_exclusive`,
+   * `end_byte_offset`). Reported by `codexInheritedHistoryBoundary()`.
+   */
+  history_base?: {
+    thread_id?: string;
+    end_ordinal_exclusive?: number;
+    end_byte_offset?: number;
+  };
   history_mode?: string;
   multi_agent_version?: string;
 }

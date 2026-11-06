@@ -774,6 +774,8 @@ describe('CodexRolloutParser maxPendingBytes', () => {
       pendingBytes: 0,
       evictedByCount: 0,
       evictedByBytes: 0,
+      trackedCallIds: 0,
+      sessionMetaBytes: 0,
     });
   });
 
@@ -796,8 +798,71 @@ describe('CodexRolloutParser maxPendingBytes', () => {
         pendingBytes: null,
         evictedByCount: 0,
         evictedByBytes: 0,
+        trackedCallIds: 20,
+        sessionMetaBytes: 0,
       });
     }
+  });
+
+  it('counts tracked call ids and the session_meta it holds', () => {
+    const parser = new CodexRolloutParser({ maxTrackedToolCalls: 3 });
+    const instructions = 'i'.repeat(20_000);
+    parser.convertLine(
+      line('session_meta', {
+        id: 'sess-1',
+        cwd: '/work/repo',
+        source: 'cli',
+        base_instructions: { text: instructions },
+      }),
+    );
+    for (let i = 0; i < 5; i++) {
+      parser.convertLine(
+        line('response_item', {
+          type: 'function_call',
+          name: 'exec_command',
+          arguments: '{"cmd":"true"}',
+          call_id: `call-${i}`,
+        }),
+      );
+    }
+    parser.convertLine(mcpBegin('mcp-1', 10));
+    const stats = parser.getPendingStats();
+    // Emitted tool uses stop at the cap (3), plus one pending MCP call.
+    expect(stats.trackedCallIds).toBe(4);
+    expect(stats.sessionMetaBytes).toBeGreaterThan(20_000);
+  });
+
+  it("keeps only the session's identity with sessionMeta: 'identity'", () => {
+    const meta = {
+      id: 'sess-1',
+      session_id: 'root-1',
+      timestamp: '2026-10-31T01:00:00.000Z',
+      cwd: '/work/repo',
+      originator: 'codex_cli_rs',
+      cli_version: '0.167.0',
+      source: 'cli',
+      git: { branch: 'main' },
+      subagent_history_start_ordinal: 4,
+      base_instructions: { text: 'i'.repeat(20_000) },
+      dynamic_tools: [{ name: 'x'.repeat(5_000) }],
+    };
+    const full = new CodexRolloutParser();
+    const lean = new CodexRolloutParser({ sessionMeta: 'identity' });
+    const fullEvents = full.convertLine(line('session_meta', meta));
+    const leanEvents = lean.convertLine(line('session_meta', meta));
+    // The emitted event still carries the instructions; only what is kept shrinks.
+    expect(leanEvents).toEqual(fullEvents);
+    const { base_instructions: _b, dynamic_tools: _d, ...identity } = meta;
+    expect(lean.getSessionMeta()).toEqual(identity);
+    expect(lean.exportResumeState().sessionMeta).toEqual(identity);
+    expect(lean.getPendingStats().sessionMetaBytes).toBeLessThan(400);
+    expect(full.getPendingStats().sessionMetaBytes).toBeGreaterThan(25_000);
+    // The boundary needs only identity fields.
+    expect(lean.getInheritedHistoryBoundary()).toEqual(full.getInheritedHistoryBoundary());
+
+    const resumed = new CodexRolloutParser({ sessionMeta: 'identity' });
+    expect(resumed.importResumeState(full.exportResumeState())).toBe(true);
+    expect(resumed.getSessionMeta()).toEqual(identity);
   });
 });
 

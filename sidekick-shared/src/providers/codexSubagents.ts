@@ -5,8 +5,10 @@
  * with its rollout, the parent's spawn call that started it, its nickname and
  * agent path, and stats from the child's own records. A forked child's
  * rollout embeds the parent's session_meta and history before
- * `session_meta.subagent_history_start_ordinal`; that prefix is the parent's
- * and is not counted (the parser skips it, and so do the timestamps here).
+ * `session_meta.subagent_history_start_ordinal`; when that is proven (see
+ * `codexInheritedHistoryBoundary()`) the prefix is the parent's and is not
+ * counted (the parser skips it, and so do the timestamps and spawn links
+ * here).
  *
  * The spawn link comes from the parent's rollout: the `item_completed` →
  * `SubAgentActivity` record with `kind: 'started'` names the spawn call id
@@ -23,6 +25,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { CodexRolloutParser } from '../parsers/codexParser';
+import {
+  codexInheritedHistoryBoundary,
+  isCodexInheritedRecord,
+  type CodexInheritedHistoryBoundary,
+} from '../parsers/codexInheritedHistory';
 import { cachedSubagentStats } from '../parsers/subagentStatsCache';
 import type { CodexDbThread, CodexRolloutLine, CodexSessionMeta } from '../types/codex';
 import type { SessionEvent, SubagentStats } from '../types/sessionEvent';
@@ -54,10 +61,12 @@ interface SpawnLinkEntry {
   mtimeMs: number;
   /** Bytes consumed (after the last complete line); plain rollouts only. */
   offset: number;
-  /** The own session_meta's history start; `undefined` until it is seen. */
-  historyStart: number | null | undefined;
-  /** Set once an embedded ancestor session_meta shows the rollout is a fork. */
-  skipBelow: number | null;
+  /** Complete lines scanned so far. */
+  lines: number;
+  /** The rollout's own first record, kept only until the boundary is decided. */
+  ownMeta: Record<string, unknown> | undefined;
+  /** Where the rollout's own records start; `undefined` before its first line. */
+  boundary: CodexInheritedHistoryBoundary | undefined;
   /** Spawn calls still waiting for their output. */
   pendingSpawns: Set<string>;
   links: CodexSpawnLinks;
@@ -77,16 +86,12 @@ function freshEntry(size: number, mtimeMs: number): SpawnLinkEntry {
     size,
     mtimeMs,
     offset: 0,
-    historyStart: undefined,
-    skipBelow: null,
+    lines: 0,
+    ownMeta: undefined,
+    boundary: undefined,
     pendingSpawns: new Set(),
     links: { started: new Map(), spawnedPaths: new Map() },
   };
-}
-
-function historyStartOf(meta: Partial<CodexSessionMeta> | undefined): number | null {
-  const value = meta?.subagent_history_start_ordinal;
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -101,38 +106,30 @@ function nonEmpty(value: unknown): string | undefined {
 
 /** Applies one rollout line to a spawn-link scan; most lines are rejected by substring. */
 function scanLine(entry: SpawnLinkEntry, line: string): void {
-  const isMeta = line.includes('"session_meta"');
+  const index = entry.lines++;
+  // The first two records decide the inherited-history boundary, as in the parser.
+  const deciding = index === 0 || entry.boundary?.status === 'pending';
   const isActivity = line.includes('"SubAgentActivity"');
   const isSpawnCall = line.includes('"spawn_agent"') && line.includes('"function_call"');
   const isOutput = entry.pendingSpawns.size > 0 && line.includes('"function_call_output"');
-  if (!isMeta && !isActivity && !isSpawnCall && !isOutput) return;
-  let parsed: Record<string, unknown>;
+  if (!deciding && !isActivity && !isSpawnCall && !isOutput) return;
+  let parsed: Record<string, unknown> | undefined;
   try {
-    parsed = JSON.parse(line) as Record<string, unknown>;
+    parsed = record(JSON.parse(line));
   } catch {
-    return;
+    parsed = undefined;
+  }
+  if (deciding) {
+    const records = index === 0 ? [parsed ?? null] : [entry.ownMeta, parsed ?? null];
+    entry.boundary = codexInheritedHistoryBoundary(records, { complete: false });
+    entry.ownMeta = index === 0 && entry.boundary.status === 'pending' ? parsed : undefined;
+  }
+  if (!parsed || parsed.type === 'session_meta') return;
+  if (entry.boundary && isCodexInheritedRecord(entry.boundary, parsed)) {
+    return; // the parent's history, embedded in a forked child
   }
   const payload = record(parsed.payload);
   if (!payload) return;
-  if (parsed.type === 'session_meta') {
-    // As the parser: the own meta comes first; an embedded ancestor meta
-    // below the history start makes the records below it the parent's.
-    if (entry.historyStart === undefined) {
-      entry.historyStart = historyStartOf(payload);
-    } else if (
-      entry.skipBelow === null &&
-      typeof entry.historyStart === 'number' &&
-      typeof parsed.ordinal === 'number' &&
-      parsed.ordinal < entry.historyStart
-    ) {
-      entry.skipBelow = entry.historyStart;
-    }
-    return;
-  }
-  const skipBelow = entry.skipBelow;
-  if (skipBelow !== null && typeof parsed.ordinal === 'number' && parsed.ordinal < skipBelow) {
-    return; // the parent's history, embedded in a forked child
-  }
   if (parsed.type === 'event_msg' && payload.type === 'item_completed') {
     const item = record(payload.item);
     if (item?.type !== 'SubAgentActivity' || item.kind !== 'started') return;

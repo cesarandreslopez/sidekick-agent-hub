@@ -19,6 +19,7 @@ import {
   verifyJsonlCheckpoint,
   type JsonlTailBatch,
   type JsonlTailCheckpoint,
+  type JsonlTailGap,
   type JsonlTailLine,
   type JsonlTailOptions,
   type JsonlTailReset,
@@ -547,7 +548,13 @@ describe('createJsonlTail read()', () => {
     const { tail, resets } = recordingTail(file, { onRewrite: 'end' });
     appendFileSync(file, '{"type":"one"}\n');
     expect((await tail.read()).events).toHaveLength(1);
-    expect(await tail.read()).toEqual({ bytesRead: 0, eventsRead: 0, offset: 15, events: [] });
+    expect(await tail.read()).toEqual({
+      bytesRead: 0,
+      eventsRead: 0,
+      offset: 15,
+      events: [],
+      checkpoint: tail.checkpoint(),
+    });
 
     writeFileSync(file, '{"type":"two"}\n{"type":"x"}\n');
     touchLater(file);
@@ -699,5 +706,156 @@ describe('captureJsonlCheckpoint / verifyJsonlCheckpoint', () => {
       expect(verifyJsonlCheckpoint(file, bad)).toBe(false);
     }
     expect(verifyJsonlCheckpoint(`${file}.missing`, good)).toBe(false);
+  });
+});
+
+describe('createJsonlTail gaps', () => {
+  /** A tail that records events and gaps in the order the callbacks saw them. */
+  function gapTail(file: string, options: Partial<JsonlTailOptions<{ type: string }>> = {}) {
+    const order: string[] = [];
+    const gaps: JsonlTailGap[] = [];
+    const tail = createJsonlTail<{ type: string }>({
+      path: file,
+      onEvent: (event) => order.push(event.type),
+      onGap: (gap) => {
+        gaps.push(gap);
+        order.push(`gap:${gap.reason}`);
+      },
+      onError: () => {},
+      ...options,
+    });
+    return { tail, order, gaps };
+  }
+
+  it('reports skipped lines in order with the events, without breaking continuity', async () => {
+    const file = makeJsonlFile();
+    const lines = [
+      '{"type":"a"}',
+      'not json',
+      '{"type":',
+      JSON.stringify({ type: 'big', pad: 'x'.repeat(80) }),
+      '',
+      '﻿{"type":"bom"}',
+      '{"type":"b"}',
+    ];
+    appendFileSync(file, lines.join('\n') + '\n');
+    const { tail, order, gaps } = gapTail(file, { maxLineBytes: 60 });
+    const result = await tail.read();
+
+    expect(order).toEqual([
+      'a',
+      'gap:malformed-line',
+      'gap:malformed-line',
+      'gap:oversized-line',
+      'bom',
+      'b',
+    ]);
+    expect(result.gaps).toEqual(gaps);
+    const starts = lines.map((_line, index) =>
+      Buffer.byteLength(lines.slice(0, index).join('\n') + (index > 0 ? '\n' : '')),
+    );
+    expect(gaps.map(({ fromOffset, toOffset }) => [fromOffset, toOffset])).toEqual([
+      [starts[1], starts[2]],
+      [starts[2], starts[3]],
+      [starts[3], starts[4]],
+    ]);
+    expect(gaps.every((gap) => !gap.discontinuity && typeof gap.error === 'string')).toBe(true);
+    expect(gaps[0].error).toBe('Line is not a JSON object.');
+  });
+
+  it('reports a schema rejection as a malformed line', async () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, '{"type":"ok"}\n{"type":3}\n');
+    const { tail, gaps } = gapTail(file, { schema: z.object({ type: z.string() }) });
+    const result = await tail.read();
+    expect(result.events.map((entry) => entry.event.type)).toEqual(['ok']);
+    expect(gaps).toEqual([
+      expect.objectContaining({ reason: 'malformed-line', fromOffset: 14, toOffset: 25 }),
+    ]);
+    expect(gaps[0].error).toMatch(/Schema validation failed/);
+  });
+
+  it('fires an oversized-line gap when the skip ends, across reads', async () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, `{"type":"a"}\n{"type":"long","pad":"${'x'.repeat(100)}`);
+    const { tail, gaps } = gapTail(file, { maxLineBytes: 40, maxReadBytes: 16 });
+    const first = await tail.read();
+    expect(first.events).toHaveLength(1);
+    expect(first.gaps).toBeUndefined();
+    expect(gaps).toEqual([]);
+
+    appendFileSync(file, '"}\n{"type":"b"}\n');
+    const second = await tail.read();
+    expect(second.events.map((entry) => entry.event.type)).toEqual(['b']);
+    const end = Buffer.byteLength(`{"type":"a"}\n{"type":"long","pad":"${'x'.repeat(100)}"}\n`);
+    expect(second.gaps).toEqual([
+      {
+        reason: 'oversized-line',
+        fromOffset: 13,
+        toOffset: end,
+        discontinuity: false,
+        error: expect.stringContaining('over 40 bytes'),
+      },
+    ]);
+  });
+
+  it('reports resets and rejected checkpoints as discontinuities', async () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, '{"type":"one"}\n{"type":"two"}\n');
+    const { tail, order } = gapTail(file);
+    const first = await tail.read();
+    const saved = first.checkpoint!;
+    expect(saved).toEqual(tail.checkpoint());
+
+    truncateSync(file, 0);
+    appendFileSync(file, '{"type":"new"}\n');
+    const after = await tail.read();
+    expect(after.gaps).toEqual([
+      { reason: 'truncated', fromOffset: 30, toOffset: 0, discontinuity: true },
+    ]);
+    expect(order).toEqual(['one', 'two', 'gap:truncated', 'new']);
+
+    // A new tail cannot resume from the old checkpoint: the file was rewritten.
+    const resumed = gapTail(file);
+    expect(resumed.tail.resumeFrom(saved)).toBe(false);
+    expect(resumed.gaps).toEqual([
+      {
+        reason: 'checkpoint-rejected',
+        fromOffset: 30,
+        toOffset: 0,
+        discontinuity: true,
+        error: 'The file no longer matches the checkpoint.',
+      },
+    ]);
+    const replay = await resumed.tail.read();
+    expect(replay.gaps).toEqual(resumed.gaps);
+    expect(replay.events.map((entry) => entry.event.type)).toEqual(['new']);
+    expect((await resumed.tail.read()).gaps).toBeUndefined();
+
+    const garbage = gapTail(file);
+    expect(garbage.tail.resumeFrom({ version: 99 })).toBe(false);
+    expect(garbage.gaps[0]).toMatchObject({
+      reason: 'checkpoint-rejected',
+      fromOffset: 0,
+      error: 'Not a valid checkpoint.',
+    });
+  });
+
+  it('returns a checkpoint tied to exactly the events of each read', async () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, '{"type":"one"}\n{"type":"tw');
+    const { tail } = gapTail(file);
+    const first = await tail.read();
+    expect(first.events).toHaveLength(1);
+    expect(first.checkpoint?.offset).toBe(15);
+
+    appendFileSync(file, 'o"}\n');
+    const second = await tail.read();
+    expect(second.checkpoint?.offset).toBe(Buffer.byteLength('{"type":"one"}\n{"type":"two"}\n'));
+
+    // Resuming from the first read's checkpoint replays exactly what came after it.
+    const resumed = gapTail(file);
+    expect(resumed.tail.resumeFrom(first.checkpoint)).toBe(true);
+    expect((await resumed.tail.read()).events.map((entry) => entry.event.type)).toEqual(['two']);
   });
 });

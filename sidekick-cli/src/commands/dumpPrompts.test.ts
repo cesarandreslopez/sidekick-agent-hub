@@ -90,6 +90,7 @@ function result(overrides: Partial<SessionPromptHistoryResult> = {}): SessionPro
       promptsMissingTimestamp: 0,
       promptsOutOfScope: 0,
     },
+    ordinalScheme: 1,
     ...overrides,
   };
 }
@@ -218,6 +219,31 @@ describe('formatPromptSessionsText', () => {
     );
     expect(text).toContain('toolError (Bash): Exit code 1 …');
     expect(text.indexOf('compaction')).toBeLessThan(text.indexOf('#0'));
+  });
+
+  it('shows the exit code of a failed command', () => {
+    const failed = session({
+      signals: [
+        {
+          kind: 'toolError',
+          timestamp: '2026-09-20T10:31:00.000Z',
+          afterOrdinal: 2,
+          tool: 'exec_command',
+          command: 'npm test',
+          output: 'FAIL src/a.test.ts',
+          exitCode: 2,
+          toolUseId: 'call_1',
+          text: '$ npm test\nFAIL src/a.test.ts',
+        },
+        { kind: 'interrupt', timestamp: '2026-09-20T10:32:00.000Z', afterOrdinal: 2 },
+      ],
+    });
+    const text = formatPromptSessionsText([failed], { width: 100 });
+    expect(text).toContain('toolError (exec_command, exit 2): $ npm test …');
+    expect(text).toMatch(/⚑ \S+ {2}interrupt\n/);
+    const markdown = formatPromptSessionsMarkdown([failed]);
+    expect(markdown).toContain('**toolError** (`exec_command`, exit 2)');
+    expect(markdown).toContain('**interrupt**\n');
   });
 });
 

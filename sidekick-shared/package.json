@@ -145,6 +145,13 @@
       "require": "./dist/handoffUrl.js",
       "default": "./dist/handoffUrl.js"
     },
+    "./headless": {
+      "types": "./dist/headless.d.ts",
+      "module": "./dist/esm/headless.js",
+      "import": "./dist/headless.js",
+      "require": "./dist/headless.js",
+      "default": "./dist/headless.js"
+    },
     "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -200,6 +207,9 @@
       ],
       "handoffUrl": [
         "dist/handoffUrl.d.ts"
+      ],
+      "headless": [
+        "dist/headless.d.ts"
       ]
     }
   },

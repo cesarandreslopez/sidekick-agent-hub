@@ -12,6 +12,7 @@ import { parseMcpToolName } from '../parsers/mcpToolName';
 import { estimateTextTokens } from '../tokenEstimation';
 import { isTaskNotificationSystemEvent, isTaskStatusSystemEvent } from '../subagentSpawn';
 import { isSubagentActivitySystemEvent } from '../subagentActivity';
+import { isTurnLifecycleSystemEvent } from '../turnLifecycle';
 import type { ProviderId, SessionProviderBase } from '../providers/types';
 import type {
   CompactionEvent,
@@ -407,8 +408,8 @@ function extractSourcesFromEvent(event: SessionEvent, state: SourceExtractionSta
 function extractSystemSource(event: SessionEvent, state: SourceExtractionState): void {
   // Background-task notices only update subagent lifecycles (like the aggregator).
   if (isTaskNotificationSystemEvent(event) || isTaskStatusSystemEvent(event)) return;
-  // So are subagent lifecycle records (opt-in Codex parser events).
-  if (isSubagentActivitySystemEvent(event)) return;
+  // So are subagent lifecycle records and turn boundaries (opt-in Codex parser events).
+  if (isSubagentActivitySystemEvent(event) || isTurnLifecycleSystemEvent(event)) return;
   const message = event.message;
   const text = extractText(message?.content);
   const label = message?.sourceLabel ?? message?.role ?? 'system';

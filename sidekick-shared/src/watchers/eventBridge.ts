@@ -22,6 +22,7 @@ import {
   taskStatusFromEvent,
 } from '../subagentSpawn';
 import { describeSubagentActivity, subagentActivityFromEvent } from '../subagentActivity';
+import { describeTurnLifecycle, turnLifecycleFromEvent } from '../turnLifecycle';
 
 /**
  * Converts a single SessionEvent to one or more FollowEvents.
@@ -208,6 +209,18 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
           type: 'system',
           timestamp: ts,
           summary: describeSubagentActivity(activity),
+          raw: event,
+        });
+        break;
+      }
+      // A Codex turn boundary (opt-in parser event): a short summary.
+      const lifecycle = turnLifecycleFromEvent(event);
+      if (lifecycle) {
+        events.push({
+          providerId,
+          type: 'system',
+          timestamp: ts,
+          summary: describeTurnLifecycle(lifecycle),
           raw: event,
         });
         break;

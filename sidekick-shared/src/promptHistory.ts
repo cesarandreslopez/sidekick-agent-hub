@@ -27,6 +27,7 @@
 import { createHash } from 'crypto';
 import * as path from 'path';
 import { HUMAN_CODEX_SOURCES, humanPromptText, type HumanPromptProvider } from './humanPrompt';
+import { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
 import { listClaudeSessionFilesAsync } from './providers/claudeListing';
 import { listCodexSessionFilesAsync } from './providers/codexRollouts';
 import {
@@ -152,6 +153,13 @@ export interface PromptHistoryCursor {
   sessions: Record<string, PromptHistoryCursorSession>;
   /** Opaque key of the file the next call starts with, after a call-wide stop. */
   next?: string;
+  /**
+   * The prompt-ordinal scheme the sessions' ordinals follow
+   * (`PROMPT_ORDINAL_SCHEME_VERSION`); always written. A cursor from another
+   * scheme restarts every session it holds (counted in `sessionsRewritten`);
+   * one without the field predates it and follows scheme 1.
+   */
+  ordinalScheme?: number;
 }
 
 /**
@@ -299,6 +307,12 @@ export interface PromptHistoryResult {
   progressed?: boolean;
   /** Realpaths of the roots scanned, after worktree expansion. */
   roots?: string[];
+  /**
+   * The prompt-ordinal scheme of `entries` (`PROMPT_ORDINAL_SCHEME_VERSION`).
+   * Always set by `collectPromptHistory()`; optional so hand-built results
+   * (test doubles) written before 0.31 still type-check.
+   */
+  ordinalScheme?: number;
 }
 
 /**
@@ -411,8 +425,12 @@ export async function collectPromptHistory(
   const startedAt = Date.now();
   const boundsHit = new Set<PromptHistoryBound>();
   const stats = emptyStats();
-  const { sessions: previous, next: previousNext } = acceptedCursor(options.cursor);
-  const cursor: PromptHistoryCursor = { version: 3, sessions: { ...previous } };
+  const { sessions: previous, next: previousNext } = schemeCheckedCursor(options.cursor, stats);
+  const cursor: PromptHistoryCursor = {
+    version: 3,
+    sessions: { ...previous },
+    ordinalScheme: PROMPT_ORDINAL_SCHEME_VERSION,
+  };
   const entries: PromptHistoryEntry[] = [];
   const exclusions: PromptHistoryExclusion[] = [];
   const changed = new Map<string, PromptHistorySessionRef>();
@@ -442,6 +460,7 @@ export async function collectPromptHistory(
     changed: [...changed.values()],
     progressed,
     roots: scannedRoots,
+    ordinalScheme: PROMPT_ORDINAL_SCHEME_VERSION,
   });
 
   const realpaths = new Map<string, string | null>();
@@ -688,6 +707,23 @@ function acceptedCursor(
   };
 }
 
+/**
+ * The accepted cursor, or an empty one when it was written under another
+ * prompt-ordinal scheme: its offsets and ordinals cannot be continued, so
+ * every session it held is read again from the start and counted as
+ * rewritten.
+ */
+function schemeCheckedCursor(
+  cursor: PromptHistoryCursor | undefined,
+  stats: PromptHistoryStats,
+): { sessions: Record<string, PromptHistoryCursorSession>; next?: string } {
+  const accepted = acceptedCursor(cursor);
+  const scheme = cursor?.ordinalScheme;
+  if (scheme === undefined || scheme === PROMPT_ORDINAL_SCHEME_VERSION) return accepted;
+  stats.sessionsRewritten += Object.keys(accepted.sessions).length;
+  return { sessions: {} };
+}
+
 function isOffset(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
@@ -729,7 +765,13 @@ export function parsePromptHistoryCursor(value: unknown): PromptHistoryCursor | 
   for (const [key, session] of Object.entries(sessions)) {
     if (validSession(session)) valid[key] = session;
   }
-  return { version: 3, sessions: valid, ...(next !== undefined ? { next } : {}) };
+  const scheme = (value as { ordinalScheme?: unknown }).ordinalScheme;
+  return {
+    version: 3,
+    sessions: valid,
+    ...(next !== undefined ? { next } : {}),
+    ...(Number.isInteger(scheme) ? { ordinalScheme: scheme as number } : {}),
+  };
 }
 
 /** A session whose last pass reached the end and needs no migration. */

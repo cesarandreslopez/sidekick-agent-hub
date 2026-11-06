@@ -15,6 +15,7 @@
  */
 
 import { statRolloutContent, type RolloutContentStat } from './providers/compressedRollouts';
+import { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
 import {
   DEFAULT_BOUNDS,
   PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
@@ -35,6 +36,7 @@ import {
   createSessionRecordExtractor,
   type PromptHistoryReply,
   type PromptHistorySignal,
+  type SessionPromptSignalLimits,
   type SessionRecordExtraction,
 } from './sessionPromptSignals';
 
@@ -85,6 +87,8 @@ export interface CollectSessionPromptHistoryOptions {
   limit?: number;
   /** Opt-in content beyond the prompts. */
   include?: SessionPromptHistoryInclude;
+  /** How much text, command, and output each signal keeps (with `include.signals`). */
+  signalLimits?: SessionPromptSignalLimits;
   bounds?: SessionPromptHistoryBounds;
   signal?: AbortSignal;
   /**
@@ -170,6 +174,12 @@ export interface SessionPromptHistoryResult {
   /** Permanent exclusions found in this call (at most 1000; stats count all). */
   exclusions: PromptHistoryExclusion[];
   stats: SessionPromptHistoryStats;
+  /**
+   * The prompt-ordinal scheme of the prompts and signals
+   * (`PROMPT_ORDINAL_SCHEME_VERSION`). Always set by
+   * `collectSessionPromptHistory()`; optional so hand-built results still type-check.
+   */
+  ordinalScheme?: number;
 }
 
 const DEFAULT_SESSION_BOUNDS: Required<SessionPromptHistoryBounds> = {
@@ -228,6 +238,7 @@ export async function collectSessionPromptHistory(
       boundsHit: [...boundsHit],
       exclusions,
       stats,
+      ordinalScheme: PROMPT_ORDINAL_SCHEME_VERSION,
     };
   };
 
@@ -278,7 +289,11 @@ export async function collectSessionPromptHistory(
     }
 
     let excludedRecords = 0;
-    const extractor = createSessionRecordExtractor(item.candidate.provider, include);
+    const extractor = createSessionRecordExtractor(
+      item.candidate.provider,
+      include,
+      options.signalLimits,
+    );
     const context: ScanContext = {
       roots,
       // Sessions come back whole: `since` only selects files.

@@ -46,10 +46,13 @@ const SUBPATHS = [
   { name: 'pricing', pure: true, maxModules: 12 },
   { name: 'providerFailure', pure: true, maxModules: 1 },
   { name: 'statusline/payload', pure: true, maxModules: 3 },
-  { name: 'codex', pure: false, maxModules: 14 },
+  // +1 in 0.31: parsers/codexInheritedHistory (readCodexInheritedHistoryBoundary).
+  { name: 'codex', pure: false, maxModules: 15 },
   // Single-module entries for hosts that need only these constants or helpers.
   { name: 'providerIds', pure: true, maxModules: 1 },
   { name: 'handoffUrl', pure: true, maxModules: 1 },
+  // 0.31: headless output parsers (TextDecoder only).
+  { name: 'headless', pure: true, maxModules: 14 },
 ] as const;
 
 describe('lean subpath entries', { timeout: 30_000 }, () => {
