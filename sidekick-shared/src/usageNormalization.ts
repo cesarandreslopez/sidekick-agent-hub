@@ -31,7 +31,11 @@ export interface AnthropicUsageInput extends ProviderUsageBase {
   reasoningIncludedInOutput?: boolean;
 }
 
-/** OpenAI cached input is a subset of input and reasoning is normally a subset of output. */
+/**
+ * OpenAI-style counters: `inputTokens` includes every cached category, so
+ * `cacheReadTokens` and `cacheWriteTokens` (Codex `cache_write_input_tokens`)
+ * are both subtracted from it. Reasoning is normally a subset of output.
+ */
 export interface OpenAIUsageInput extends ProviderUsageBase {
   semantics: 'openai';
   reasoningIncludedInOutput?: boolean;
@@ -98,7 +102,11 @@ export function normalizeProviderUsage(input: ProviderUsageInput): NormalizedUsa
   const reasoningTokens = tokenCount(input.reasoningTokens);
 
   const isOpenAI = input.semantics === 'openai';
-  const uncachedInputTokens = isOpenAI ? Math.max(0, rawInput - cacheReadTokens) : rawInput;
+  // OpenAI/Codex input already contains cache reads and writes
+  // (`non_cached_input = input - cached`), so both come out of it.
+  const uncachedInputTokens = isOpenAI
+    ? Math.max(0, rawInput - cacheReadTokens - cacheWriteTokens)
+    : rawInput;
   const reasoningIncludedInOutput = input.reasoningIncludedInOutput ?? input.semantics === 'openai';
   const cacheInclusiveInputTokens = uncachedInputTokens + cacheReadTokens + cacheWriteTokens;
   const billableOutputTokens = outputTokens + (reasoningIncludedInOutput ? 0 : reasoningTokens);

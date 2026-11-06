@@ -1806,11 +1806,15 @@ class CodexLineScanner extends LineScanner {
       if (!last || typeof last !== 'object') return 'ok';
       const input = tokenCount(last.input_tokens);
       const cached = tokenCount(last.cached_input_tokens);
+      const written = tokenCount(last.cache_write_input_tokens);
+      // Codex input includes both cache reads and cache writes; report
+      // disjoint buckets so the four fields sum to the call's input + output.
       const mapped = compactUsage({
-        inputTokens: input !== undefined ? Math.max(0, input - (cached ?? 0)) : undefined,
+        inputTokens:
+          input !== undefined ? Math.max(0, input - (cached ?? 0) - (written ?? 0)) : undefined,
         outputTokens: tokenCount(last.output_tokens),
         cacheReadTokens: cached,
-        cacheWriteTokens: tokenCount(last.cache_write_input_tokens),
+        cacheWriteTokens: written,
       });
       if (mapped) open.entry.usage = mapped;
       if (state.model) open.entry.model = state.model;

@@ -44,6 +44,39 @@ describe('normalizeProviderUsage', () => {
     expect(result.cacheReadTokens).toBe(75);
   });
 
+  it('subtracts OpenAI/Codex cache writes from input instead of counting them twice', () => {
+    const result = normalizeProviderUsage({
+      semantics: 'openai',
+      provider: 'openai',
+      inputTokens: 1000,
+      cacheReadTokens: 300,
+      cacheWriteTokens: 100,
+      outputTokens: 200,
+    });
+    expect(result).toMatchObject({
+      uncachedInputTokens: 600,
+      cacheReadTokens: 300,
+      cacheWriteTokens: 100,
+      cacheInclusiveInputTokens: 1000,
+      totalTokens: 1200,
+    });
+    expect(normalizedUsageSchema.safeParse(result).success).toBe(true);
+    expect(calculateNormalizedUsageCost({ usage: result, pricing }).costUsd).toBeCloseTo(
+      (600 * 10 + 300 * 1 + 100 * 12.5 + 200 * 20) / 1_000_000,
+    );
+  });
+
+  it('clamps OpenAI uncached input when cache reads and writes exceed input', () => {
+    const result = normalizeProviderUsage({
+      semantics: 'openai',
+      inputTokens: 100,
+      cacheReadTokens: 80,
+      cacheWriteTokens: 40,
+    });
+    expect(result.uncachedInputTokens).toBe(0);
+    expect(result.cacheInclusiveInputTokens).toBe(120);
+  });
+
   it('keeps Anthropic cache fields additive', () => {
     const result = normalizeProviderUsage({
       semantics: 'anthropic',

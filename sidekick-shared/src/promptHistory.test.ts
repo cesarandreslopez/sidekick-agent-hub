@@ -297,8 +297,12 @@ describe('collectPromptHistory — Codex', () => {
       cwd: repo,
       gitBranch: 'feature/x',
       model: 'gpt-5.5-codex',
-      usage: { inputTokens: 40, outputTokens: 7, cacheReadTokens: 60, cacheWriteTokens: 5 },
+      usage: { inputTokens: 35, outputTokens: 7, cacheReadTokens: 60, cacheWriteTokens: 5 },
     });
+    // Codex input_tokens (100) already contains the cache reads and writes, so
+    // the disjoint input buckets must add back up to it, not to 105.
+    const usage = result.entries[0].usage!;
+    expect(usage.inputTokens! + usage.cacheReadTokens! + usage.cacheWriteTokens!).toBe(100);
     expect(result.entries[1]).toMatchObject({ ordinal: 1 });
     expect(result.entries[1].usage).toBeUndefined();
   });
@@ -738,7 +742,7 @@ describe('collectPromptHistory — late answer metadata', () => {
       {
         ...first.entries[0],
         model: 'm2',
-        usage: { inputTokens: 40, outputTokens: 7, cacheReadTokens: 60, cacheWriteTokens: 5 },
+        usage: { inputTokens: 35, outputTokens: 7, cacheReadTokens: 60, cacheWriteTokens: 5 },
         metadataStatus: 'final',
       },
     ]);
@@ -1458,7 +1462,7 @@ describe('collectPromptHistory — streaming and resumability', () => {
     expect([entry.metadataStatus, entry.model, entry.usage]).toEqual([
       'final',
       'gpt-far',
-      { inputTokens: 40, outputTokens: 7, cacheReadTokens: 60, cacheWriteTokens: 5 },
+      { inputTokens: 35, outputTokens: 7, cacheReadTokens: 60, cacheWriteTokens: 5 },
     ]);
   });
 
