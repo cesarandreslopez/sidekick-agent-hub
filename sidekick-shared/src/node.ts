@@ -390,3 +390,5 @@ export type {
   JsonlTailReset,
   JsonlTailResetReason,
 } from './watchers/jsonlTail';
+// JSONL tail gaps (0.31)
+export type { JsonlTailGap, JsonlTailGapReason } from './watchers/jsonlTail';

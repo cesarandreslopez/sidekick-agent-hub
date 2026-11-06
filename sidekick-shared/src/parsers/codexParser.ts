@@ -297,6 +297,47 @@ export interface CodexRolloutParserOptions {
    * Default false: those records produce no events.
    */
   includeSubagentActivity?: boolean;
+  /**
+   * How much of the rollout's `session_meta` the parser keeps, in memory and
+   * in `exportResumeState()`. `'full'` (default) keeps the payload as
+   * written; `'identity'` keeps only the fields that identify the session
+   * and its lineage (ids, cwd, source, git, versions, agent fields, history
+   * markers) and drops its instructions and tool lists, which can run to
+   * tens of KB per session. The `session_meta` event itself is unchanged.
+   */
+  sessionMeta?: 'full' | 'identity';
+}
+
+/** The `session_meta` fields kept with `sessionMeta: 'identity'`. */
+const SESSION_META_IDENTITY_FIELDS = [
+  'id',
+  'session_id',
+  'timestamp',
+  'cwd',
+  'originator',
+  'model_provider',
+  'cli_version',
+  'source',
+  'git',
+  'forked_from_id',
+  'parent_thread_id',
+  'thread_source',
+  'agent_nickname',
+  'agent_path',
+  'agent_role',
+  'subagent_history_start_ordinal',
+  'history_base',
+  'history_mode',
+  'multi_agent_version',
+] as const;
+
+function sessionMetaIdentity(meta: CodexSessionMeta): CodexSessionMeta {
+  const kept: Record<string, unknown> = {};
+  for (const field of SESSION_META_IDENTITY_FIELDS) {
+    const value = (meta as unknown as Record<string, unknown>)[field];
+    if (value !== undefined) kept[field] = value;
+  }
+  return kept as unknown as CodexSessionMeta;
 }
 
 /** Pending tool-call state counters from {@link CodexRolloutParser.getPendingStats}. */
@@ -309,6 +350,14 @@ export interface CodexPendingStats {
   evictedByCount: number;
   /** Pending calls forgotten because `maxPendingBytes` was exceeded. */
   evictedByBytes: number;
+  /**
+   * Call ids held across every correlation table: emitted tool uses,
+   * multi-agent calls, and pending calls. Each table stops at
+   * `maxTrackedToolCalls`.
+   */
+  trackedCallIds: number;
+  /** Approximate bytes of the stored `session_meta` (JSON length); 0 before one. */
+  sessionMetaBytes: number;
 }
 
 /**
@@ -533,6 +582,9 @@ export class CodexRolloutParser {
   private readonly maxPendingBytes: number | null;
   private readonly metadataOnly: boolean;
   private readonly includeSubagentActivity: boolean;
+  private readonly identityMetaOnly: boolean;
+  /** JSON length of `sessionMeta`, computed when first asked for. */
+  private sessionMetaBytes: number | null = null;
   /**
    * Where the rollout's own records start (see `codexInheritedHistory`);
    * `null` until its own session_meta was parsed. Records it marks as
@@ -558,6 +610,13 @@ export class CodexRolloutParser {
         : null;
     this.metadataOnly = options.metadataOnly === true;
     this.includeSubagentActivity = options.includeSubagentActivity === true;
+    this.identityMetaOnly = options.sessionMeta === 'identity';
+  }
+
+  /** Stores the rollout's own session metadata as the `sessionMeta` option asks. */
+  private storeSessionMeta(meta: CodexSessionMeta | null): void {
+    this.sessionMeta = meta && this.identityMetaOnly ? sessionMetaIdentity(meta) : meta;
+    this.sessionMetaBytes = null;
   }
 
   /** Counters for the pending tool-call state and what the caps evicted. */
@@ -570,6 +629,13 @@ export class CodexRolloutParser {
       pendingBytes: this.maxPendingBytes === null ? null : this.pendingBytes,
       evictedByCount: this.evictedByCount,
       evictedByBytes: this.evictedByBytes,
+      trackedCallIds:
+        this.emittedToolUseIds.size +
+        this.collaborationCalls.size +
+        this.pendingExecCommands.size +
+        this.pendingMcpToolCalls.size +
+        this.patchExpandedToolUseIds.size,
+      sessionMetaBytes: (this.sessionMetaBytes ??= approxJsonBytes(this.sessionMeta ?? undefined)),
     };
   }
 
@@ -779,7 +845,7 @@ export class CodexRolloutParser {
       mcps: mcps as unknown as PendingMcpToolCall[],
     });
     this.reset();
-    this.sessionMeta = copy.sessionMeta;
+    this.storeSessionMeta(copy.sessionMeta);
     this.inheritedBoundary =
       inheritedHistory ??
       legacyBoundary(copy.sessionMeta, inheritedEnd as number | null | undefined);
@@ -852,7 +918,7 @@ export class CodexRolloutParser {
    * `exportResumeState()` instead when continuing a rollout.
    */
   reset(): void {
-    this.sessionMeta = null;
+    this.storeSessionMeta(null);
     this.inheritedBoundary = null;
     this.collaborationCalls.clear();
     this.currentModel = null;
@@ -997,7 +1063,7 @@ export class CodexRolloutParser {
 
   private handleSessionMeta(timestamp: string, payload: CodexSessionMeta): SessionEvent[] {
     if (!payload || typeof payload !== 'object') return [];
-    this.sessionMeta = payload;
+    this.storeSessionMeta(payload);
     this.inheritedBoundary = codexInheritedHistoryBoundary([{ type: 'session_meta', payload }], {
       complete: false,
     });
