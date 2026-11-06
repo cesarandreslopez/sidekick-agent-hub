@@ -56,3 +56,64 @@ export const providerFailureDiagnosisSchema = z.object({
   httpStatus: z.number().optional(),
   retryAfter: providerRetryAfterSchema.optional(),
 }) satisfies z.ZodType<ProviderFailureDiagnosis>;
+
+/**
+ * Size and range limits enforced by `boundedProviderFailureDiagnosisSchema`.
+ * Every value `diagnoseProviderFailure()` returns is well inside them.
+ */
+export const PROVIDER_FAILURE_DIAGNOSIS_BOUNDS = {
+  /** `checkedAt` and `retryAfter.at` length; an ISO timestamp is 24 characters. */
+  timestampMinChars: 1,
+  timestampMaxChars: 32,
+  /** `httpStatus`, an integer. */
+  httpStatusMin: 100,
+  httpStatusMax: 599,
+  /** `retryAfter.delayMs`, finite. */
+  delayMsMin: 0,
+  delayMsMax: Number.MAX_SAFE_INTEGER,
+  /** Entries in `evidence`; the classifier returns at most one. */
+  maxEvidence: 8,
+} as const;
+
+const bounds = PROVIDER_FAILURE_DIAGNOSIS_BOUNDS;
+
+const boundedTimestampSchema = z
+  .string()
+  .min(bounds.timestampMinChars)
+  .max(bounds.timestampMaxChars)
+  .refine((value) => Number.isFinite(Date.parse(value)), { message: 'Invalid timestamp' });
+
+const boundedAuthenticationEvidenceSchema = providerAuthenticationEvidenceSchema.extend({
+  checkedAt: boundedTimestampSchema,
+}) satisfies z.ZodType<ProviderAuthenticationEvidence>;
+
+const boundedEvidenceSchema = providerFailureEvidenceSchema.extend({
+  checkedAt: boundedTimestampSchema.optional(),
+  // A newer producer may name a Codex variant this release does not know;
+  // drop the label rather than reject the whole diagnosis.
+  codexErrorInfo: z.enum(CODEX_ERROR_INFO_KINDS).optional().catch(undefined),
+}) satisfies z.ZodType<ProviderFailureEvidence>;
+
+const boundedRetryAfterSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('delay'),
+    delayMs: z.number().min(bounds.delayMsMin).max(bounds.delayMsMax),
+  }),
+  z.object({ kind: z.literal('date'), at: boundedTimestampSchema }),
+]) satisfies z.ZodType<ProviderRetryAfter>;
+
+/**
+ * `providerFailureDiagnosisSchema` with size and range limits, for diagnoses
+ * that cross a trust boundary (sent by another process, or stored by an older
+ * or newer producer): timestamps of 1–32 characters that `Date.parse`
+ * accepts, an integer `httpStatus` in 100–599, a finite nonnegative
+ * `retryAfter.delayMs`, and at most 8 evidence entries. Unknown keys are
+ * stripped, and an unknown `evidence[].codexErrorInfo` is dropped instead of
+ * failing the parse.
+ */
+export const boundedProviderFailureDiagnosisSchema = providerFailureDiagnosisSchema.extend({
+  evidence: z.array(boundedEvidenceSchema).max(bounds.maxEvidence),
+  authentication: boundedAuthenticationEvidenceSchema.optional(),
+  httpStatus: z.number().int().min(bounds.httpStatusMin).max(bounds.httpStatusMax).optional(),
+  retryAfter: boundedRetryAfterSchema.optional(),
+}) satisfies z.ZodType<ProviderFailureDiagnosis>;

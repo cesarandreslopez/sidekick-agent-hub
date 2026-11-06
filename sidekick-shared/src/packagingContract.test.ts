@@ -245,6 +245,20 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     }
   });
 
+  it('exposes the bounded diagnosis schema on /schemas and the root, not /browser', () => {
+    const schemas = pkgRequire('sidekick-shared/schemas');
+    const root = pkgRequire('sidekick-shared');
+    const browser = pkgRequire('sidekick-shared/browser');
+    expect(typeof schemas.boundedProviderFailureDiagnosisSchema?.safeParse).toBe('function');
+    expect(schemas.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toMatchObject({ maxEvidence: 8 });
+    expect(root.boundedProviderFailureDiagnosisSchema).toBe(
+      schemas.boundedProviderFailureDiagnosisSchema,
+    );
+    expect(root.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toBe(schemas.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS);
+    expect(browser.boundedProviderFailureDiagnosisSchema).toBeUndefined();
+    expect(browser.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toBeUndefined();
+  });
+
   it('dist/statusline/index.js exposes the lightweight prompt-render surface', () => {
     expect(existsSync(statuslineJs)).toBe(true);
     const m = require(statuslineJs);

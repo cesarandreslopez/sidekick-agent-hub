@@ -48,6 +48,10 @@ export {
   providerRetryAfterSchema,
   providerFailureDiagnosisSchema,
 } from './providerFailure';
+export {
+  PROVIDER_FAILURE_DIAGNOSIS_BOUNDS,
+  boundedProviderFailureDiagnosisSchema,
+} from './providerFailure';
 export type {
   ProviderAuthenticationEvidence,
   ProviderFailureDiagnosis,

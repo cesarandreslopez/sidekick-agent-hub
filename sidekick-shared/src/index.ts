@@ -1429,6 +1429,10 @@ export {
   providerRetryAfterSchema,
   providerFailureDiagnosisSchema,
 } from './schemas/providerFailure';
+export {
+  PROVIDER_FAILURE_DIAGNOSIS_BOUNDS,
+  boundedProviderFailureDiagnosisSchema,
+} from './schemas/providerFailure';
 
 // Schemas — Zod runtime validation for account status
 export {
