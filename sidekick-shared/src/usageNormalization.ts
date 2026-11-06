@@ -1,4 +1,11 @@
-import { getModelPricing, type ModelPricing } from './modelInfo';
+import {
+  costSourceFromPricingProvenance,
+  getModelPricing,
+  resolveModelPricing,
+  type CostSource,
+  type ModelPricing,
+  type ModelPricingProvenance,
+} from './modelInfo';
 import type { SessionEvent } from './types/sessionEvent';
 
 export type UsageProvider = 'anthropic' | 'openai' | 'sidekick' | (string & {});
@@ -205,4 +212,192 @@ export function calculateNormalizedUsageCost(input: NormalizedUsageCostInput): N
     modelId,
     usage,
   };
+}
+
+// ── Raw provider usage ──
+
+/**
+ * Raw usage shapes `normalizeRawProviderUsage` reads:
+ * - `anthropic`: Messages API `usage` (`input_tokens`, `output_tokens`,
+ *   `cache_read_input_tokens`, `cache_creation_input_tokens`, or the
+ *   `cache_creation.ephemeral_*_input_tokens` split). Cache fields are
+ *   additive to input.
+ * - `openai`: Responses API `usage` (`input_tokens`,
+ *   `input_tokens_details.cached_tokens` / `.cache_write_tokens`,
+ *   `output_tokens`, `output_tokens_details.reasoning_tokens`), or Chat
+ *   Completions usage (`prompt_tokens`, `completion_tokens` and their
+ *   `_details`) when `input_tokens` is absent. Cached input is inside input
+ *   and reasoning inside output.
+ * - `codex`: a Codex `TokenUsage` (rollout `last_token_usage`, `exec --json`,
+ *   or the app-server's camelCase spelling): `input_tokens`,
+ *   `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens`.
+ *   OpenAI semantics. `cache_write_input_tokens` is ignored, as the session
+ *   parser ignores it, so totals match parsed sessions.
+ */
+export const RAW_USAGE_FORMATS = ['anthropic', 'openai', 'codex'] as const;
+export type RawUsageFormat = (typeof RAW_USAGE_FORMATS)[number];
+
+/** Metadata `normalizeRawProviderUsage` copies onto the normalized usage. */
+export interface RawUsageExtras {
+  /** Defaults to `anthropic` for the Anthropic format and `openai` otherwise. */
+  provider?: UsageProvider;
+  /** Defaults to `<format>-raw-usage`. */
+  source?: string;
+  model?: string;
+  reportedCostUsd?: number | null;
+}
+
+/** An own property of a plain object, or undefined; never throws. */
+function rawField(value: unknown, ...keys: string[]): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  for (const key of keys) {
+    try {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        return (value as Record<string, unknown>)[key];
+      }
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function rawCount(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
+}
+
+/**
+ * Normalize one provider's raw usage object into disjoint categories, with
+ * that provider's cache and reasoning semantics applied (see
+ * `RAW_USAGE_FORMATS`). Missing, negative or non-numeric counters read as 0,
+ * so malformed input yields zero usage rather than an error. Throws a
+ * `TypeError` only for a `format` outside `RAW_USAGE_FORMATS`.
+ */
+export function normalizeRawProviderUsage(
+  format: RawUsageFormat,
+  usage: unknown,
+  extras?: RawUsageExtras,
+): NormalizedUsage {
+  const meta = {
+    provider: extras?.provider ?? (format === 'anthropic' ? 'anthropic' : 'openai'),
+    source: extras?.source ?? `${format}-raw-usage`,
+    ...(extras?.model ? { model: extras.model } : {}),
+    ...(extras?.reportedCostUsd !== undefined ? { reportedCostUsd: extras.reportedCostUsd } : {}),
+  };
+  switch (format) {
+    case 'anthropic': {
+      const creation = rawField(usage, 'cache_creation');
+      const split =
+        (rawCount(rawField(creation, 'ephemeral_5m_input_tokens')) ?? 0) +
+        (rawCount(rawField(creation, 'ephemeral_1h_input_tokens')) ?? 0);
+      return normalizeProviderUsage({
+        ...meta,
+        semantics: 'anthropic',
+        inputTokens: rawCount(rawField(usage, 'input_tokens')),
+        outputTokens: rawCount(rawField(usage, 'output_tokens')),
+        cacheReadTokens: rawCount(rawField(usage, 'cache_read_input_tokens')),
+        cacheWriteTokens: rawCount(rawField(usage, 'cache_creation_input_tokens')) ?? split,
+      });
+    }
+    case 'openai': {
+      const responses = rawField(usage, 'input_tokens') !== undefined;
+      const inputDetails = rawField(
+        usage,
+        responses ? 'input_tokens_details' : 'prompt_tokens_details',
+      );
+      const outputDetails = rawField(
+        usage,
+        responses ? 'output_tokens_details' : 'completion_tokens_details',
+      );
+      return normalizeProviderUsage({
+        ...meta,
+        semantics: 'openai',
+        inputTokens: rawCount(rawField(usage, responses ? 'input_tokens' : 'prompt_tokens')),
+        outputTokens: rawCount(rawField(usage, responses ? 'output_tokens' : 'completion_tokens')),
+        cacheReadTokens: rawCount(rawField(inputDetails, 'cached_tokens')),
+        cacheWriteTokens: rawCount(rawField(inputDetails, 'cache_write_tokens')),
+        reasoningTokens: rawCount(rawField(outputDetails, 'reasoning_tokens')),
+      });
+    }
+    case 'codex':
+      return normalizeProviderUsage({
+        ...meta,
+        semantics: 'openai',
+        inputTokens: rawCount(rawField(usage, 'input_tokens', 'inputTokens')),
+        outputTokens: rawCount(rawField(usage, 'output_tokens', 'outputTokens')),
+        cacheReadTokens: rawCount(rawField(usage, 'cached_input_tokens', 'cachedInputTokens')),
+        reasoningTokens: rawCount(
+          rawField(usage, 'reasoning_output_tokens', 'reasoningOutputTokens'),
+        ),
+      });
+    default:
+      throw new TypeError(`Unknown raw usage format: ${String(format)}`);
+  }
+}
+
+export interface PriceProviderUsageInput {
+  /** Which provider API or log wrote `usage`. */
+  provider: RawUsageFormat;
+  /** The provider's raw usage object, as in `normalizeRawProviderUsage`. */
+  usage: unknown;
+  /** Model id to price with when no `pricing` is given. */
+  model?: string;
+  /** Explicit rates; `null` means unpriced. Takes precedence over `model`. */
+  pricing?: ModelPricing | null;
+  /** A provider-reported cost; when finite and nonnegative it wins. */
+  reportedCostUsd?: number | null;
+}
+
+export interface ProviderUsagePrice {
+  costUsd: number | null;
+  /** Display cost source, as `costSourceFromPricingProvenance` maps `provenance`. */
+  source: CostSource;
+  provenance: PricingProvenance;
+  /** How `resolveModelPricing` matched `model`, when it was consulted. */
+  pricingMatch?: ModelPricingProvenance;
+  modelId?: string;
+  normalized: NormalizedUsage;
+}
+
+/**
+ * Price one raw provider usage object in a single call, with that provider's
+ * cache and reasoning semantics applied, so nothing is counted twice. Unlike
+ * the deprecated `calculateCost`, Codex reasoning (already inside output) and
+ * cached input (already inside input) are billed once.
+ *
+ * Precedence: a provider-reported cost, then explicit `pricing` (`null`
+ * leaves it unpriced), then `resolveModelPricing(model)`.
+ */
+export function priceProviderUsage(input: PriceProviderUsageInput): ProviderUsagePrice {
+  const modelId = typeof input.model === 'string' && input.model.trim() ? input.model : undefined;
+  const normalized = normalizeRawProviderUsage(input.provider, input.usage, {
+    ...(modelId ? { model: modelId } : {}),
+    reportedCostUsd: input.reportedCostUsd,
+  });
+  const result = (
+    costUsd: number | null,
+    provenance: PricingProvenance,
+    pricingMatch?: ModelPricingProvenance,
+  ): ProviderUsagePrice => ({
+    costUsd,
+    source: costSourceFromPricingProvenance(provenance),
+    provenance,
+    ...(pricingMatch ? { pricingMatch } : {}),
+    ...(modelId ? { modelId } : {}),
+    normalized,
+  });
+
+  if (normalized.reportedCostUsd !== undefined) {
+    return result(normalized.reportedCostUsd, 'provider-reported');
+  }
+  if (input.pricing !== undefined) {
+    const costUsd = input.pricing ? usageCostAtRates(normalized, input.pricing) : null;
+    return costUsd === null ? result(null, 'unpriced') : result(costUsd, 'explicit-pricing');
+  }
+  if (!modelId) return result(null, 'unpriced');
+  const resolved = resolveModelPricing(modelId);
+  const costUsd = resolved.pricing ? usageCostAtRates(normalized, resolved.pricing) : null;
+  return costUsd === null
+    ? result(null, 'unpriced', resolved.provenance)
+    : result(costUsd, 'model-catalog', resolved.provenance);
 }

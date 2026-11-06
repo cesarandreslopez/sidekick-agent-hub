@@ -10,6 +10,13 @@
  * Everything here is also exported from the package root and
  * `sidekick-shared/browser`.
  *
+ * The deprecated `calculateCost`, `calculateCostWithPricing`,
+ * `calculateCostWithProvenance`, `CostTokenUsage` and `CostProvenanceInput`
+ * are deliberately absent: they double-count OpenAI/Codex cached input and
+ * reasoning. Use `priceProviderUsage()` for raw provider usage, or
+ * `normalizeProviderUsage()` with `calculateNormalizedUsageCost()`. They
+ * remain on the package root and `sidekick-shared/browser` for compatibility.
+ *
  * @module pricing
  */
 
@@ -28,9 +35,6 @@ export {
   registerModelPricing,
   clearRegisteredModelPricing,
   getPricingCatalogInfo,
-  calculateCost,
-  calculateCostWithPricing,
-  calculateCostWithProvenance,
   mergeCostSources,
   costSourceFromPricingProvenance,
   mergeCostComponents,
@@ -47,12 +51,10 @@ export type {
   PricingCatalogSource,
   PricingCatalogInfo,
   CostComponent,
-  CostTokenUsage,
   ModelProvider,
   ParsedModelId,
   ModelInfo,
   CostSource,
-  CostProvenanceInput,
   CostWithProvenance,
   ModelDisplayInfo,
   FormatCostOptions,
@@ -75,6 +77,18 @@ export type {
   PricingProvenance,
   NormalizedUsageCostInput,
   NormalizedUsageCost,
+} from './usageNormalization';
+// One-call pricing of raw provider usage objects.
+export {
+  RAW_USAGE_FORMATS,
+  normalizeRawProviderUsage,
+  priceProviderUsage,
+} from './usageNormalization';
+export type {
+  RawUsageFormat,
+  RawUsageExtras,
+  PriceProviderUsageInput,
+  ProviderUsagePrice,
 } from './usageNormalization';
 
 export { formatTokenCount, formatDurationMs } from './formatting';

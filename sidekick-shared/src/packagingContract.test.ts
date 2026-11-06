@@ -110,6 +110,8 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'normalizeProviderUsage',
       'extractNormalizedUsage',
       'calculateNormalizedUsageCost',
+      'normalizeRawProviderUsage',
+      'priceProviderUsage',
       'estimateTextTokens',
       'estimateSerializedTokens',
       'parseMcpToolName',
@@ -257,6 +259,52 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     expect(root.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toBe(schemas.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS);
     expect(browser.boundedProviderFailureDiagnosisSchema).toBeUndefined();
     expect(browser.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toBeUndefined();
+  });
+
+  // /pricing shipped without the double-counting legacy cost helpers on
+  // purpose: a missing import is a compile error, where a deprecation warning
+  // is easy to miss. Root and /browser keep them for compatibility.
+  it('keeps the deprecated cost helpers off sidekick-shared/pricing only', async () => {
+    const pricing = pkgRequire('sidekick-shared/pricing');
+    const root = pkgRequire('sidekick-shared');
+    const browser = pkgRequire('sidekick-shared/browser');
+    for (const name of [
+      'calculateCost',
+      'calculateCostWithPricing',
+      'calculateCostWithProvenance',
+    ]) {
+      expect(pricing[name], name).toBeUndefined();
+      expect(typeof root[name], name).toBe('function');
+      expect(browser[name], name).toBe(root[name]);
+    }
+    for (const name of ['priceProviderUsage', 'normalizeRawProviderUsage', 'RAW_USAGE_FORMATS']) {
+      expect(pricing[name], name).toBeDefined();
+      expect(root[name], name).toBe(pricing[name]);
+      expect(browser[name], name).toBe(pricing[name]);
+    }
+    expect(pricing.RAW_USAGE_FORMATS).toEqual(['anthropic', 'openai', 'codex']);
+    // Doc comments name the removed helpers; only the export lists matter.
+    const declarations = (await fs.readFile(path.join(distDir, 'pricing.d.ts'), 'utf8')).replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    );
+    for (const name of [
+      'calculateCost',
+      'calculateCostWithPricing',
+      'calculateCostWithProvenance',
+      'CostTokenUsage',
+      'CostProvenanceInput',
+    ]) {
+      expect(declarations, name).not.toMatch(new RegExp(`\\b${name}\\b`));
+    }
+    for (const name of ['PriceProviderUsageInput', 'ProviderUsagePrice', 'RawUsageFormat']) {
+      expect(declarations).toContain(name);
+    }
+    for (const file of [rootDts, browserDts]) {
+      const surface = await fs.readFile(file, 'utf8');
+      expect(surface).toContain('CostTokenUsage');
+      expect(surface).toContain('priceProviderUsage');
+    }
   });
 
   it('dist/statusline/index.js exposes the lightweight prompt-render surface', () => {

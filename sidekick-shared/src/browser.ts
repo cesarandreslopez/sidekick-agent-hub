@@ -37,6 +37,18 @@ export type {
   NormalizedUsageCostInput,
   NormalizedUsageCost,
 } from './usageNormalization';
+// One-call pricing of raw provider usage objects.
+export {
+  RAW_USAGE_FORMATS,
+  normalizeRawProviderUsage,
+  priceProviderUsage,
+} from './usageNormalization';
+export type {
+  RawUsageFormat,
+  RawUsageExtras,
+  PriceProviderUsageInput,
+  ProviderUsagePrice,
+} from './usageNormalization';
 export {
   formatTokenBreakdown,
   summarizeTokens,

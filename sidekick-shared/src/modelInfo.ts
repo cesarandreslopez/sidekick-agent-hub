@@ -144,8 +144,11 @@ export interface CostComponent {
 
 /**
  * Token usage for the legacy cost calculation contract.
- * @deprecated Use NormalizedUsage and calculateNormalizedUsageCost. This shape
- * cannot state whether reasoning is already included in output.
+ * @deprecated Double-counts OpenAI/Codex usage: it has no way to say that
+ * cached input is already inside `inputTokens` or that reasoning is already
+ * inside `outputTokens`, so both are billed twice. Price raw provider usage
+ * with `priceProviderUsage()`, or normalized usage with
+ * `calculateNormalizedUsageCost()`. Not exported from `sidekick-shared/pricing`.
  */
 export interface CostTokenUsage {
   inputTokens: number;
@@ -190,7 +193,9 @@ export type CostSource = 'reported' | 'estimated' | 'unpriced';
 
 /**
  * Input for the legacy cost calculation contract.
- * @deprecated Use NormalizedUsageCostInput.
+ * @deprecated Carries a `CostTokenUsage`, which double-counts OpenAI/Codex
+ * cached input and reasoning. Use `priceProviderUsage()` (raw provider usage)
+ * or `NormalizedUsageCostInput`. Not exported from `sidekick-shared/pricing`.
  */
 export interface CostProvenanceInput {
   usage: CostTokenUsage;
@@ -1467,8 +1472,11 @@ export function getModelInfo(modelId: string): ModelInfo {
  * Calculates cost from token usage and an explicit pricing object.
  *
  * Legacy behavior treats reasoning as disjoint and adds it at the output rate.
- * @deprecated Use calculateNormalizedUsageCost. This legacy function always
- * adds reasoning to output and cannot represent provider inclusion semantics.
+ * @deprecated Double-counts OpenAI/Codex usage: reasoning is billed again on
+ * top of output that already contains it, and cached input passed as both
+ * `inputTokens` and `cacheReadTokens` is billed twice. Use
+ * `priceProviderUsage({ provider, usage, pricing })` for raw provider usage or
+ * `calculateNormalizedUsageCost()`. Not exported from `sidekick-shared/pricing`.
  */
 export function calculateCostWithPricing(usage: CostTokenUsage, pricing: ModelPricing): number {
   const reasoning = usage.reasoningTokens ?? 0;
@@ -1486,7 +1494,10 @@ export function calculateCostWithPricing(usage: CostTokenUsage, pricing: ModelPr
  *
  * Returns `null` for unknown models. Callers should render `—` in that case,
  * not $0 — so users don't confuse "missing pricing" with "free".
- * @deprecated Use calculateNormalizedUsageCost.
+ * @deprecated Double-counts OpenAI/Codex usage (reasoning already inside
+ * output is billed again; cache-inclusive input plus cache reads bills the
+ * reads twice). Use `priceProviderUsage({ provider, usage, model })` or
+ * `calculateNormalizedUsageCost()`. Not exported from `sidekick-shared/pricing`.
  */
 export function calculateCost(usage: CostTokenUsage, modelId: string): number | null {
   const pricing = getModelPricing(modelId);
@@ -1497,7 +1508,9 @@ export function calculateCost(usage: CostTokenUsage, modelId: string): number | 
 /**
  * Calculates cost while preserving whether the value was provider-reported,
  * locally estimated from pricing, or unavailable because the model is unpriced.
- * @deprecated Use calculateNormalizedUsageCost.
+ * @deprecated Inherits `calculateCost`'s OpenAI/Codex double count. Use
+ * `priceProviderUsage({ provider, usage, model, reportedCostUsd })`, which
+ * also reports the cost source. Not exported from `sidekick-shared/pricing`.
  */
 export function calculateCostWithProvenance(input: CostProvenanceInput): CostWithProvenance {
   if (typeof input.reportedCostUsd === 'number' && Number.isFinite(input.reportedCostUsd)) {

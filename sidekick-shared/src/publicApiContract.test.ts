@@ -92,6 +92,8 @@ const contractGroups = {
   assets: ['gatherAssetsForCwd'],
   cost: [
     'calculateCost',
+    'priceProviderUsage',
+    'normalizeRawProviderUsage',
     'normalizeProviderUsage',
     'extractNormalizedUsage',
     'calculateNormalizedUsageCost',
