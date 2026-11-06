@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import chalk from 'chalk';
 
@@ -258,11 +259,25 @@ describe('blocksAction', () => {
     process.exitCode = undefined;
   });
 
-  const makeCmd = (json = false, localOpts: Record<string, unknown> = {}) =>
+  const makeCmd = (
+    json = false,
+    localOpts: Record<string, unknown> = {},
+    project: string | undefined = undefined,
+  ) =>
     ({
-      parent: { opts: () => ({ json, project: undefined }) },
+      parent: { opts: () => ({ json, project }) },
       opts: () => localOpts,
     }) as unknown as import('commander').Command;
+
+  it('scopes --project strictly to sessions inside the resolved path', async () => {
+    await blocksAction({}, makeCmd(true, { since: '7d' }, 'work/project'));
+    expect(mockCollect).toHaveBeenCalledWith(
+      expect.objectContaining({ workspacePath: path.resolve('work/project'), scope: 'contained' }),
+    );
+    mockCollect.mockClear();
+    await blocksAction({}, makeCmd(true, { since: '7d' }));
+    expect(mockCollect.mock.calls[0][0]).not.toHaveProperty('scope');
+  });
 
   it('prints JSON with the report shape and disposes the provider', async () => {
     const dispose = vi.fn();

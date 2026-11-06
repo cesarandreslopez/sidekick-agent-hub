@@ -9,6 +9,7 @@ import {
   collectPromptUsage,
   formatPromptUsage,
   indexPromptUsage,
+  promptUsageOwner,
   withPromptUsage,
   formatPromptSessionsJsonl,
   formatPromptSessionsMarkdown,
@@ -288,7 +289,7 @@ describe('per-prompt usage', () => {
     usageEvent({ promptOrdinal: 2, costUsd: null, costProvenance: 'unpriced' }),
     usageEvent({ promptOrdinal: 2, costUsd: 0.01 }),
     usageEvent({ promptOrdinal: null }),
-    usageEvent({ model: '<synthetic>', costUsd: null, costProvenance: 'unpriced' }),
+    // (`<synthetic>` placeholders are left out when usage is collected.)
     usageEvent({ sessionId: 'other' }),
   ];
 
@@ -304,7 +305,7 @@ describe('per-prompt usage', () => {
       partial: false,
     });
     expect(usage.byOrdinal.get(2)).toMatchObject({ calls: 2, costUsd: 0.01, partial: true });
-    // The whole session counts the call before the first prompt; never <synthetic>.
+    // The whole session counts the call before the first prompt.
     expect(usage.total.calls).toBe(5);
     expect(index.get('claude-code\u0000other')?.total.calls).toBe(1);
     expect(formatPromptUsage(usage.byOrdinal.get(0)!)).toBe('20.0k tokens · $0.07 (est.)');
@@ -351,10 +352,76 @@ describe('per-prompt usage', () => {
       expect.objectContaining({
         workspacePaths: ['/work/repo'],
         since: new Date('2026-09-20T10:00:00.000Z'),
+        excludeSynthetic: true,
         signal: expect.any(AbortSignal),
       }),
     );
     expect(index instanceof Map && [...index.keys()]).toEqual(['claude-code\u0000abc-123']);
+  });
+
+  it('counts a subagent toward the prompt that started it, under its root session', () => {
+    const wanted = new Set(['claude-code\u0000abc-123', 'codex\u0000root-1']);
+    const index = indexPromptUsage(
+      [
+        // A background Claude agent: its call followed prompt 2, prompt 0 started it.
+        usageEvent({
+          promptOrdinal: 2,
+          parentPromptOrdinal: 0,
+          subagent: {
+            agentId: 'a1',
+            parentSessionId: 'abc-123',
+            rootSessionId: 'abc-123',
+            kind: 'subagent',
+          },
+        }),
+        // A Codex subagent is a session of its own, counted under its root.
+        usageEvent({
+          provider: 'codex',
+          sessionId: 'child-1',
+          promptOrdinal: null,
+          parentPromptOrdinal: 1,
+          subagent: {
+            agentId: 'child-1',
+            parentSessionId: 'root-1',
+            rootSessionId: 'root-1',
+            kind: 'subagent',
+          },
+        }),
+        // Its root was not found: the prompt it followed (none) applies.
+        usageEvent({
+          provider: 'codex',
+          sessionId: 'child-2',
+          promptOrdinal: null,
+          parentPromptOrdinal: null,
+          subagent: {
+            agentId: 'child-2',
+            parentSessionId: 'root-1',
+            rootSessionId: 'root-1',
+            kind: 'subagent',
+          },
+        }),
+        usageEvent({ provider: 'codex', sessionId: 'unrelated' }),
+      ],
+      wanted,
+    );
+    expect([...index.keys()].sort()).toEqual(['claude-code\u0000abc-123', 'codex\u0000root-1']);
+    const claude = index.get('claude-code\u0000abc-123')!;
+    expect([...claude.byOrdinal.keys()]).toEqual([0]);
+    const codex = index.get('codex\u0000root-1')!;
+    expect(codex.total.calls).toBe(2);
+    expect([...codex.byOrdinal.keys()]).toEqual([1]);
+  });
+
+  it('keeps a subagent with its own session when its root is not dumped', () => {
+    const event = usageEvent({
+      provider: 'codex',
+      sessionId: 'child-1',
+      subagent: { agentId: 'child-1', parentSessionId: 'p', rootSessionId: 'p' },
+    });
+    expect(promptUsageOwner(event, new Set(['codex\u0000child-1']))).toBe('codex\u0000child-1');
+    expect(promptUsageOwner(event, new Set(['codex\u0000p']))).toBe('codex\u0000p');
+    expect(promptUsageOwner(event, new Set())).toBeNull();
+    expect(promptUsageOwner(event)).toBe('codex\u0000p');
   });
 
   it('gives up with a notice when the usage read runs past its deadline', async () => {
