@@ -958,6 +958,14 @@ describe('isMovingModelAlias', () => {
     'OPUS',
     'sonnet[1m]',
     'Opus[1M]',
+    'claude-3-5-sonnet-latest',
+    'gpt-5.3-chat-latest',
+    'chatgpt-4o-latest',
+    'codex-mini-latest',
+    'llama3:latest',
+    'some-model@latest',
+    ' Claude-Opus-4-Latest[1m] ',
+    'claude-sonnet-4-20250514-latest',
   ])('treats %j as a moving alias', (id) => {
     expect(isMovingModelAlias(id)).toBe(true);
   });
@@ -972,8 +980,24 @@ describe('isMovingModelAlias', () => {
     'constructor',
     '__proto__',
     '',
+    '-latest',
+    ':latest',
+    'latest-model',
+    'model-latest-2026',
+    'modellatest',
+    'model_latest',
+    'model/latest',
   ])('treats %j as a concrete id', (id) => {
     expect(isMovingModelAlias(id)).toBe(false);
+  });
+
+  it('leaves a priced -latest id priced', () => {
+    // Identity and pricing are separate: a moving alias with a static price
+    // must not become unpriced because it moves.
+    expect(isMovingModelAlias('gpt-5.3-chat-latest')).toBe(true);
+    const resolved = resolveModelPricing('gpt-5.3-chat-latest');
+    expect(resolved.pricing).not.toBeNull();
+    expect(resolved.provenance).toMatchObject({ source: 'static', match: 'exact' });
   });
 });
 

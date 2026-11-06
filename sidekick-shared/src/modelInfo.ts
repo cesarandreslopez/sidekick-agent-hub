@@ -1185,12 +1185,21 @@ const MOVING_MODEL_ALIASES: Record<string, true> = {
   opusplan: true,
 };
 
+// A `latest` tag a provider re-points: `claude-3-5-sonnet-latest`,
+// `gpt-5.3-chat-latest`, Ollama's `llama3:latest`, `model@latest`.
+const LATEST_TAG_RE = /^.+[-:@]latest$/;
+
 /**
- * True for model names an agent CLI resolves to a different concrete model
- * over time (`default`, `auto`, `latest`, `sonnet`, `opus`, `haiku`, `fable`,
- * and Claude Code's `opusplan`), so a recorded value names a moving target
- * rather than a model. Case-insensitive, trimmed, and `[1m]`-tolerant
- * (`sonnet[1m]`). Dated or versioned ids are never moving aliases.
+ * True for model names an agent CLI or provider resolves to a different
+ * concrete model over time, so a recorded value names a moving target rather
+ * than a model: the bare aliases `default`, `auto`, `latest`, `sonnet`,
+ * `opus`, `haiku`, `fable` and Claude Code's `opusplan` (exact matches only),
+ * and any id ending in a `-latest`, `:latest` or `@latest` tag.
+ * Case-insensitive, trimmed, and `[1m]`-tolerant (`sonnet[1m]`). Other dated
+ * or versioned ids are never moving aliases.
+ *
+ * This is identity only: pricing does not consult it, so a priced `-latest`
+ * id (`gpt-5.3-chat-latest`) keeps its price.
  */
 export function isMovingModelAlias(id: string): boolean {
   const value = String(id ?? '')
@@ -1198,7 +1207,9 @@ export function isMovingModelAlias(id: string): boolean {
     .toLowerCase()
     .replace(/\[1m\]/g, '')
     .trim();
-  return Object.prototype.hasOwnProperty.call(MOVING_MODEL_ALIASES, value);
+  return (
+    Object.prototype.hasOwnProperty.call(MOVING_MODEL_ALIASES, value) || LATEST_TAG_RE.test(value)
+  );
 }
 
 // ── Model ID Parsing ──
