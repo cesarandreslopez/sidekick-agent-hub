@@ -801,6 +801,35 @@ export type {
 // JSONL tail gaps (0.31)
 export type { JsonlTailGap, JsonlTailGapReason } from './watchers/jsonlTail';
 
+// Headless agent output: claude -p stream-json, codex exec --json (0.31)
+export {
+  createClaudeStreamJsonParser,
+  createCodexExecJsonParser,
+  DEFAULT_HEADLESS_MAX_LINE_BYTES,
+  parseClaudeStreamMessage,
+  parseCodexExecEvent,
+} from './headless';
+export type {
+  HeadlessCompactionEvent,
+  HeadlessErrorEvent,
+  HeadlessEvent,
+  HeadlessHookEvent,
+  HeadlessParseOptions,
+  HeadlessProvider,
+  HeadlessResultEvent,
+  HeadlessSessionEvent,
+  HeadlessStatusEvent,
+  HeadlessStreamOptions,
+  HeadlessStreamParser,
+  HeadlessStreamState,
+  HeadlessTextEvent,
+  HeadlessTokenUsage,
+  HeadlessToolEvent,
+  HeadlessToolStatus,
+  HeadlessUnknownEvent,
+  HeadlessUsageEvent,
+} from './headless';
+
 // Formatters
 export {
   addLocalDays,

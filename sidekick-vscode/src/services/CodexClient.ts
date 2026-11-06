@@ -2,7 +2,8 @@
  * @fileoverview Inference client using the Codex CLI directly.
  *
  * Implements ClaudeClient by spawning `codex exec --experimental-json`
- * and parsing JSONL events from stdout. This avoids bundling the
+ * and parsing its JSONL events from stdout with the shared headless parser
+ * (`sidekick-shared/headless`). This avoids bundling the
  * @openai/codex-sdk, whose module-level createRequire(import.meta.url)
  * and platform binary resolution break inside esbuild's CJS output.
  *
@@ -14,7 +15,6 @@
  */
 
 import { spawn } from 'child_process';
-import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -23,6 +23,7 @@ import {
   resolveSidekickCodexHome,
   type ParsedCodexLoginStatus,
 } from 'sidekick-shared';
+import { createCodexExecJsonParser, type HeadlessEvent } from 'sidekick-shared/headless';
 import { ClaudeClient, CompletionOptions, ConnectionError } from '../types';
 import { log, logError } from './Logger';
 import { findCli } from '../utils/cliPathResolver';
@@ -58,10 +59,6 @@ function codexEnv(): Record<string, string> {
     env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE = 'codex_sdk_ts';
   }
   return env;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
@@ -183,40 +180,34 @@ export class CodexClient implements ClaudeClient {
           stderr += chunk.toString();
         });
 
-        // Parse JSONL from stdout
+        // Parse the JSONL event stream from stdout.
         let response = '';
         let turnFailure: Record<string, unknown> | undefined;
         const errorEvents: Record<string, unknown>[] = [];
-
-        const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
-        rl.on('line', (line: string) => {
-          try {
-            const parsed = JSON.parse(line);
-            const type = parsed.type;
-
-            // item.completed with agent_message carries the response text
-            if (type === 'item.completed' && parsed.item?.type === 'agent_message') {
-              response = parsed.item.text ?? '';
+        const parser = createCodexExecJsonParser();
+        const handle = (events: HeadlessEvent[]): void => {
+          for (const event of events) {
+            // The last completed agent message is the reply.
+            if (event.type === 'text' && event.kind === 'message' && !event.partial) {
+              response = event.text;
             }
-
             // `error` events and turn.failed carry the failure, including any
             // structured `codexErrorInfo`; keep the whole payloads as evidence.
-            if (type === 'error' && errorEvents.length < MAX_ERROR_EVENTS) {
-              const payload = { ...parsed };
-              delete payload.type;
-              errorEvents.push(payload);
+            // Error items (reconnect notices, warnings) are not failures.
+            if (event.type !== 'error' || !event.details) continue;
+            if (event.scope === 'stream' && errorEvents.length < MAX_ERROR_EVENTS) {
+              errorEvents.push({ ...event.details });
+            } else if (event.scope === 'turn') {
+              turnFailure = event.details;
             }
-            if (type === 'turn.failed' && isRecord(parsed.error)) {
-              turnFailure = parsed.error;
-            }
-          } catch {
-            // Skip non-JSON lines
           }
-        });
+        };
+        child.stdout.on('data', (chunk: Buffer) => handle(parser.push(chunk)));
 
         child.on('error', (err) => reject(err));
 
         child.on('close', (code) => {
+          handle(parser.end());
           // A turn.failed always fails the request; error events fail it when
           // the CLI exited non-zero or produced no reply.
           const failed =

@@ -48,6 +48,8 @@ const SUBPATHS = [
   { name: 'statusline/payload', pure: true, maxModules: 3 },
   // +1 in 0.31: parsers/codexInheritedHistory (readCodexInheritedHistoryBoundary).
   { name: 'codex', pure: false, maxModules: 15 },
+  // 0.31: headless output parsers (TextDecoder only).
+  { name: 'headless', pure: true, maxModules: 14 },
 ] as const;
 
 describe('lean subpath entries', { timeout: 30_000 }, () => {

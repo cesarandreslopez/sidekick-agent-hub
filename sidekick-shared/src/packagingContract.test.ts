@@ -809,3 +809,83 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     }
   });
 });
+
+// 0.31: parsing, signals, live data, and headless output.
+describe(
+  'packaging contract: headless output and session parsing surfaces',
+  { timeout: 30_000 },
+  () => {
+    it('resolves sidekick-shared/headless with types, and shares its bindings with the root', async () => {
+      expect(pkgRequire.resolve('sidekick-shared/headless')).toBe(
+        path.join(distDir, 'headless.js'),
+      );
+      const headless = pkgRequire('sidekick-shared/headless');
+      const root = pkgRequire('sidekick-shared');
+      for (const name of [
+        'createClaudeStreamJsonParser',
+        'createCodexExecJsonParser',
+        'parseClaudeStreamMessage',
+        'parseCodexExecEvent',
+      ]) {
+        expect(typeof headless[name], name).toBe('function');
+        expect(root[name], name).toBe(headless[name]);
+      }
+      const declarations = await fs.readFile(path.join(distDir, 'headless.d.ts'), 'utf8');
+      expect(declarations).toContain('HeadlessEvent');
+      expect(declarations).toContain('HeadlessStreamParser');
+    });
+
+    it('bundles sidekick-shared/headless small, with no Node built-ins or Zod', async () => {
+      const { build } = await import('vite');
+      const inputs: string[] = [];
+      const result = await build({
+        configFile: false,
+        root: pkgRoot,
+        logLevel: 'silent',
+        build: {
+          write: false,
+          minify: true,
+          lib: { entry: path.join(distDir, 'esm', 'headless.js'), formats: ['es'] },
+        },
+        plugins: [
+          {
+            name: 'inspect-headless-graph',
+            generateBundle() {
+              inputs.push(...this.getModuleIds());
+            },
+          },
+        ],
+      });
+      expect(inputs.some((file) => /(?:node:|browser-external|zod)/.test(file))).toBe(false);
+      const code = (Array.isArray(result) ? result : [result])
+        .flatMap((bundle) => ('output' in bundle ? bundle.output : []))
+        .filter((entry) => entry.type === 'chunk')
+        .map((entry) => entry.code)
+        .join('\n');
+      expect(code).toContain('TextDecoder');
+      // About 19 KB minified in 0.31.
+      expect(code.length).toBeLessThan(24_000);
+    });
+
+    it('shares the inherited-history boundary and the ordinal scheme across entries', () => {
+      const root = pkgRequire('sidekick-shared');
+      const browser = pkgRequire('sidekick-shared/browser');
+      const node = pkgRequire('sidekick-shared/node');
+      const codex = pkgRequire('sidekick-shared/codex');
+      for (const name of ['codexInheritedHistoryBoundary', 'isCodexInheritedRecord']) {
+        expect(typeof browser[name], name).toBe('function');
+        for (const entry of [root, node, codex]) expect(entry[name], name).toBe(browser[name]);
+      }
+      expect(typeof node.readCodexInheritedHistoryBoundary).toBe('function');
+      expect(root.readCodexInheritedHistoryBoundary).toBe(node.readCodexInheritedHistoryBoundary);
+      expect(codex.readCodexInheritedHistoryBoundary).toBe(node.readCodexInheritedHistoryBoundary);
+      expect(browser.readCodexInheritedHistoryBoundary).toBeUndefined();
+      for (const entry of [root, browser, node])
+        expect(entry.PROMPT_ORDINAL_SCHEME_VERSION).toBe(1);
+      for (const name of ['SIGNAL_TEXT_CHARS', 'SIGNAL_COMMAND_CHARS', 'SIGNAL_OUTPUT_CHARS']) {
+        expect(root[name], name).toBe(1024);
+        expect(node[name], name).toBe(1024);
+      }
+    });
+  },
+);

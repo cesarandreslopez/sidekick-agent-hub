@@ -131,6 +131,13 @@
       "require": "./dist/statusline/payload.js",
       "default": "./dist/statusline/payload.js"
     },
+    "./headless": {
+      "types": "./dist/headless.d.ts",
+      "module": "./dist/esm/headless.js",
+      "import": "./dist/headless.js",
+      "require": "./dist/headless.js",
+      "default": "./dist/headless.js"
+    },
     "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -180,6 +187,9 @@
       ],
       "statusline/payload": [
         "dist/statusline/payload.d.ts"
+      ],
+      "headless": [
+        "dist/headless.d.ts"
       ]
     }
   },
