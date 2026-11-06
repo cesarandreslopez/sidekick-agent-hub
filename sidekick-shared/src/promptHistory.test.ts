@@ -38,6 +38,7 @@ import {
   type PromptHistoryCursor,
   type PromptHistoryEntry,
 } from './promptHistory';
+import { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
 import {
   appendJsonl,
   claudeFiller,
@@ -631,6 +632,38 @@ describe('collectPromptHistory — bounds, cursor, and filters', () => {
     for (const bad of [null, undefined, 'x', 3, {}, { version: 9, sessions: {} }]) {
       expect(parsePromptHistoryCursor(bad)).toBeUndefined();
     }
+  });
+
+  it('stamps the ordinal scheme and restarts sessions from another scheme', async () => {
+    writeJsonl(claudeFile(repo, 'one'), [claudeUser('p0', 1), claudeAssistant('msg_1', 2)]);
+    writeJsonl(claudeFile(repo, 'two'), [claudeUser('q0', 1), claudeAssistant('msg_2', 2)]);
+    const first = await collectPromptHistory({ workspacePaths: [repo] });
+    expect(first.ordinalScheme).toBe(PROMPT_ORDINAL_SCHEME_VERSION);
+    expect(first.cursor.ordinalScheme).toBe(PROMPT_ORDINAL_SCHEME_VERSION);
+    expect(parsePromptHistoryCursor(roundTrip(first.cursor))?.ordinalScheme).toBe(
+      PROMPT_ORDINAL_SCHEME_VERSION,
+    );
+
+    // A cursor written before the field existed follows scheme 1 and continues.
+    const { ordinalScheme: _scheme, ...unstamped } = roundTrip(first.cursor);
+    const continued = await collectPromptHistory({ workspacePaths: [repo], cursor: unstamped });
+    expect(continued.entries).toEqual([]);
+    expect(continued.stats.sessionsRewritten).toBe(0);
+    expect(continued.stats.sessionsSkippedUnchanged).toBe(2);
+
+    // Another scheme: every session is read again from the start.
+    const foreign = {
+      ...roundTrip(first.cursor),
+      ordinalScheme: PROMPT_ORDINAL_SCHEME_VERSION + 1,
+    };
+    const restarted = await collectPromptHistory({ workspacePaths: [repo], cursor: foreign });
+    expect(restarted.stats.sessionsRewritten).toBe(2);
+    expect(texts(restarted.entries).sort()).toEqual(['p0', 'q0']);
+    expect(restarted.cursor.ordinalScheme).toBe(PROMPT_ORDINAL_SCHEME_VERSION);
+    expect(Object.keys(restarted.cursor.sessions).sort()).toEqual(
+      Object.keys(first.cursor.sessions).sort(),
+    );
+    expect(restarted.changed).toHaveLength(2);
   });
 
   it('applies the since filter without shifting ordinals', async () => {

@@ -15,6 +15,7 @@
  */
 
 import { statRolloutContent, type RolloutContentStat } from './providers/compressedRollouts';
+import { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
 import {
   DEFAULT_BOUNDS,
   PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
@@ -170,6 +171,8 @@ export interface SessionPromptHistoryResult {
   /** Permanent exclusions found in this call (at most 1000; stats count all). */
   exclusions: PromptHistoryExclusion[];
   stats: SessionPromptHistoryStats;
+  /** The prompt-ordinal scheme of the prompts and signals (`PROMPT_ORDINAL_SCHEME_VERSION`). */
+  ordinalScheme: number;
 }
 
 const DEFAULT_SESSION_BOUNDS: Required<SessionPromptHistoryBounds> = {
@@ -228,6 +231,7 @@ export async function collectSessionPromptHistory(
       boundsHit: [...boundsHit],
       exclusions,
       stats,
+      ordinalScheme: PROMPT_ORDINAL_SCHEME_VERSION,
     };
   };
 

@@ -73,6 +73,8 @@ export {
   isHumanPrompt,
 } from './humanPrompt';
 export type { HumanPromptProvider } from './humanPrompt';
+// Prompt-ordinal scheme (0.31)
+export { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
 export {
   computeSessionFileStats,
   firstUserPrompt,

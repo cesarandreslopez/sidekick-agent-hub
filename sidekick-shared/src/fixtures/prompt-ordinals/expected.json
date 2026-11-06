@@ -1,0 +1,103 @@
+{
+  "scheme": 1,
+  "maxRecordBytes": 16777216,
+  "usageCacheVersion": 3,
+  "files": {
+    "claude-code/main.jsonl": {
+      "provider": "claude-code",
+      "sessionId": "golden-claude-main",
+      "promptCount": 8,
+      "prompts": [
+        { "ordinal": 0, "timestamp": "2026-09-01T10:00:01.000Z", "text": "First prompt." },
+        {
+          "ordinal": 1,
+          "timestamp": "2026-09-01T10:00:06.000Z",
+          "text": "Second prompt, after an interrupt."
+        },
+        { "ordinal": 2, "timestamp": "2026-09-01T10:00:09.000Z", "text": "/clear" },
+        { "ordinal": 3, "timestamp": "2026-09-01T10:00:12.000Z", "text": "/compact keep the plan" },
+        { "ordinal": 4, "timestamp": "2026-09-01T10:00:15.000Z", "text": "Queued follow-up." },
+        { "ordinal": 7, "timestamp": "2026-09-01T10:00:27.000Z", "text": "Back in the workspace." }
+      ],
+      "marks": [0, 1, 2, 3, 4, 6, 7],
+      "usageOrdinals": [0, 0, 1, 4, 6, 7, 7],
+      "toolCalls": { "toolu_g01": 0, "toolu_g02": 1, "toolu_g04": 7 },
+      "outOfScopeToolCalls": ["toolu_g03"]
+    },
+    "claude-code/oversized.jsonl": {
+      "provider": "claude-code",
+      "sessionId": "golden-claude-oversized",
+      "promptCount": 2,
+      "prompts": [
+        {
+          "ordinal": 0,
+          "timestamp": "2026-09-01T10:00:01.000Z",
+          "text": "Before the oversized record."
+        },
+        {
+          "ordinal": 1,
+          "timestamp": "2026-09-01T10:00:05.000Z",
+          "text": "After the oversized record."
+        }
+      ],
+      "marks": [0, 1],
+      "usageOrdinals": [0, 0, 1, 1],
+      "toolCalls": { "toolu_o01": 1 }
+    },
+    "codex/main.jsonl": {
+      "provider": "codex",
+      "sessionId": "019d86b0-b20c-7b02-a3b2-00000000c0de",
+      "promptCount": 7,
+      "prompts": [
+        { "ordinal": 0, "timestamp": "2026-09-01T10:00:04.000Z", "text": "First Codex prompt." },
+        { "ordinal": 1, "timestamp": "2026-09-01T10:00:10.000Z", "text": "Second Codex prompt." },
+        {
+          "ordinal": 2,
+          "timestamp": "2026-09-01T10:00:15.000Z",
+          "text": "Third prompt, after an abort."
+        },
+        {
+          "ordinal": 3,
+          "timestamp": "2026-09-01T10:00:21.000Z",
+          "text": "Look at this screenshot."
+        },
+        { "ordinal": 6, "timestamp": "2026-09-01T10:00:30.000Z", "text": "Back in the workspace." }
+      ],
+      "marks": [0, 1, 2, 3, 5, 6],
+      "usageOrdinals": [0, 1, 2, 5, 6],
+      "toolCalls": { "call_g01": 0, "call_g02": 2, "call_g04": 6 },
+      "outOfScopeToolCalls": ["call_g03"]
+    },
+    "codex/subagent.jsonl": {
+      "provider": "codex",
+      "sessionId": "019d86b0-b20c-7b02-a3b2-00000000c1d0",
+      "promptCount": 0,
+      "prompts": [],
+      "marks": [],
+      "usageOrdinals": [null],
+      "toolCalls": {
+        "call_g05": { "sessionId": "019d86b0-b20c-7b02-a3b2-00000000c0de", "afterOrdinal": 2 }
+      }
+    },
+    "codex/oversized.jsonl": {
+      "provider": "codex",
+      "sessionId": "019d86b0-b20c-7b02-a3b2-00000000c0ff",
+      "promptCount": 2,
+      "prompts": [
+        {
+          "ordinal": 0,
+          "timestamp": "2026-09-01T10:00:02.000Z",
+          "text": "Before the oversized record."
+        },
+        {
+          "ordinal": 1,
+          "timestamp": "2026-09-01T10:00:06.000Z",
+          "text": "After the oversized record."
+        }
+      ],
+      "marks": [0, 1],
+      "usageOrdinals": [0, 0, 1],
+      "toolCalls": { "call_o01": 1 }
+    }
+  }
+}
