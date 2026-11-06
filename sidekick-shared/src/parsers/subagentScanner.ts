@@ -22,12 +22,7 @@ import { addUsageToSubagent } from '../usage/subagentUsage';
 import { cachedSubagentStats } from './subagentStatsCache';
 import { isSubagentSpawnTool } from '../subagentSpawn';
 import { SubagentEndTracker } from './subagentEndState';
-
-/**
- * Pattern for matching subagent JSONL files.
- * Files are named like: agent-<hash>.jsonl
- */
-const AGENT_FILE_PATTERN = /^agent-(.+)\.jsonl$/;
+import { getClaudeSubagentsDir, parseClaudeSubagentFileName } from '../claudePaths';
 
 /** Fields of a Claude Code `agent-<id>.meta.json`; each is present only when well-typed. */
 export interface AgentMeta {
@@ -135,7 +130,7 @@ export function scanSubagentDir(
   skipFiles: ReadonlySet<string> = new Set(),
 ): SubagentStats[] {
   const log = logger || (() => {});
-  const subagentsDir = path.join(sessionDir, sessionId, 'subagents');
+  const subagentsDir = getClaudeSubagentsDir(path.join(sessionDir, `${sessionId}.jsonl`));
   const results: SubagentStats[] = [];
 
   try {
@@ -154,12 +149,11 @@ export function scanSubagentDir(
 
     for (const file of files) {
       if (skipFiles.has(file)) continue;
-      const match = file.match(AGENT_FILE_PATTERN);
-      if (!match) {
+      const agentId = parseClaudeSubagentFileName(file);
+      if (!agentId) {
         continue;
       }
 
-      const agentId = match[1];
       const filePath = path.join(subagentsDir, file);
       const agentStats = cachedSubagentStats(filePath, () =>
         parseAgentFile(filePath, agentId, log),

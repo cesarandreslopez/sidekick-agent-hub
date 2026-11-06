@@ -35,6 +35,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { getClaudeSubagentsDir, parseClaudeSubagentFileName } from '../claudePaths';
 import { codexRolloutOrigin } from '../parsers/codexRolloutOrigin';
 import { getConfigDir } from '../paths';
 import { readPromptOrdinalMarks, type PromptOrdinalMark } from '../promptHistory';
@@ -394,15 +395,13 @@ interface SubagentFile {
   modifiedAt: number;
 }
 
-const CLAUDE_AGENT_FILE = /^agent-(.+)\.jsonl$/;
-
 /** Claude Code subagent transcripts of a session, sorted by name. */
 function claudeSubagentFiles(preview: SessionPreview): SubagentFile[] {
   if (preview.provider !== 'claude-code') return [];
-  const dir = path.join(path.dirname(preview.filePath), preview.sessionId, 'subagents');
+  const dir = getClaudeSubagentsDir(preview.filePath);
   let names: string[];
   try {
-    names = fs.readdirSync(dir).filter((name) => CLAUDE_AGENT_FILE.test(name));
+    names = fs.readdirSync(dir).filter((name) => parseClaudeSubagentFileName(name) !== null);
   } catch {
     return [];
   }
@@ -413,7 +412,7 @@ function claudeSubagentFiles(preview: SessionPreview): SubagentFile[] {
       files.push({
         path: path.join(dir, name),
         name,
-        agentId: CLAUDE_AGENT_FILE.exec(name)?.[1] ?? name,
+        agentId: parseClaudeSubagentFileName(name) ?? name,
         sizeBytes: stat.size,
         modifiedAt: stat.mtimeMs,
       });

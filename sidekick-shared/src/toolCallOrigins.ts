@@ -34,6 +34,7 @@ import {
   type PromptHistoryProvider,
   type PromptOrdinalMark,
 } from './promptHistory';
+import { getClaudeSubagentsDir, parseClaudeSubagentFileName } from './claudePaths';
 import { codexRolloutOrigin } from './parsers/codexRolloutOrigin';
 import { readFirstLineAsync } from './providers/codexRollouts';
 import { realpathOrNull } from './workspaceRoots';
@@ -158,7 +159,7 @@ export async function findToolCallOrigins(
     throwIfAborted(options.signal);
     const targets: ScanTarget[] = [{ candidate, filePath: candidate.filePath }];
     if (candidate.provider === 'claude-code') {
-      for (const sub of claudeSubagentTranscripts(candidate.filePath, candidate.sessionId)) {
+      for (const sub of claudeSubagentTranscripts(candidate.filePath)) {
         targets.push({ candidate, filePath: sub.filePath, agentId: sub.agentId });
       }
     }
@@ -239,24 +240,21 @@ function ordinalAt(marks: readonly PromptOrdinalMark[], ms: number): number | nu
   return best;
 }
 
-function claudeSubagentTranscripts(
-  sessionFile: string,
-  sessionId: string,
-): { filePath: string; agentId: string }[] {
-  const dir = path.join(path.dirname(sessionFile), sessionId, 'subagents');
+/** The session's `agent-<id>.jsonl` subagent transcripts, sorted by name. */
+function claudeSubagentTranscripts(sessionFile: string): { filePath: string; agentId: string }[] {
+  const dir = getClaudeSubagentsDir(sessionFile);
   let names: string[];
   try {
     names = fs.readdirSync(dir);
   } catch {
     return [];
   }
-  return names
-    .filter((name) => name.endsWith('.jsonl'))
-    .sort()
-    .map((name) => ({
-      filePath: path.join(dir, name),
-      agentId: path.basename(name, '.jsonl').replace(/^agent-/, ''),
-    }));
+  const transcripts: { filePath: string; agentId: string }[] = [];
+  for (const name of names.sort()) {
+    const agentId = parseClaudeSubagentFileName(name);
+    if (agentId) transcripts.push({ filePath: path.join(dir, name), agentId });
+  }
+  return transcripts;
 }
 
 async function readFirstRecord(filePath: string): Promise<unknown> {

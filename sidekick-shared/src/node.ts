@@ -384,3 +384,12 @@ export {
   resolveGitWorktrees,
 } from './gitWorktrees';
 export type { GitWorktree, GitWorktreeKind, GitWorktreeLayout } from './gitWorktrees';
+
+// Claude Code subagent transcript paths
+export {
+  CLAUDE_AGENT_ID_PATTERN,
+  getClaudeSubagentTranscriptPath,
+  getClaudeSubagentsDir,
+  isClaudeAgentId,
+  parseClaudeSubagentFileName,
+} from './claudePaths';
