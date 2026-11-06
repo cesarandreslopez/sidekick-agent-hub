@@ -338,6 +338,27 @@ describe('per-prompt usage', () => {
     expect(formatPromptUsage(usage.byOrdinal.get(2)!)).toBe('20.0k tokens · $0.01 (est., partial)');
   });
 
+  it('never files a Codex child call under its own ordinal when it counts toward the root', () => {
+    const child = (overrides: Record<string, unknown>) =>
+      usageEvent({
+        provider: 'codex',
+        sessionId: 'child-1',
+        subagent: { agentId: 'child-1', parentSessionId: 'root-1', rootSessionId: 'root-1' },
+        ...overrides,
+      });
+    const index = indexPromptUsage([
+      // Attributed to the root prompt that spawned it.
+      child({ parentPromptOrdinal: 1, promptOrdinal: 3 }),
+      // No root prompt known: the child's own ordinal 3 is not root prompt #3.
+      child({ parentPromptOrdinal: null, promptOrdinal: 3 }),
+      child({ kind: undefined, promptOrdinal: 3 }),
+    ]);
+    const root = index.get('codex\u0000root-1')!;
+    expect(root.total.calls).toBe(3);
+    expect(root.byOrdinal.get(1)?.calls).toBe(1);
+    expect(root.byOrdinal.has(3)).toBe(false);
+  });
+
   it('shows usage beside each prompt and in each session header', () => {
     const index = indexPromptUsage(events);
     const text = formatPromptSessionsText([session()], { width: 140, usage: index });

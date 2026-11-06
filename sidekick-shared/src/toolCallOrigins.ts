@@ -249,7 +249,7 @@ export async function findToolCallOrigins(
         const session = parentSession ?? candidate;
         const afterOrdinal =
           !codexParent || parentSession
-            ? ordinalAt(await marksFor(session), hit.timestampMs)
+            ? ordinalAtOrBefore(await marksFor(session), hit.timestampMs)
             : null;
         let parentPromptOrdinal: number | null | undefined;
         if (target.agentId) {
@@ -332,6 +332,9 @@ function parentPromptResolver(context: {
     async codex(head: CodexRolloutHead): Promise<number | null> {
       const resolved = await resolveCodexRoot(head, async (id) => (await locate(id))?.head ?? null);
       if (!resolved.rootSessionId || !resolved.root) return null;
+      // The candidate listing is a superset of the scope, so a listed root is
+      // checked too: an out-of-scope root supplies no parent prompt.
+      if (!pathWithinRoots(resolved.root.cwd, context.roots, context.realpaths)) return null;
       const rootId = resolved.rootSessionId;
       let marks = rootMarks.get(rootId);
       if (!marks) {
@@ -349,17 +352,6 @@ function parentPromptResolver(context: {
       return found ? ordinalAtOrBefore(found, head.startMs) : null;
     },
   };
-}
-
-/** Highest ordinal among prompts at or before `ms`; marks are in file order. */
-function ordinalAt(marks: readonly PromptOrdinalMark[], ms: number): number | null {
-  let best: number | null = null;
-  for (const mark of marks) {
-    if (Number.isFinite(mark.timestampMs) && mark.timestampMs <= ms) {
-      if (best === null || mark.ordinal > best) best = mark.ordinal;
-    }
-  }
-  return best;
 }
 
 /** The session's `agent-<id>.jsonl` subagent transcripts, sorted by name. */

@@ -68,6 +68,12 @@ function remember<K, V>(map: Map<K, V>, key: K, value: V): void {
 interface PendingCall {
   usage: HeadlessTokenUsage;
   model?: string;
+  /**
+   * The stream the call belongs to: '' for the main agent, else the
+   * `parent_tool_use_id` of the subagent. Parallel subagents interleave their
+   * records, so only a new call on the same stream ends an earlier one.
+   */
+  lane: string;
 }
 
 /** Turns Claude stream-json records into events; one instance per stream. */
@@ -108,11 +114,15 @@ class ClaudeTranslator {
     }
   }
 
-  /** Usage of the calls still waiting, oldest first, except `keep`. */
-  flushCalls(keep?: string): HeadlessEvent[] {
+  /**
+   * Usage of the calls still waiting, oldest first, except `keep`. With
+   * `lane`, only that stream's calls; without it, every call (end of run).
+   */
+  flushCalls(keep?: string, lane?: string): HeadlessEvent[] {
     const events: HeadlessEvent[] = [];
     for (const [id, call] of [...this.pendingCalls]) {
       if (id === keep) continue;
+      if (lane !== undefined && call.lane !== lane) continue;
       this.pendingCalls.delete(id);
       remember(this.countedCalls, id, true);
       events.push({
@@ -228,10 +238,12 @@ class ClaudeTranslator {
           ...(id ? { messageId: id } : {}),
         });
       } else {
-        // A new call ends the earlier ones; the latest record of a call wins.
-        events.push(...this.flushCalls(id));
+        // A new call ends the earlier ones on its stream; the latest record
+        // of a call wins. Other streams (parallel subagents) stay open.
+        const lane = parentToolUseId ?? '';
+        events.push(...this.flushCalls(id, lane));
         if (!this.countedCalls.has(id)) {
-          this.pendingCalls.set(id, { usage, ...(model ? { model } : {}) });
+          this.pendingCalls.set(id, { usage, ...(model ? { model } : {}), lane });
         }
       }
     }

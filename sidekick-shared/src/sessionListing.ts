@@ -36,8 +36,12 @@ import {
 } from './providers/codexRollouts';
 import { canReadCompressedRollouts } from './providers/compressedRollouts';
 import { DirectoryListingCache } from './providers/directoryListingCache';
+import { mapWithConcurrency } from './mapWithConcurrency';
 import { computeSessionKey } from './sessionKey';
 import { resolveWorkspaceRoots } from './workspaceRoots';
+
+/** Codex rollout heads read at once by a first listing. */
+const CODEX_CWD_READ_CONCURRENCY = 16;
 
 export type SessionListingProvider = 'claude-code' | 'codex';
 
@@ -193,9 +197,15 @@ export async function listAgentSessions(
       },
       listingCaches.codex,
     );
-    for (const file of listed) {
-      // Cached per rollout path, so repeat listings read no content.
-      const cwd = await readSessionCwdAsync(file.path);
+    // Cached per rollout path, so repeat listings read no content; a first
+    // listing reads the heads with bounded concurrency.
+    const cwds = await mapWithConcurrency(
+      listed,
+      (file) => readSessionCwdAsync(file.path),
+      CODEX_CWD_READ_CONCURRENCY,
+    );
+    for (const [index, file] of listed.entries()) {
+      const cwd = cwds[index];
       if (!cwd || !listingRoots.some((root) => cwdMatches(cwd, root))) continue;
       add(
         'codex',

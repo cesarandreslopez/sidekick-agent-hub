@@ -298,6 +298,38 @@ describe('createClaudeStreamJsonParser', () => {
   });
 });
 
+describe('createClaudeStreamJsonParser: interleaved subagents', () => {
+  it("keeps each stream's latest usage when parallel subagents interleave", () => {
+    const assistant = (id: string, lane: string | null, output: number) =>
+      JSON.stringify({
+        type: 'assistant',
+        parent_tool_use_id: lane,
+        message: {
+          id,
+          model: 'claude-sonnet-4-5',
+          content: [{ type: 'text', text: `${id} ${output}` }],
+          usage: { input_tokens: 10, output_tokens: output },
+        },
+      });
+    const lines = [
+      assistant('msg_a', 'toolu_a', 1),
+      assistant('msg_b', 'toolu_b', 1),
+      assistant('msg_a', 'toolu_a', 40),
+      assistant('msg_b', 'toolu_b', 25),
+      // A new call on stream A ends msg_a only.
+      assistant('msg_a2', 'toolu_a', 5),
+    ];
+    const parser = createClaudeStreamJsonParser();
+    const events = [...parser.push(lines.join('\n') + '\n'), ...parser.end()];
+    const usage = ofType(events, 'usage').filter((event) => event.scope === 'call');
+    const outputById = Object.fromEntries(
+      usage.map((event) => [event.messageId, event.usage.outputTokens]),
+    );
+    expect(outputById).toEqual({ msg_a: 40, msg_b: 25, msg_a2: 5 });
+    expect(usage).toHaveLength(3);
+  });
+});
+
 describe('createCodexExecJsonParser', () => {
   it('turns an exec run into session, text, tool, error, usage, and result events', () => {
     const { events, state } = feed(createCodexExecJsonParser, codexBytes, 0, {

@@ -160,6 +160,28 @@ describe('findToolCallOrigins', () => {
     });
   });
 
+  it('gives no parent prompt when the root session is outside the roots', async () => {
+    // The root ran in the repository's parent folder: listed (a superset of
+    // the scope) but out of scope, so its prompts must not be used.
+    const outside = path.dirname(repo);
+    const parentFile = codexFile();
+    const parentId = /-([0-9a-f-]{36})\.jsonl$/.exec(parentFile)![1];
+    writeJsonl(parentFile, [codexMeta(outside), codexUser(['spawn a helper'], 1)]);
+    const childFile = codexFile();
+    writeJsonl(childFile, [
+      codexMeta(
+        repo,
+        { subagent: { thread_spawn: { parent_thread_id: parentId } } },
+        { timestamp: ts(10) },
+      ),
+      codexCall('call_scoped', 12),
+    ]);
+    const origin = (
+      await findToolCallOrigins({ ids: ['call_scoped'], workspacePaths: [repo] })
+    ).get('call_scoped');
+    expect(origin?.parentPromptOrdinal ?? null).toBeNull();
+  });
+
   it('gives subagent calls the prompt their subagent started under', async () => {
     const file = claudeFile(repo, 'claude-bg');
     writeJsonl(file, [

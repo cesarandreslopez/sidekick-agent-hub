@@ -225,7 +225,14 @@ export function indexPromptUsage(
     if (key === null) continue;
     const entry: Group = grouped.get(key) ?? { all: [], byOrdinal: new Map() };
     entry.all.push(event);
-    const ordinal = event.parentPromptOrdinal ?? event.promptOrdinal;
+    // Counted toward another session (a Codex subagent's root): only the
+    // root's own ordinal applies; the event's promptOrdinal numbers its own
+    // rollout's prompts, which are not the root's.
+    const ownKey = sessionKey(event.provider, event.sessionId);
+    const ordinal =
+      key === ownKey
+        ? (event.parentPromptOrdinal ?? event.promptOrdinal)
+        : event.parentPromptOrdinal;
     if (typeof ordinal === 'number') {
       const list = entry.byOrdinal.get(ordinal) ?? [];
       list.push(event);

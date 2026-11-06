@@ -660,3 +660,28 @@ describe('findCodexRolloutFile', () => {
     expect(findCodexRolloutFile(uuid)).toBe(bare);
   });
 });
+
+describe('CodexProvider with codexHomes: []', () => {
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-disabled-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('never falls back to the working directory and opens no database', async () => {
+    const { CodexProvider } = await import('./codex');
+    const provider = new CodexProvider({ homes: { codexHomes: [] } });
+    try {
+      const cwdCodex = path.join(process.cwd(), '.codex');
+      expect(provider.getSessionDirectory('/some/workspace').startsWith(cwdCodex)).toBe(false);
+      expect(provider.getProjectsBaseDir().startsWith(cwdCodex)).toBe(false);
+      expect(provider.getWatchRoots()).toEqual([]);
+      const labels = await provider.extractSessionLabelsAsync(['/abs/rollout-a.jsonl']);
+      expect([...labels.entries()]).toEqual([['/abs/rollout-a.jsonl', null]]);
+    } finally {
+      provider.dispose();
+    }
+  });
+});

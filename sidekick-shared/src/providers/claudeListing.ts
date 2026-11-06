@@ -6,6 +6,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { StringDecoder } from 'string_decoder';
 import { getClaudeProjectsDir } from '../claudePaths';
 import { encodeWorkspacePath as encodeWsPath } from '../parsers/sessionPathResolver';
 import { DirectoryListingCache } from './directoryListingCache';
@@ -36,12 +37,15 @@ export async function readClaudeSessionCwdAsync(
     const chunkSize = 64 * 1024;
     let offset = 0;
     let pending = '';
+    // A multi-byte character can straddle a chunk edge; the decoder holds its
+    // first bytes until the rest arrive instead of emitting U+FFFD.
+    const decoder = new StringDecoder('utf8');
     while (offset < maxBytes) {
       const buffer = Buffer.alloc(Math.min(chunkSize, maxBytes - offset));
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
       if (bytesRead === 0) break;
       offset += bytesRead;
-      pending += buffer.toString('utf8', 0, bytesRead);
+      pending += decoder.write(buffer.subarray(0, bytesRead));
       let newline: number;
       while ((newline = pending.indexOf('\n')) !== -1) {
         const line = pending.slice(0, newline);

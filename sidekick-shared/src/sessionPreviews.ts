@@ -19,6 +19,7 @@
  */
 
 import * as fs from 'fs';
+import { mapWithConcurrency } from './mapWithConcurrency';
 import { readClaudeSessionCwdAsync } from './providers/claudeListing';
 import { readSessionCwdAsync } from './providers/codexRollouts';
 import { isCompressedRolloutPath, readRolloutHead } from './providers/compressedRollouts';
@@ -685,25 +686,6 @@ async function yieldControl(options: AsyncSessionPreviewOptions): Promise<void> 
     return;
   }
   await new Promise<void>((resolve) => setImmediate(resolve));
-}
-
-async function mapWithConcurrency<A, B>(
-  values: readonly A[],
-  mapper: (value: A) => Promise<B>,
-  maxConcurrency: number,
-): Promise<B[]> {
-  const results = new Array<B>(values.length);
-  let cursor = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(maxConcurrency, values.length) }, async () => {
-      while (true) {
-        const index = cursor++;
-        if (index >= values.length) return;
-        results[index] = await mapper(values[index]);
-      }
-    }),
-  );
-  return results;
 }
 
 function providerDiagnostics(provider: SessionProviderBase): SessionProviderDiagnostic[] {

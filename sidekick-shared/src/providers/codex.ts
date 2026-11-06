@@ -41,6 +41,7 @@ import { discoverCodexSubagents } from './codexSubagents';
 import { codexRolloutOrigin } from '../parsers/codexRolloutOrigin';
 import type { RolloutFileInfo } from './rolloutWalker';
 import { getCodexSessionsDirs } from '../codexPaths';
+import { getDefaultSystemCodexHome } from '../codexLayout';
 import { resolveMonitoredHomes } from '../monitoredHomes';
 import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
 import type { SessionProviderFactory } from './sessionProviderRegistry';
@@ -695,9 +696,22 @@ export class CodexProvider implements SessionProviderBase {
     return this.db;
   }
 
-  private async ensureDbAsync(): Promise<CodexDatabase> {
+  /** Null when configured with `codexHomes: []`: a disabled provider opens no database. */
+  private async ensureDbAsync(): Promise<CodexDatabase | null> {
+    if (this.disabled) return null;
     if (this.db) return this.db;
     return new CodexDatabase(getCodexHome(this.homes()));
+  }
+
+  /**
+   * The preferred sessions directory. A disabled provider (`codexHomes: []`)
+   * reports the default location for interface compatibility but never reads
+   * it; without the guard an empty home list fell back to `<cwd>/.codex`.
+   */
+  private sessionsDir(): string {
+    return this.disabled
+      ? path.join(getDefaultSystemCodexHome(), 'sessions')
+      : getSessionsDir(this.homes());
   }
 
   /**
@@ -734,7 +748,7 @@ export class CodexProvider implements SessionProviderBase {
         return path.dirname(thread.rollout_path);
       }
     }
-    const directory = getSessionsDir(this.homes());
+    const directory = this.sessionsDir();
     this.recordDatabaseFallback('getSessionDirectory', true);
     return directory;
   }
@@ -768,7 +782,7 @@ export class CodexProvider implements SessionProviderBase {
 
     // Fallback: return the most relevant base sessions dir if one exists
     if (this.disabled) return null;
-    const directory = getSessionsDir(this.homes());
+    const directory = this.sessionsDir();
     this.recordDatabaseFallback('discoverSessionDirectory', true);
     return directory;
   }
@@ -930,7 +944,7 @@ export class CodexProvider implements SessionProviderBase {
     const db = this.ensureDb();
     if (db) {
       const cwdStats = db.getAllDistinctCwds();
-      const sessionsDir = getSessionsDir(this.homes());
+      const sessionsDir = this.sessionsDir();
       for (const stat of cwdStats) {
         seenCwds.set(stat.cwd, {
           dir: sessionsDir,
@@ -1039,6 +1053,10 @@ export class CodexProvider implements SessionProviderBase {
       sessionPaths.map((sessionPath) => [this.getSessionId(sessionPath), sessionPath]),
     );
     const db = await this.ensureDbAsync();
+    if (!db) {
+      for (const sessionPath of sessionPaths) results.set(sessionPath, null);
+      return results;
+    }
     const threads = await db.getThreadsByIdsAsync([...byId.keys()]);
     for (const thread of threads) {
       const sessionPath = byId.get(thread.id);
@@ -1179,7 +1197,7 @@ export class CodexProvider implements SessionProviderBase {
   }
 
   getProjectsBaseDir(): string {
-    return getSessionsDir(this.homes());
+    return this.sessionsDir();
   }
 
   getWatchRoots(): string[] {

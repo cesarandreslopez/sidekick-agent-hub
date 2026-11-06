@@ -46,9 +46,10 @@ const SUBPATHS = [
   { name: 'pricing', pure: true, maxModules: 12 },
   { name: 'providerFailure', pure: true, maxModules: 1 },
   { name: 'statusline/payload', pure: true, maxModules: 3 },
-  // 0.31: +1 for parsers/codexInheritedHistory (readCodexInheritedHistoryBoundary)
-  // and +1 for codexLayout (Codex home and rollout file-name helpers).
-  { name: 'codex', pure: false, maxModules: 16 },
+  // 0.31: +1 for parsers/codexInheritedHistory (readCodexInheritedHistoryBoundary),
+  // +1 for codexLayout (Codex home and rollout file-name helpers) and +1 for
+  // mapWithConcurrency (bounded re-stats in the directory-listing cache).
+  { name: 'codex', pure: false, maxModules: 17 },
   // Single-module entries for hosts that need only these constants or helpers.
   { name: 'providerIds', pure: true, maxModules: 1 },
   { name: 'handoffUrl', pure: true, maxModules: 1 },

@@ -16,6 +16,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { mapWithConcurrency } from '../mapWithConcurrency';
+
+/** Files `revalidateAll` stats at once. */
+const REVALIDATE_STAT_CONCURRENCY = 32;
 
 export interface CachedFileStat {
   sizeBytes: number;
@@ -254,14 +258,13 @@ export class DirectoryListingCache {
     listing: CachedDirectoryListing,
     stats?: DirectoryListingCounters,
   ): Promise<void> {
-    let sinceYield = 0;
-    for (const name of [...listing.files.keys()]) {
-      await this.refreshFile(path.join(dir, name), stats);
-      if (++sinceYield >= 200) {
-        sinceYield = 0;
-        await new Promise<void>((resolve) => setImmediate(resolve));
-      }
-    }
+    // Bounded concurrency: a long-lived host's listing over thousands of
+    // sessions would otherwise wait for one stat at a time.
+    await mapWithConcurrency(
+      [...listing.files.keys()],
+      (name) => this.refreshFile(path.join(dir, name), stats),
+      REVALIDATE_STAT_CONCURRENCY,
+    );
   }
 
   private isRecent(stat: CachedFileStat, now: number): boolean {

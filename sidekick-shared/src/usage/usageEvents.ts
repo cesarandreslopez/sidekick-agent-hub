@@ -1072,7 +1072,10 @@ async function collectWithProviders(
 
   if (wroteCache) pruneUsageCache(MAX_USAGE_CACHE_FILES, cacheDir);
 
-  const lineage = await codexLineage(loaded, listed.previews, listed.roots, providerById);
+  const lineage = await codexLineage(loaded, listed.previews, listed.roots, providerById, {
+    cacheDir,
+    useCache,
+  });
 
   const events: UsageEventRecord[] = [];
   const sessions: UsageSessionRecord[] = [];
@@ -1195,11 +1198,71 @@ interface CodexLineage {
  * id through the Codex provider; a root found that way must be inside the
  * call's roots when the call was scoped.
  */
+/**
+ * Rollout paths of Codex roots found outside the listing, per provider, so a
+ * host polling with a cursor or a `since` window walks the rollout tree once
+ * per root rather than on every call. A remembered path is used while it
+ * still exists.
+ */
+const unlistedRolloutPaths = new WeakMap<SessionProviderBase, Map<string, string>>();
+const UNLISTED_ROLLOUT_PATHS_LIMIT = 2048;
+
+function findUnlistedCodexRollout(
+  provider: SessionProviderBase | undefined,
+  sessionId: string,
+): string | null {
+  if (!provider?.findSessionById) return null;
+  let memo = unlistedRolloutPaths.get(provider);
+  const remembered = memo?.get(sessionId);
+  if (remembered && fs.existsSync(remembered)) return remembered;
+  let found: string | null = null;
+  try {
+    found = provider.findSessionById('', sessionId) ?? null;
+  } catch {
+    found = null;
+  }
+  if (found) {
+    if (!memo) {
+      memo = new Map();
+      unlistedRolloutPaths.set(provider, memo);
+    }
+    if (memo.size >= UNLISTED_ROLLOUT_PATHS_LIMIT) {
+      const oldest = memo.keys().next().value;
+      if (oldest !== undefined) memo.delete(oldest);
+    }
+    memo.set(sessionId, found);
+  }
+  return found;
+}
+
+/**
+ * Prompt marks of a Codex root that was not loaded in this call, from its own
+ * usage-cache entry when that entry still matches the file, so an unchanged
+ * root is not read again to place its subagents.
+ */
+function cachedRootMarks(
+  cache: { cacheDir: string; useCache: boolean },
+  sessionId: string,
+  filePath: string,
+): PromptOrdinalMark[] | undefined {
+  if (!cache.useCache) return undefined;
+  const entry = readCache(cacheFilePath(cache.cacheDir, 'codex', sessionId));
+  if (!entry || entry.sessionId !== sessionId) return undefined;
+  try {
+    const stat = fs.statSync(filePath);
+    if (entry.fingerprint !== `${stat.size}:${stat.mtime.toISOString()}`) return undefined;
+  } catch {
+    return undefined;
+  }
+  return unpackMarks(entry.pm);
+}
+
 async function codexLineage(
   loaded: readonly LoadedSession[],
   previews: readonly SessionPreview[],
   roots: readonly string[] | undefined,
   providerById: ReadonlyMap<ProviderId, SessionProviderBase>,
+  cache: { cacheDir: string; useCache: boolean },
 ): Promise<Map<LoadedSession, CodexLineage>> {
   const result = new Map<LoadedSession, CodexLineage>();
   const children = loaded.filter(
@@ -1238,14 +1301,7 @@ async function codexLineage(
           };
         }
         const listed = listedById.get(sessionId);
-        let filePath = listed?.filePath ?? null;
-        if (!filePath) {
-          try {
-            filePath = codexProvider?.findSessionById?.('', sessionId) ?? null;
-          } catch {
-            filePath = null;
-          }
-        }
+        const filePath = listed?.filePath ?? findUnlistedCodexRollout(codexProvider, sessionId);
         if (!filePath) return null;
         const head = await readCodexRolloutHead(sessionId, filePath);
         if (!head) return null;
@@ -1262,7 +1318,7 @@ async function codexLineage(
   const marksOf = (sessionId: string, filePath: string) => {
     let marks = marksCache.get(sessionId);
     if (!marks) {
-      const known = loadedById.get(sessionId)?.marks;
+      const known = loadedById.get(sessionId)?.marks ?? cachedRootMarks(cache, sessionId, filePath);
       marks = known
         ? Promise.resolve(known)
         : readPromptOrdinalMarks('codex', sessionId, filePath).catch(() => null);
