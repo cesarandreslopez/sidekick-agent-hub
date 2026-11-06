@@ -110,6 +110,11 @@ jobs:
     name: Publish Shared Library to npm
     runs-on: ubuntu-latest
     needs: validate
+    # id-token lets npm sign a provenance attestation. Job-level permissions
+    # replace the workflow-level contents: write, which publishing never needs.
+    permissions:
+      contents: read
+      id-token: write
 
     defaults:
       run:
@@ -145,7 +150,7 @@ jobs:
           if npm view "sidekick-shared@$VERSION" version 2>/dev/null; then
             echo "Version $VERSION already published, skipping"
           else
-            npm publish
+            npm publish --provenance
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -154,6 +159,9 @@ jobs:
     name: Publish CLI to npm
     runs-on: ubuntu-latest
     needs: [validate, publish-shared]
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -203,7 +211,7 @@ jobs:
           if npm view "sidekick-agent-hub@$VERSION" version 2>/dev/null; then
             echo "Version $VERSION already published, skipping"
           else
-            npm publish
+            npm publish --provenance
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
