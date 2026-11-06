@@ -383,8 +383,14 @@ function signalsByPrompt(session: PromptHistorySession): Map<number, PromptHisto
   return grouped;
 }
 
+/** `toolError (exec_command, exit 2)`: the kind, then the tool and exit code when known. */
 function signalLabel(signal: PromptHistorySignal): string {
-  return signal.tool ? `${signal.kind} (${signal.tool})` : signal.kind;
+  const details = [signal.tool, exitLabel(signal)].filter(Boolean);
+  return details.length > 0 ? `${signal.kind} (${details.join(', ')})` : signal.kind;
+}
+
+function exitLabel(signal: PromptHistorySignal): string | undefined {
+  return signal.exitCode !== undefined ? `exit ${signal.exitCode}` : undefined;
 }
 
 function indent(text: string, prefix: string): string[] {
@@ -493,9 +499,11 @@ function markdownSignals(signals: PromptHistorySignal[], session: PromptHistoryS
   if (signals.length === 0) return [];
   const lines: string[] = [];
   for (const signal of signals) {
+    const exit = exitLabel(signal);
+    const details = [signal.tool ? `\`${signal.tool}\`` : undefined, exit].filter(Boolean);
     lines.push(
       `- ${formatPromptTime(signal.timestamp, session.startedAt)} **${signal.kind}**${
-        signal.tool ? ` (\`${signal.tool}\`)` : ''
+        details.length > 0 ? ` (${details.join(', ')})` : ''
       }${signal.textTruncated ? ' _(text truncated)_' : ''}`,
     );
     if (signal.text) lines.push('', ...fenced(signal.text, '  '), '');

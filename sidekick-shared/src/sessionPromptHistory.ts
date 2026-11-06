@@ -36,6 +36,7 @@ import {
   createSessionRecordExtractor,
   type PromptHistoryReply,
   type PromptHistorySignal,
+  type SessionPromptSignalLimits,
   type SessionRecordExtraction,
 } from './sessionPromptSignals';
 
@@ -86,6 +87,8 @@ export interface CollectSessionPromptHistoryOptions {
   limit?: number;
   /** Opt-in content beyond the prompts. */
   include?: SessionPromptHistoryInclude;
+  /** How much text, command, and output each signal keeps (with `include.signals`). */
+  signalLimits?: SessionPromptSignalLimits;
   bounds?: SessionPromptHistoryBounds;
   signal?: AbortSignal;
   /**
@@ -282,7 +285,11 @@ export async function collectSessionPromptHistory(
     }
 
     let excludedRecords = 0;
-    const extractor = createSessionRecordExtractor(item.candidate.provider, include);
+    const extractor = createSessionRecordExtractor(
+      item.candidate.provider,
+      include,
+      options.signalLimits,
+    );
     const context: ScanContext = {
       roots,
       // Sessions come back whole: `since` only selects files.

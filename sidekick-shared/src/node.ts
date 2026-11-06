@@ -66,6 +66,13 @@ export type {
   PromptHistorySignal,
   PromptHistorySignalKind,
 } from './sessionPromptSignals';
+// Structured tool-error signals (0.31)
+export {
+  SIGNAL_COMMAND_CHARS,
+  SIGNAL_OUTPUT_CHARS,
+  SIGNAL_TEXT_CHARS,
+} from './sessionPromptSignals';
+export type { SessionPromptSignalLimits } from './sessionPromptSignals';
 export {
   HUMAN_CLAUDE_ENTRYPOINTS,
   HUMAN_CODEX_SOURCES,
