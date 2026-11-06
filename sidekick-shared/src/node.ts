@@ -376,3 +376,11 @@ export type {
 export { resolveMonitoredHomes } from './monitoredHomes';
 export type { CodexMonitoringHomesOptions } from './codexPaths';
 export { CLAUDE_PROJECTS_SUBDIR } from './claudePaths';
+
+// Git worktrees read from the filesystem (no `git` process)
+export {
+  GIT_METADATA_READ_BYTES,
+  MAX_GIT_WORKTREE_ENTRIES,
+  resolveGitWorktrees,
+} from './gitWorktrees';
+export type { GitWorktree, GitWorktreeKind, GitWorktreeLayout } from './gitWorktrees';

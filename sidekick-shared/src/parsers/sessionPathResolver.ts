@@ -16,6 +16,7 @@ import * as os from 'os';
 
 import type { ProjectFolderInfo } from '../providers/types';
 import { getClaudeProjectsDir } from '../claudePaths';
+import { resolveGitWorktrees } from '../gitWorktrees';
 
 /**
  * Encodes a workspace path to Claude Code's on-disk directory naming scheme
@@ -640,79 +641,37 @@ export function findSessionFilesWithStats(sessionDir: string): SessionFileStat[]
 /**
  * Detects if a workspace is a git worktree and resolves the main repo path.
  *
- * Git worktrees have a .git file (not directory) containing a gitdir: pointer.
- * This function reads that file and resolves the main repo path.
+ * @deprecated Use `resolveGitWorktrees()`, which also reads bare,
+ * `--separate-git-dir` and relative-path layouts. This wrapper answers from
+ * it: the main checkout (or the bare repository) of a linked worktree, and
+ * null for anything else, the main checkout included.
  *
  * @param workspacePath - Absolute path to workspace directory
- * @returns Main repository path, or null if not a worktree
+ * @returns Main repository path, or null if not a linked worktree
  */
 export function resolveWorktreeMainRepo(workspacePath: string): string | null {
-  const gitPath = path.join(workspacePath, '.git');
-  try {
-    const stat = fs.statSync(gitPath);
-    if (stat.isDirectory()) {
-      // Regular repo, not a worktree
-      return null;
-    }
-    // It's a file — this is a worktree
-    const content = fs.readFileSync(gitPath, 'utf-8').trim();
-    const match = content.match(/^gitdir:\s*(.+)$/m);
-    if (!match) return null;
-
-    const gitdir = match[1].trim();
-    // gitdir points to something like /main-repo/.git/worktrees/<name>
-    // Resolve to absolute path
-    const resolvedGitdir = path.isAbsolute(gitdir) ? gitdir : path.resolve(workspacePath, gitdir);
-
-    // Navigate up from .git/worktrees/<name> to the main repo
-    const worktreesDir = path.dirname(resolvedGitdir);
-    if (path.basename(worktreesDir) !== 'worktrees') return null;
-    const dotGit = path.dirname(worktreesDir);
-    if (path.basename(dotGit) !== '.git') return null;
-    return path.dirname(dotGit);
-  } catch {
-    return null;
-  }
+  const layout = resolveGitWorktrees(workspacePath);
+  if (!layout || layout.gitDir === layout.commonDir) return null;
+  const main = layout.worktrees.find((worktree) => worktree.kind !== 'linked');
+  return main?.path ?? null;
 }
 
 /**
  * Discovers all worktree sibling paths for a main repository.
  *
- * Reads .git/worktrees/{name}/gitdir to find all worktree paths.
+ * @deprecated Use `resolveGitWorktrees()`. This wrapper returns its linked
+ * worktrees (those whose directory still exists).
  *
  * @param mainRepoPath - Absolute path to the main repository
  * @returns Array of absolute paths to worktree working directories
  */
 export function discoverWorktreeSiblings(mainRepoPath: string): string[] {
-  const worktreesDir = path.join(mainRepoPath, '.git', 'worktrees');
-  const siblings: string[] = [];
-
-  try {
-    if (!fs.existsSync(worktreesDir)) return siblings;
-    const entries = fs.readdirSync(worktreesDir);
-
-    for (const entry of entries) {
-      const gitdirFile = path.join(worktreesDir, entry, 'gitdir');
-      try {
-        const content = fs.readFileSync(gitdirFile, 'utf-8').trim();
-        // gitdir file contains path to the worktree's .git file
-        // which is the worktree working directory + /.git
-        const worktreeGit = path.isAbsolute(content)
-          ? content
-          : path.resolve(worktreesDir, entry, content);
-        const worktreeDir = path.dirname(worktreeGit);
-        if (fs.existsSync(worktreeDir)) {
-          siblings.push(worktreeDir);
-        }
-      } catch {
-        // Skip entries without gitdir
-      }
-    }
-  } catch {
-    // worktrees dir doesn't exist or isn't readable
-  }
-
-  return siblings;
+  const layout = resolveGitWorktrees(mainRepoPath);
+  return layout
+    ? layout.worktrees
+        .filter((worktree) => worktree.kind === 'linked')
+        .map((worktree) => worktree.path)
+    : [];
 }
 
 /**
@@ -725,36 +684,26 @@ export function discoverWorktreeSiblings(mainRepoPath: string): string[] {
  * @param workspacePath - Absolute path to workspace directory (may be worktree or main repo)
  * @returns Sorted array of session file paths from all related workspaces
  */
-export function findAllSessionsWithWorktrees(workspacePath: string): string[] {
+export function findAllSessionsWithWorktrees(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string[] {
   const allPaths = new Set<string>();
 
   // Start with sessions from the given workspace
-  for (const s of findAllSessions(workspacePath)) {
+  for (const s of findAllSessions(workspacePath, projectsDir)) {
     allPaths.add(s);
   }
 
-  // Check if this is a worktree
-  const mainRepo = resolveWorktreeMainRepo(workspacePath);
-  if (mainRepo) {
-    // Add sessions from the main repo
-    for (const s of findAllSessions(mainRepo)) {
+  // Then every worktree of its repository: the main checkout and the
+  // linked worktrees, whichever of them the workspace is.
+  const layout = resolveGitWorktrees(workspacePath);
+  for (const worktree of layout?.worktrees ?? []) {
+    if (worktree.kind === 'bare' || path.resolve(worktree.path) === path.resolve(workspacePath)) {
+      continue;
+    }
+    for (const s of findAllSessions(worktree.path, projectsDir)) {
       allPaths.add(s);
-    }
-    // Add sessions from sibling worktrees
-    for (const sibling of discoverWorktreeSiblings(mainRepo)) {
-      if (sibling !== workspacePath) {
-        for (const s of findAllSessions(sibling)) {
-          allPaths.add(s);
-        }
-      }
-    }
-  } else {
-    // This might be the main repo — check for worktrees
-    const siblings = discoverWorktreeSiblings(workspacePath);
-    for (const sibling of siblings) {
-      for (const s of findAllSessions(sibling)) {
-        allPaths.add(s);
-      }
     }
   }
 

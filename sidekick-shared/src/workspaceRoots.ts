@@ -7,10 +7,15 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { discoverWorktreeSiblings, resolveWorktreeMainRepo } from './parsers/sessionPathResolver';
+import { resolveGitWorktrees } from './gitWorktrees';
 
 export interface ResolveWorkspaceRootsOptions {
-  /** Add the main checkout and every git worktree of each root. Default true. */
+  /**
+   * Add the main checkout and every git worktree of each root (see
+   * `resolveGitWorktrees()`; bare, `--separate-git-dir` and relative-path
+   * layouts included, a submodule never expanding to its superproject).
+   * Default true.
+   */
   includeWorktrees?: boolean;
 }
 
@@ -63,9 +68,11 @@ export function resolveWorkspaceRoots(
     if (!includeWorktrees) continue;
     const real = realpathOrNull(workspacePath, realpaths);
     if (!real) continue;
-    const mainRepo = resolveWorktreeMainRepo(real) ?? real;
-    add(mainRepo);
-    for (const sibling of discoverWorktreeSiblings(mainRepo)) add(sibling);
+    // The main checkout and every linked worktree, read from the git layout
+    // (a bare repository directory holds no checkout, so it is not a root).
+    for (const worktree of resolveGitWorktrees(real)?.worktrees ?? []) {
+      if (worktree.kind !== 'bare') add(worktree.path);
+    }
   }
   return { roots: [...roots], listingRoots: [...listingRoots] };
 }
