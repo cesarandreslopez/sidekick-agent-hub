@@ -26,6 +26,7 @@ import { ClaudeUsageDeduper, dedupedRawClaudeUsage } from '../usage/claudeUsageD
 import { addUsageToSubagent } from '../usage/subagentUsage';
 import { readAgentMeta } from './subagentScanner';
 import { SubagentEndTracker } from './subagentEndState';
+import { getClaudeSubagentsDir, parseClaudeSubagentFileName } from '../claudePaths';
 import { isSubagentSpawnTool } from '../subagentSpawn';
 import { ownValue } from '../ownKey';
 
@@ -88,10 +89,6 @@ export interface SubagentTrace {
   endedCleanly?: boolean;
 }
 
-// ── Constants ──
-
-const AGENT_FILE_PATTERN = /^agent-(.+)\.jsonl$/;
-
 // ── Public API ──
 
 /**
@@ -106,7 +103,7 @@ const AGENT_FILE_PATTERN = /^agent-(.+)\.jsonl$/;
  * @returns Array of SubagentTrace objects forming a tree
  */
 export function scanSubagentTraces(sessionDir: string, sessionId: string): SubagentTrace[] {
-  const subagentsDir = path.join(sessionDir, sessionId, 'subagents');
+  const subagentsDir = getClaudeSubagentsDir(path.join(sessionDir, `${sessionId}.jsonl`));
 
   try {
     if (!fs.existsSync(subagentsDir)) return [];
@@ -115,10 +112,9 @@ export function scanSubagentTraces(sessionDir: string, sessionId: string): Subag
     const traces: SubagentTrace[] = [];
 
     for (const file of files) {
-      const match = file.match(AGENT_FILE_PATTERN);
-      if (!match) continue;
+      const agentId = parseClaudeSubagentFileName(file);
+      if (!agentId) continue;
 
-      const agentId = match[1];
       const filePath = path.join(subagentsDir, file);
       const trace = parseAgentTrace(filePath, agentId);
       if (trace) traces.push(trace);

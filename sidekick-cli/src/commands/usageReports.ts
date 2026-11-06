@@ -9,10 +9,10 @@
  * the session logs directly.
  */
 
+import * as path from 'path';
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import {
-  SYNTHETIC_MODEL,
   TOKEN_TOTAL_LABEL,
   bucketUsage,
   collectUsageEvents,
@@ -125,11 +125,16 @@ export async function buildUsageReport(options: BuildUsageReportOptions): Promis
     since: options.since,
     until: options.until,
     workspacePath: options.workspacePath,
+    // `--project` counts only sessions whose recorded cwd is inside it; the
+    // providers' own filters also match look-alike folders (`/a/app` and
+    // `/b/app`) and Codex sessions started in a parent folder.
+    ...(options.workspacePath ? { scope: 'contained' as const } : {}),
+    // Claude Code's `<synthetic>` messages are local placeholders, never billed:
+    // left in, they show up as unpriced calls and phantom model rows.
+    excludeSynthetic: true,
     noCache: options.noCache,
   });
-  // Claude Code's `<synthetic>` messages are local placeholders, never billed:
-  // left in, they show up as unpriced calls and phantom model rows.
-  const events = collected.events.filter((event) => event.model !== SYNTHETIC_MODEL);
+  const events = collected.events;
   const bucketOptions = {
     granularity: options.granularity,
     utc: options.utc ?? false,
@@ -485,7 +490,7 @@ export async function usageReportAction(
       utc: !!localOpts.utc,
       breakdown: !!localOpts.breakdown,
       byProject: !!localOpts.byProject,
-      workspacePath: globalOpts.project ? String(globalOpts.project) : undefined,
+      workspacePath: globalOpts.project ? path.resolve(String(globalOpts.project)) : undefined,
       noCache: localOpts.cache === false,
     });
 

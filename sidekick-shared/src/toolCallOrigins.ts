@@ -24,23 +24,38 @@ import * as path from 'path';
 import * as readline from 'readline';
 import { Readable } from 'stream';
 import { isCompressedRolloutPath, readRolloutBufferAsync } from './providers/compressedRollouts';
+import type { SessionHomesOptions } from './agentHomes';
+import type { SessionListing } from './sessionListing';
 import {
+  candidateListingDirs,
   listCandidates,
+  listingCandidates,
+  listingOption,
   readPromptOrdinalMarks,
   resolveRoots,
   type Candidate,
   type PromptHistoryProvider,
   type PromptOrdinalMark,
 } from './promptHistory';
+import { getClaudeSubagentsDir, parseClaudeSubagentFileName } from './claudePaths';
 import { codexRolloutOrigin } from './parsers/codexRolloutOrigin';
-import { readFirstLineAsync } from './providers/codexRollouts';
-import { realpathOrNull } from './workspaceRoots';
+import { findCodexRolloutFile, readFirstLineAsync } from './providers/codexRollouts';
+import { resolveMonitoredHomes } from './monitoredHomes';
+import {
+  codexRolloutHead,
+  ordinalAtOrBefore,
+  readCodexRolloutHead,
+  readFirstRecordTimestamp,
+  resolveCodexRoot,
+  type CodexRolloutHead,
+} from './usage/subagentLineage';
+import { pathWithinRoots } from './workspaceRoots';
 
 export interface FindToolCallOriginsOptions {
   /** Tool-call ids to locate: Claude `tool_use` ids, Codex `call_id`s or completed-item ids. */
   ids: Iterable<string>;
-  /** Workspace roots that scope the search (as for `collectPromptHistory`). */
-  workspacePaths: string[];
+  /** Workspace roots that scope the search (as for `collectPromptHistory`). Required unless `listing` is given. */
+  workspacePaths?: string[];
   /** Also search the roots' git worktree siblings. Default true. */
   includeWorktrees?: boolean;
   /** Only session files modified at or after this instant. */
@@ -54,6 +69,15 @@ export interface FindToolCallOriginsOptions {
    * `collectPromptHistory()`. Default false.
    */
   includeCompressedRollouts?: boolean;
+  /** Claude Code and Codex homes to read, as for `collectPromptHistory()`. */
+  homes?: SessionHomesOptions;
+  /**
+   * A listing from `listAgentSessions()` to use instead of listing again:
+   * its roots, homes, worktree expansion and compressed-rollout choice
+   * apply, so passing `workspacePaths`, `includeWorktrees`, `homes` or
+   * `includeCompressedRollouts` with it is a `TypeError`.
+   */
+  listing?: SessionListing;
 }
 
 export interface ToolCallOrigin {
@@ -82,6 +106,13 @@ export interface ToolCallOrigin {
   enclosingToolName?: string;
   /** Set when a subagent issued the call. */
   subagent?: { agentId: string; parentSessionId: string };
+  /**
+   * Subagent calls only: the ordinal of the root session's prompt in effect
+   * when the subagent started, as `UsageEventRecord.parentPromptOrdinal`
+   * defines it. Null when the root was not found or is out of scope, or no
+   * prompt precedes the start. Absent for forks and the session's own calls.
+   */
+  parentPromptOrdinal?: number | null;
 }
 
 interface Hit {
@@ -112,19 +143,22 @@ export async function findToolCallOrigins(
   const found = new Map<string, ToolCallOrigin>();
   if (wanted.size === 0) return found;
   throwIfAborted(options.signal);
+  const listing = listingOption('findToolCallOrigins', options);
+  const listingDirs = listing ? undefined : candidateListingDirs(options.homes);
 
   const realpaths = new Map<string, string | null>();
-  const { roots, listingRoots } = resolveRoots(
-    options.workspacePaths,
-    options.includeWorktrees !== false,
-    realpaths,
-  );
+  const { roots, listingRoots } = listing
+    ? { roots: listing.roots, listingRoots: listing.listingRoots }
+    : resolveRoots(options.workspacePaths ?? [], options.includeWorktrees !== false, realpaths);
   if (roots.length === 0) return found;
   const providers = options.providers ?? ['claude-code', 'codex'];
   const sinceMs = options.since ? options.since.getTime() : null;
-  const candidates = await listCandidates(providers, listingRoots, sinceMs, {
-    includeCompressedRollouts: options.includeCompressedRollouts,
-  });
+  const candidates = listing
+    ? listingCandidates(listing, providers, sinceMs)
+    : await listCandidates(providers, listingRoots, sinceMs, {
+        includeCompressedRollouts: options.includeCompressedRollouts,
+        dirs: listingDirs,
+      });
   const byProviderSession = new Map<string, Candidate>();
   for (const candidate of candidates) {
     byProviderSession.set(`${candidate.provider}:${candidate.sessionId}`, candidate);
@@ -146,21 +180,38 @@ export async function findToolCallOrigins(
   const remaining = new Set(wanted);
   // Best timestamp seen per id, to prefer the earliest record across files.
   const bestMs = new Map<string, { ms: number; fork: boolean }>();
+  const parentPrompt = parentPromptResolver({
+    candidates,
+    roots,
+    realpaths,
+    marksFor,
+    codexHomes: listing
+      ? listing.homes.codex
+      : options.homes
+        ? resolveMonitoredHomes(options.homes).codex
+        : undefined,
+    includeCompressed: listing
+      ? listing.includeCompressedRollouts
+      : options.includeCompressedRollouts === true,
+  });
 
   for (const candidate of candidates) {
     if (remaining.size === 0) break;
     throwIfAborted(options.signal);
     const targets: ScanTarget[] = [{ candidate, filePath: candidate.filePath }];
     if (candidate.provider === 'claude-code') {
-      for (const sub of claudeSubagentTranscripts(candidate.filePath, candidate.sessionId)) {
+      for (const sub of claudeSubagentTranscripts(candidate.filePath)) {
         targets.push({ candidate, filePath: sub.filePath, agentId: sub.agentId });
       }
     }
     // A Codex fork or spawned subagent answers its parent's prompts.
     let codexParent: { id: string; fork: boolean } | undefined;
+    let codexHead: CodexRolloutHead | undefined;
     if (candidate.provider === 'codex') {
-      const origin = codexRolloutOrigin(await readFirstRecord(candidate.filePath));
+      const first = await readFirstRecord(candidate.filePath);
+      const origin = codexRolloutOrigin(first);
       if (origin.parentId) codexParent = { id: origin.parentId, fork: !origin.isSubagent };
+      codexHead = codexRolloutHead(candidate.sessionId, first);
     }
 
     for (const target of targets) {
@@ -200,6 +251,12 @@ export async function findToolCallOrigins(
           !codexParent || parentSession
             ? ordinalAt(await marksFor(session), hit.timestampMs)
             : null;
+        let parentPromptOrdinal: number | null | undefined;
+        if (target.agentId) {
+          parentPromptOrdinal = await parentPrompt.claude(candidate, target.filePath);
+        } else if (subagent && codexHead) {
+          parentPromptOrdinal = await parentPrompt.codex(codexHead);
+        }
         found.set(hit.id, {
           provider: candidate.provider,
           sessionId: session.sessionId,
@@ -212,6 +269,7 @@ export async function findToolCallOrigins(
             ? { enclosingCallId: hit.enclosingCallId, enclosingToolName: hit.enclosingToolName }
             : {}),
           ...(subagent ? { subagent } : {}),
+          ...(parentPromptOrdinal !== undefined ? { parentPromptOrdinal } : {}),
         });
         // A fork's copy might be replaced by the original later; keep looking.
         if (!isFork) remaining.delete(hit.id);
@@ -220,6 +278,77 @@ export async function findToolCallOrigins(
     }
   }
   return found;
+}
+
+/** Parent-prompt lookups for one call, memoized per file and session. */
+function parentPromptResolver(context: {
+  candidates: readonly Candidate[];
+  roots: string[];
+  realpaths: Map<string, string | null>;
+  marksFor: (candidate: Candidate) => Promise<PromptOrdinalMark[]>;
+  codexHomes: readonly string[] | undefined;
+  includeCompressed: boolean;
+}) {
+  const codexById = new Map<string, Candidate>();
+  for (const candidate of context.candidates) {
+    if (candidate.provider === 'codex') codexById.set(candidate.sessionId, candidate);
+  }
+  const starts = new Map<string, Promise<number | null>>();
+  const heads = new Map<string, Promise<{ head: CodexRolloutHead; filePath: string } | null>>();
+  const rootMarks = new Map<string, Promise<PromptOrdinalMark[] | null>>();
+
+  const locate = (sessionId: string) => {
+    let found = heads.get(sessionId);
+    if (!found) {
+      found = (async () => {
+        const listed = codexById.get(sessionId);
+        const filePath =
+          listed?.filePath ??
+          findCodexRolloutFile(sessionId, {
+            includeCompressed: context.includeCompressed,
+            ...(context.codexHomes ? { codexHomes: context.codexHomes } : {}),
+          });
+        if (!filePath) return null;
+        const head = await readCodexRolloutHead(sessionId, filePath);
+        if (!head) return null;
+        // A root found outside the listing must still be in scope.
+        if (!listed && !pathWithinRoots(head.cwd, context.roots, context.realpaths)) return null;
+        return { head, filePath };
+      })();
+      heads.set(sessionId, found);
+    }
+    return found;
+  };
+
+  return {
+    async claude(candidate: Candidate, transcript: string): Promise<number | null> {
+      let start = starts.get(transcript);
+      if (!start) {
+        start = readFirstRecordTimestamp(transcript);
+        starts.set(transcript, start);
+      }
+      return ordinalAtOrBefore(await context.marksFor(candidate), await start);
+    },
+    async codex(head: CodexRolloutHead): Promise<number | null> {
+      const resolved = await resolveCodexRoot(head, async (id) => (await locate(id))?.head ?? null);
+      if (!resolved.rootSessionId || !resolved.root) return null;
+      const rootId = resolved.rootSessionId;
+      let marks = rootMarks.get(rootId);
+      if (!marks) {
+        marks = (async () => {
+          const listed = codexById.get(rootId);
+          if (listed) return context.marksFor(listed);
+          const located = await locate(rootId);
+          return located
+            ? readPromptOrdinalMarks('codex', rootId, located.filePath).catch(() => null)
+            : null;
+        })();
+        rootMarks.set(rootId, marks);
+      }
+      const found = await marks;
+      return found ? ordinalAtOrBefore(found, head.startMs) : null;
+    },
+  };
 }
 
 /** Highest ordinal among prompts at or before `ms`; marks are in file order. */
@@ -233,24 +362,21 @@ function ordinalAt(marks: readonly PromptOrdinalMark[], ms: number): number | nu
   return best;
 }
 
-function claudeSubagentTranscripts(
-  sessionFile: string,
-  sessionId: string,
-): { filePath: string; agentId: string }[] {
-  const dir = path.join(path.dirname(sessionFile), sessionId, 'subagents');
+/** The session's `agent-<id>.jsonl` subagent transcripts, sorted by name. */
+function claudeSubagentTranscripts(sessionFile: string): { filePath: string; agentId: string }[] {
+  const dir = getClaudeSubagentsDir(sessionFile);
   let names: string[];
   try {
     names = fs.readdirSync(dir);
   } catch {
     return [];
   }
-  return names
-    .filter((name) => name.endsWith('.jsonl'))
-    .sort()
-    .map((name) => ({
-      filePath: path.join(dir, name),
-      agentId: path.basename(name, '.jsonl').replace(/^agent-/, ''),
-    }));
+  const transcripts: { filePath: string; agentId: string }[] = [];
+  for (const name of names.sort()) {
+    const agentId = parseClaudeSubagentFileName(name);
+    if (agentId) transcripts.push({ filePath: path.join(dir, name), agentId });
+  }
+  return transcripts;
 }
 
 async function readFirstRecord(filePath: string): Promise<unknown> {
@@ -267,14 +393,7 @@ async function readFirstRecord(filePath: string): Promise<unknown> {
 
 /** Fail-closed scope check on a recorded working directory. */
 function inScope(cwd: unknown, roots: string[], realpaths: Map<string, string | null>): boolean {
-  if (typeof cwd !== 'string' || cwd.length === 0) return false;
-  const real = realpathOrNull(cwd, realpaths);
-  if (!real) return false;
-  return roots.some((root) => {
-    if (real === root) return true;
-    const prefix = root.endsWith(path.sep) ? root : root + path.sep;
-    return real.startsWith(prefix);
-  });
+  return pathWithinRoots(cwd, roots, realpaths) !== null;
 }
 
 const ID_PATTERN = /"(?:id|call_id)"\s*:\s*"([^"\\]{1,256})"/g;

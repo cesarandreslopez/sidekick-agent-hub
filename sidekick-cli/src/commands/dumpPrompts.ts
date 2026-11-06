@@ -11,7 +11,6 @@
 import {
   ClaudeCodeProvider,
   CodexProvider,
-  SYNTHETIC_MODEL,
   collectSessionPromptHistory,
   collectUsageEvents,
   formatDurationMs,
@@ -188,22 +187,49 @@ function summarizePromptUsage(events: readonly UsageEventRecord[]): PromptUsage 
 }
 
 /**
- * Group usage events by session and by the prompt they answered. A Claude
- * Code subagent's calls carry their parent session's id and prompt ordinal,
- * so they count toward the prompt that spawned the subagent.
+ * The `(provider, session)` key an event counts toward: the root session of
+ * a subagent (a Codex subagent is a session of its own; a Claude Code one
+ * already carries its session's id) when that root is wanted, else its own
+ * session when that is wanted. Null when neither is. Every event counts
+ * when `wanted` is omitted.
  */
-export function indexPromptUsage(events: readonly UsageEventRecord[]): PromptUsageIndex {
+export function promptUsageOwner(
+  event: Pick<UsageEventRecord, 'provider' | 'sessionId' | 'subagent'>,
+  wanted?: ReadonlySet<string>,
+): string | null {
+  const rootId = event.subagent?.rootSessionId;
+  if (rootId && rootId !== event.sessionId) {
+    const root = sessionKey(event.provider, rootId);
+    if (!wanted || wanted.has(root)) return root;
+  }
+  const own = sessionKey(event.provider, event.sessionId);
+  return !wanted || wanted.has(own) ? own : null;
+}
+
+/**
+ * Group usage events by session and by the prompt they answered. A
+ * subagent's calls count toward its root session (see `promptUsageOwner`)
+ * and toward the prompt that started the subagent (`parentPromptOrdinal`),
+ * so a background agent still working after the next prompt stays with the
+ * prompt that launched it; other calls go by the prompt they followed.
+ * `<synthetic>` placeholders are left out when usage is collected.
+ */
+export function indexPromptUsage(
+  events: readonly UsageEventRecord[],
+  wanted?: ReadonlySet<string>,
+): PromptUsageIndex {
   type Group = { all: UsageEventRecord[]; byOrdinal: Map<number, UsageEventRecord[]> };
   const grouped = new Map<string, Group>();
   for (const event of events) {
-    if (event.model === SYNTHETIC_MODEL) continue;
-    const key = sessionKey(event.provider, event.sessionId);
+    const key = promptUsageOwner(event, wanted);
+    if (key === null) continue;
     const entry: Group = grouped.get(key) ?? { all: [], byOrdinal: new Map() };
     entry.all.push(event);
-    if (typeof event.promptOrdinal === 'number') {
-      const list = entry.byOrdinal.get(event.promptOrdinal) ?? [];
+    const ordinal = event.parentPromptOrdinal ?? event.promptOrdinal;
+    if (typeof ordinal === 'number') {
+      const list = entry.byOrdinal.get(ordinal) ?? [];
       list.push(event);
-      entry.byOrdinal.set(event.promptOrdinal, list);
+      entry.byOrdinal.set(ordinal, list);
     }
     grouped.set(key, entry);
   }
@@ -272,11 +298,12 @@ export async function collectPromptUsage(
       providers,
       workspacePaths: [options.workspacePath],
       ...(since ? { since } : {}),
+      excludeSynthetic: true,
       signal: AbortSignal.timeout(deadlineMs),
     });
-    return indexPromptUsage(
-      collected.events.filter((event) => wanted.has(sessionKey(event.provider, event.sessionId))),
-    );
+    // A Codex subagent's rollout is a session of its own: its calls count
+    // toward the dumped root session it belongs to.
+    return indexPromptUsage(collected.events, wanted);
   } catch (error) {
     const timedOut = error instanceof Error && error.name === 'TimeoutError';
     return {

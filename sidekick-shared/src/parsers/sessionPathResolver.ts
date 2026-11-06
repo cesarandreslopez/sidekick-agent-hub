@@ -15,41 +15,16 @@ import * as path from 'path';
 import * as os from 'os';
 
 import type { ProjectFolderInfo } from '../providers/types';
-import { getClaudeProjectsDir } from '../claudePaths';
+import {
+  encodeClaudeWorkspacePath as encodeWorkspacePath,
+  getClaudeProjectsDir,
+} from '../claudePaths';
+import { resolveGitWorktrees } from '../gitWorktrees';
 
-/**
- * Encodes a workspace path to Claude Code's on-disk directory naming scheme
- * under `~/.claude/projects/` — every non-ASCII-alphanumeric character
- * (separators, colons, underscores, dots, spaces) becomes a hyphen, and case
- * is preserved. Exported from the package root as `encodeClaudeWorkspacePath`.
- *
- * Not to be confused with the top-level `encodeWorkspacePath` export from
- * `paths.ts`: that one is Sidekick's own config-store slug (it keeps dots) and
- * does NOT match Claude Code's scheme — using it to build a
- * `~/.claude/projects/` path silently misses for any workspace containing a
- * dot or space. For lookups, prefer `getClaudeSessionDirectory` or the
- * mismatch-tolerant `discoverSessionDirectory` over raw string encoding.
- *
- * @param workspacePath - Absolute path to workspace directory
- * @returns Encoded path string (e.g., "-home-user-code-project")
- *
- * @example
- * ```typescript
- * encodeWorkspacePath('/home/user/code/my_project');
- * // => "-home-user-code-my-project"
- *
- * encodeWorkspacePath('C:\\Users\\user\\code\\my_project'); // Windows
- * // => "C--Users-user-code-my-project"
- * ```
- */
-export function encodeWorkspacePath(workspacePath: string): string {
-  // Normalize path separators to forward slash
-  const normalized = workspacePath.replace(/\\/g, '/');
-
-  // Claude Code replaces every non-alphanumeric path character, including
-  // dots and spaces, with a hyphen.
-  return normalized.replace(/[^a-zA-Z0-9]/g, '-');
-}
+// Claude Code's directory encoding lives in `claudePaths` (dependency-free,
+// for hook bundles); re-exported here under its historical name, so both are
+// the same function.
+export { encodeWorkspacePath };
 
 /**
  * Gets the session directory path for a workspace.
@@ -66,9 +41,12 @@ export function encodeWorkspacePath(workspacePath: string): string {
  * // => "/home/user/.claude/projects/-home-user-code-project"
  * ```
  */
-export function getSessionDirectory(workspacePath: string): string {
+export function getSessionDirectory(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string {
   const encoded = encodeWorkspacePath(workspacePath);
-  return path.join(getClaudeProjectsDir(), encoded);
+  return path.join(projectsDir, encoded);
 }
 
 /** How recently a file must be modified to be considered "active" (5 minutes) */
@@ -93,9 +71,10 @@ const ACTIVE_SESSION_THRESHOLD_MS = 5 * 60 * 1000;
  * // => ["/home/user/.claude/projects/-home-user-project-packages-app"]
  * ```
  */
-export function findSubdirectorySessionDirs(workspacePath: string): string[] {
-  const projectsDir = getClaudeProjectsDir();
-
+export function findSubdirectorySessionDirs(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string[] {
   try {
     if (!fs.existsSync(projectsDir)) {
       return [];
@@ -190,11 +169,12 @@ export function getMostRecentlyActiveSessionDir(sessionDirs: string[]): string |
  * @param workspacePath - Absolute path to workspace directory
  * @returns Absolute path to session directory, or null if not found
  */
-export function discoverSessionDirectory(workspacePath: string): string | null {
-  const projectsDir = getClaudeProjectsDir();
-
+export function discoverSessionDirectory(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string | null {
   // Strategy 1: Try computed encoded path (exact match)
-  const computedDir = getSessionDirectory(workspacePath);
+  const computedDir = getSessionDirectory(workspacePath, projectsDir);
   if (fs.existsSync(computedDir)) {
     return computedDir;
   }
@@ -203,7 +183,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
   // When Claude Code starts from a subdirectory of the workspace, the session
   // is stored in a directory matching the subdirectory path. We find the most
   // recently active one.
-  const subdirMatches = findSubdirectorySessionDirs(workspacePath);
+  const subdirMatches = findSubdirectorySessionDirs(workspacePath, projectsDir);
   if (subdirMatches.length > 0) {
     const mostRecent = getMostRecentlyActiveSessionDir(subdirMatches);
     if (mostRecent) {
@@ -306,9 +286,12 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
  * }
  * ```
  */
-export function findActiveSession(workspacePath: string): string | null {
+export function findActiveSession(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string | null {
   // Use discovery to find the session directory (handles encoding differences)
-  const sessionDir = discoverSessionDirectory(workspacePath);
+  const sessionDir = discoverSessionDirectory(workspacePath, projectsDir);
 
   try {
     // Check if directory was found
@@ -375,9 +358,12 @@ export function findActiveSession(workspacePath: string): string | null {
  * sessions.forEach(session => console.log(session));
  * ```
  */
-export function findAllSessions(workspacePath: string): string[] {
+export function findAllSessions(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string[] {
   // Use discovery to find the session directory (handles encoding differences)
-  const sessionDir = discoverSessionDirectory(workspacePath);
+  const sessionDir = discoverSessionDirectory(workspacePath, projectsDir);
 
   try {
     // Check if directory was found
@@ -480,8 +466,10 @@ export function decodeEncodedPath(encoded: string): string {
  * // ]
  * ```
  */
-export function getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
-  const projectsDir = getClaudeProjectsDir();
+export function getAllProjectFolders(
+  workspacePath?: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): ProjectFolderInfo[] {
   const folders: ProjectFolderInfo[] = [];
 
   try {
@@ -627,79 +615,37 @@ export function findSessionFilesWithStats(sessionDir: string): SessionFileStat[]
 /**
  * Detects if a workspace is a git worktree and resolves the main repo path.
  *
- * Git worktrees have a .git file (not directory) containing a gitdir: pointer.
- * This function reads that file and resolves the main repo path.
+ * @deprecated Use `resolveGitWorktrees()`, which also reads bare,
+ * `--separate-git-dir` and relative-path layouts. This wrapper answers from
+ * it: the main checkout (or the bare repository) of a linked worktree, and
+ * null for anything else, the main checkout included.
  *
  * @param workspacePath - Absolute path to workspace directory
- * @returns Main repository path, or null if not a worktree
+ * @returns Main repository path, or null if not a linked worktree
  */
 export function resolveWorktreeMainRepo(workspacePath: string): string | null {
-  const gitPath = path.join(workspacePath, '.git');
-  try {
-    const stat = fs.statSync(gitPath);
-    if (stat.isDirectory()) {
-      // Regular repo, not a worktree
-      return null;
-    }
-    // It's a file — this is a worktree
-    const content = fs.readFileSync(gitPath, 'utf-8').trim();
-    const match = content.match(/^gitdir:\s*(.+)$/m);
-    if (!match) return null;
-
-    const gitdir = match[1].trim();
-    // gitdir points to something like /main-repo/.git/worktrees/<name>
-    // Resolve to absolute path
-    const resolvedGitdir = path.isAbsolute(gitdir) ? gitdir : path.resolve(workspacePath, gitdir);
-
-    // Navigate up from .git/worktrees/<name> to the main repo
-    const worktreesDir = path.dirname(resolvedGitdir);
-    if (path.basename(worktreesDir) !== 'worktrees') return null;
-    const dotGit = path.dirname(worktreesDir);
-    if (path.basename(dotGit) !== '.git') return null;
-    return path.dirname(dotGit);
-  } catch {
-    return null;
-  }
+  const layout = resolveGitWorktrees(workspacePath);
+  if (!layout || layout.gitDir === layout.commonDir) return null;
+  const main = layout.worktrees.find((worktree) => worktree.kind !== 'linked');
+  return main?.path ?? null;
 }
 
 /**
  * Discovers all worktree sibling paths for a main repository.
  *
- * Reads .git/worktrees/{name}/gitdir to find all worktree paths.
+ * @deprecated Use `resolveGitWorktrees()`. This wrapper returns its linked
+ * worktrees (those whose directory still exists).
  *
  * @param mainRepoPath - Absolute path to the main repository
  * @returns Array of absolute paths to worktree working directories
  */
 export function discoverWorktreeSiblings(mainRepoPath: string): string[] {
-  const worktreesDir = path.join(mainRepoPath, '.git', 'worktrees');
-  const siblings: string[] = [];
-
-  try {
-    if (!fs.existsSync(worktreesDir)) return siblings;
-    const entries = fs.readdirSync(worktreesDir);
-
-    for (const entry of entries) {
-      const gitdirFile = path.join(worktreesDir, entry, 'gitdir');
-      try {
-        const content = fs.readFileSync(gitdirFile, 'utf-8').trim();
-        // gitdir file contains path to the worktree's .git file
-        // which is the worktree working directory + /.git
-        const worktreeGit = path.isAbsolute(content)
-          ? content
-          : path.resolve(worktreesDir, entry, content);
-        const worktreeDir = path.dirname(worktreeGit);
-        if (fs.existsSync(worktreeDir)) {
-          siblings.push(worktreeDir);
-        }
-      } catch {
-        // Skip entries without gitdir
-      }
-    }
-  } catch {
-    // worktrees dir doesn't exist or isn't readable
-  }
-
-  return siblings;
+  const layout = resolveGitWorktrees(mainRepoPath);
+  return layout
+    ? layout.worktrees
+        .filter((worktree) => worktree.kind === 'linked')
+        .map((worktree) => worktree.path)
+    : [];
 }
 
 /**
@@ -712,36 +658,26 @@ export function discoverWorktreeSiblings(mainRepoPath: string): string[] {
  * @param workspacePath - Absolute path to workspace directory (may be worktree or main repo)
  * @returns Sorted array of session file paths from all related workspaces
  */
-export function findAllSessionsWithWorktrees(workspacePath: string): string[] {
+export function findAllSessionsWithWorktrees(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string[] {
   const allPaths = new Set<string>();
 
   // Start with sessions from the given workspace
-  for (const s of findAllSessions(workspacePath)) {
+  for (const s of findAllSessions(workspacePath, projectsDir)) {
     allPaths.add(s);
   }
 
-  // Check if this is a worktree
-  const mainRepo = resolveWorktreeMainRepo(workspacePath);
-  if (mainRepo) {
-    // Add sessions from the main repo
-    for (const s of findAllSessions(mainRepo)) {
+  // Then every worktree of its repository: the main checkout and the
+  // linked worktrees, whichever of them the workspace is.
+  const layout = resolveGitWorktrees(workspacePath);
+  for (const worktree of layout?.worktrees ?? []) {
+    if (worktree.kind === 'bare' || path.resolve(worktree.path) === path.resolve(workspacePath)) {
+      continue;
+    }
+    for (const s of findAllSessions(worktree.path, projectsDir)) {
       allPaths.add(s);
-    }
-    // Add sessions from sibling worktrees
-    for (const sibling of discoverWorktreeSiblings(mainRepo)) {
-      if (sibling !== workspacePath) {
-        for (const s of findAllSessions(sibling)) {
-          allPaths.add(s);
-        }
-      }
-    }
-  } else {
-    // This might be the main repo — check for worktrees
-    const siblings = discoverWorktreeSiblings(workspacePath);
-    for (const sibling of siblings) {
-      for (const s of findAllSessions(sibling)) {
-        allPaths.add(s);
-      }
     }
   }
 

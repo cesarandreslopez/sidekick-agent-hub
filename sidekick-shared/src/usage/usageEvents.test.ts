@@ -165,6 +165,54 @@ describe('collectUsageEvents', () => {
     expect(result.events).toHaveLength(3);
   });
 
+  it('sees an append on a reused provider whose project directory looks unchanged', async () => {
+    const sessionPath = writeSession(BASE_ROWS);
+    // An append never touches the directory's mtime; put it well past the
+    // listing cache's coarse-mtime guard so the cached listing is trusted.
+    const past = new Date(Date.now() - 60 * 60_000);
+    fs.utimesSync(path.dirname(sessionPath), past, past);
+    const first = await collectUsageEvents({ providers: [provider] });
+    expect(first.events).toHaveLength(2);
+
+    fs.appendFileSync(
+      sessionPath,
+      JSON.stringify(assistantRow('2026-09-04T13:00:05.000Z', 300)) + '\n',
+    );
+    fs.utimesSync(path.dirname(sessionPath), past, past);
+    const second = await collectUsageEvents({ providers: [provider] });
+
+    expect(second.cacheMisses).toBe(1);
+    expect(second.events).toHaveLength(3);
+    expect(second.sessions[0].fingerprint).not.toBe(first.sessions[0].fingerprint);
+  });
+
+  it('builds its own Claude Code and Codex providers from homes', async () => {
+    writeSession(BASE_ROWS);
+    const elsewhere = path.join(tmpDir, 'elsewhere');
+    fs.mkdirSync(elsewhere, { recursive: true });
+
+    const fromHomes = await collectUsageEvents({
+      homes: { claudeHomes: [path.join(tmpDir, '.claude')], codexHomes: [] },
+      noCache: true,
+    });
+    expect(fromHomes.events).toHaveLength(2);
+    const fromElsewhere = await collectUsageEvents({
+      homes: { claudeHomes: [elsewhere], codexHomes: [] },
+      noCache: true,
+    });
+    expect(fromElsewhere.events).toHaveLength(0);
+    // Neither providers nor homes: the default homes.
+    const defaults = await collectUsageEvents({ noCache: true });
+    expect(defaults.events).toHaveLength(2);
+
+    await expect(
+      collectUsageEvents({ providers: [provider], homes: { claudeHomes: [elsewhere] } }),
+    ).rejects.toThrow(TypeError);
+    await expect(collectUsageEvents({ homes: { claudeHomes: ['relative'] } })).rejects.toThrow(
+      RangeError,
+    );
+  });
+
   it('filters events by since and until on the event timestamp', async () => {
     writeSession(BASE_ROWS);
     const result = await collectUsageEvents({

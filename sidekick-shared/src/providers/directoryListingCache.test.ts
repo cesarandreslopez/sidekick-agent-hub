@@ -160,6 +160,53 @@ describe('DirectoryListingCache', () => {
     expect(revalidated!.files.get('live.jsonl')).toMatchObject({ sizeBytes: 4 });
   });
 
+  it('revalidateAll re-stats every file, old ones included, without a readdir', async () => {
+    const old = new Date(Date.now() - 2 * HOUR_MS);
+    const oldFile = path.join(root, 'old.jsonl');
+    const gone = path.join(root, 'gone.jsonl');
+    touch(oldFile, 'o', old);
+    touch(gone, 'g', old);
+    ageDirectory(root);
+    const cache = new DirectoryListingCache({ recentWindowMs: 30 * 60_000 });
+    const accept = (name: string) => name.endsWith('.jsonl');
+    await cache.listDirectory(root, accept);
+
+    // An append to an old file: the directory's mtime does not move, and the
+    // file's new mtime is still outside the recent window.
+    fs.appendFileSync(oldFile, 'ld');
+    fs.utimesSync(oldFile, old, new Date(old.getTime() + 1_000));
+    fs.rmSync(gone);
+    ageDirectory(root);
+    calls.readdir.length = 0;
+    calls.stat.length = 0;
+    const recentOnly = await cache.listDirectory(root, accept, { revalidateRecent: true });
+    expect(recentOnly!.files.get('old.jsonl')).toMatchObject({ sizeBytes: 1 });
+
+    calls.readdir.length = 0;
+    calls.stat.length = 0;
+    const revalidated = await cache.listDirectory(root, accept, { revalidateAll: true });
+    expect(calls.readdir).toEqual([]);
+    expect(revalidated!.files.get('old.jsonl')).toMatchObject({ sizeBytes: 3 });
+  });
+
+  it('revalidateAll also re-stats known files of a changed directory', async () => {
+    const old = new Date(Date.now() - 2 * HOUR_MS);
+    const oldFile = path.join(root, 'old.jsonl');
+    touch(oldFile, 'o', old);
+    ageDirectory(root);
+    const cache = new DirectoryListingCache({ recentWindowMs: 30 * 60_000 });
+    const accept = (name: string) => name.endsWith('.jsonl');
+    await cache.listDirectory(root, accept);
+
+    fs.appendFileSync(oldFile, 'ld');
+    fs.utimesSync(oldFile, old, new Date(old.getTime() + 1_000));
+    touch(path.join(root, 'new.jsonl'), 'n', old);
+    ageDirectory(root, HOUR_MS / 2);
+    const relisted = await cache.listDirectory(root, accept, { revalidateAll: true });
+    expect(relisted!.files.get('old.jsonl')).toMatchObject({ sizeBytes: 3 });
+    expect(relisted!.files.has('new.jsonl')).toBe(true);
+  });
+
   it('bounds cached directories least-recently-used first', async () => {
     const dirs = ['x', 'y', 'z'].map((name) => {
       const dir = path.join(root, name);

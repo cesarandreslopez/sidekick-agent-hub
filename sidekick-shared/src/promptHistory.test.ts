@@ -157,6 +157,37 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
+describe('collectPromptHistory — explicit homes', () => {
+  it('reads the given homes instead of the process environment', async () => {
+    writeJsonl(claudeFile(repo, 'default-home'), [claudeUser('in the default home', 1)]);
+    const other = path.join(tmpDir, 'other-claude');
+    const otherFile = path.join(
+      other,
+      'projects',
+      path.basename(path.dirname(claudeFile(repo, 'x'))),
+      'other-home.jsonl',
+    );
+    writeJsonl(otherFile, [claudeUser('in the other home', 1)]);
+    writeJsonl(codexFile(), [codexMeta(repo), codexUser(['codex prompt'], 2)]);
+
+    const both = await collectPromptHistory({
+      workspacePaths: [repo],
+      homes: { claudeHomes: [path.join(tmpDir, '.claude'), other], codexHomes: [] },
+    });
+    expect(texts(both.entries).sort()).toEqual(['in the default home', 'in the other home']);
+
+    const onlyOther = await collectPromptHistory({
+      workspacePaths: [repo],
+      homes: { claudeHomes: [other], env: {} },
+    });
+    expect(texts(onlyOther.entries).sort()).toEqual(['codex prompt', 'in the other home']);
+
+    await expect(
+      collectPromptHistory({ workspacePaths: [repo], homes: { claudeHomes: ['relative'] } }),
+    ).rejects.toThrow(RangeError);
+  });
+});
+
 describe('collectPromptHistory — Claude Code', () => {
   it('returns only human prompts with stable ordinals and answering-turn model/usage', async () => {
     writeJsonl(claudeFile(repo, 'c1'), [

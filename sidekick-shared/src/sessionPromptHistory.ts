@@ -16,15 +16,21 @@
 
 import { statRolloutContent, type RolloutContentStat } from './providers/compressedRollouts';
 import { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
+import type { SessionHomesOptions } from './agentHomes';
+import type { SessionListing } from './sessionListing';
 import {
   DEFAULT_BOUNDS,
   PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
+  candidateListingDirs,
   compareStrings,
   emptyStats,
   listCandidates,
+  listingCandidates,
+  listingOption,
   resolveRoots,
   scanFile,
   type Candidate,
+  type CandidateListingDirs,
   type FileOutcome,
   type PromptHistoryEntry,
   type PromptHistoryExclusion,
@@ -67,8 +73,8 @@ export interface SessionPromptHistoryBounds {
 }
 
 export interface CollectSessionPromptHistoryOptions {
-  /** Absolute workspace roots; realpath-normalized internally. */
-  workspacePaths: string[];
+  /** Absolute workspace roots; realpath-normalized internally. Required unless `listing` is given. */
+  workspacePaths?: string[];
   /** Add git worktree siblings of each root. Default true. */
   includeWorktrees?: boolean;
   /** Default both. */
@@ -96,6 +102,15 @@ export interface CollectSessionPromptHistoryOptions {
    * `collectPromptHistory()`. Default false.
    */
   includeCompressedRollouts?: boolean;
+  /** Claude Code and Codex homes to read, as for `collectPromptHistory()`. */
+  homes?: SessionHomesOptions;
+  /**
+   * A listing from `listAgentSessions()` to use instead of listing again:
+   * its roots, homes, worktree expansion and compressed-rollout choice
+   * apply, so passing `workspacePaths`, `includeWorktrees`, `homes` or
+   * `includeCompressedRollouts` with it is a `TypeError`.
+   */
+  listing?: SessionListing;
 }
 
 export interface PromptHistorySessionPrompt extends Omit<
@@ -242,15 +257,15 @@ export async function collectSessionPromptHistory(
     };
   };
 
+  const listing = listingOption('collectSessionPromptHistory', options);
+  const listingDirs = listing ? undefined : candidateListingDirs(options.homes);
   const realpaths = new Map<string, string | null>();
-  const { roots, listingRoots } = resolveRoots(
-    options.workspacePaths,
-    options.includeWorktrees !== false,
-    realpaths,
-  );
+  const { roots, listingRoots } = listing
+    ? { roots: listing.roots, listingRoots: listing.listingRoots }
+    : resolveRoots(options.workspacePaths ?? [], options.includeWorktrees !== false, realpaths);
   if (roots.length === 0) return finish();
 
-  const selected = await selectCandidates(options, listingRoots);
+  const selected = await selectCandidates(options, listingRoots, listingDirs, listing);
   stats.sessionsMatched = selected.length;
   const limit =
     typeof options.limit === 'number' && options.limit > 0 ? Math.floor(options.limit) : Infinity;
@@ -392,12 +407,17 @@ function definedBounds(bounds: SessionPromptHistoryBounds | undefined): SessionP
 async function selectCandidates(
   options: CollectSessionPromptHistoryOptions,
   listingRoots: string[],
+  listingDirs: CandidateListingDirs | undefined,
+  listing: SessionListing | undefined,
 ): Promise<StatedCandidate[]> {
   const sinceMs = options.since ? options.since.getTime() : null;
   const providers = options.providers ?? ['claude-code', 'codex'];
-  let candidates = await listCandidates(providers, listingRoots, sinceMs, {
-    includeCompressedRollouts: options.includeCompressedRollouts,
-  });
+  let candidates = listing
+    ? listingCandidates(listing, providers, sinceMs)
+    : await listCandidates(providers, listingRoots, sinceMs, {
+        includeCompressedRollouts: options.includeCompressedRollouts,
+        dirs: listingDirs,
+      });
   if (options.sessionIds || options.sessionRefs) {
     const ids = new Set(options.sessionIds ?? []);
     const keys = new Set<string>();

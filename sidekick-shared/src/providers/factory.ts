@@ -1,82 +1,39 @@
-import { ClaudeCodeProvider } from './claudeCode';
-import { CodexProvider } from './codex';
-import { OpenCodeProvider } from './openCode';
+import { claudeCodeProviderFactory } from './claudeCode';
+import { codexProviderFactory } from './codex';
+import { openCodeProviderFactory } from './openCode';
+import {
+  createSessionProvidersFrom,
+  type CreateSessionProvidersOptions,
+  type CreateSessionProvidersResult,
+  type SessionProviderFactory,
+} from './sessionProviderRegistry';
 import { SESSION_PROVIDER_IDS } from './types';
-import type { ProviderId, SessionProviderBase, SessionProviderDiagnostic } from './types';
+import type { ProviderId } from './types';
 
-export interface CreateSessionProvidersOptions {
-  providerIds?: readonly ProviderId[];
-  onDiagnostic?: (diagnostic: SessionProviderDiagnostic) => void;
-  /**
-   * Codex: also discover and read compressed rollouts (`….jsonl.zst`); see
-   * `CodexProviderOptions.includeCompressedRollouts`. Default false.
-   */
-  includeCompressedRollouts?: boolean;
-}
+export type {
+  CreateSessionProvidersOptions,
+  CreateSessionProvidersResult,
+} from './sessionProviderRegistry';
 
-export interface CreateSessionProvidersResult {
-  providers: SessionProviderBase[];
-  /**
-   * Live, not a snapshot: the providers keep the emit closure and update
-   * entries in place (one per provider/kind/phase) as they run, so this array
-   * reflects the latest diagnostics whenever it is read. Copy it to freeze a
-   * point in time; use `onDiagnostic` to observe each emission.
-   */
-  diagnostics: SessionProviderDiagnostic[];
-}
+const BUILT_IN_FACTORIES: Record<ProviderId, SessionProviderFactory> = {
+  'claude-code': claudeCodeProviderFactory,
+  opencode: openCodeProviderFactory,
+  codex: codexProviderFactory,
+};
 
 /**
  * Constructs built-in providers without probing the filesystem or binaries.
  * A broken provider is isolated and reported instead of aborting host startup.
+ *
+ * Loads every built-in provider; a host that needs only some passes their
+ * factories to `createSessionProvidersFrom()` so the rest stay out of its
+ * bundle.
  */
 export function createSessionProviders(
   options: CreateSessionProvidersOptions = {},
 ): CreateSessionProvidersResult {
-  const diagnostics: SessionProviderDiagnostic[] = [];
-  const diagnosticIndexes = new Map<string, number>();
-  const providers: SessionProviderBase[] = [];
-  const selected = new Set(options.providerIds ?? SESSION_PROVIDER_IDS);
-  const emit = (diagnostic: SessionProviderDiagnostic): void => {
-    const key = `${diagnostic.providerId}\0${diagnostic.kind}\0${diagnostic.phase}`;
-    const existingIndex = diagnosticIndexes.get(key);
-    if (existingIndex === undefined) {
-      diagnosticIndexes.set(key, diagnostics.length);
-      diagnostics.push(diagnostic);
-    } else {
-      diagnostics[existingIndex] = diagnostic;
-    }
-    try {
-      options.onDiagnostic?.(diagnostic);
-    } catch {
-      // A host diagnostic callback cannot break provider setup.
-    }
-  };
-
-  for (const providerId of SESSION_PROVIDER_IDS) {
-    if (!selected.has(providerId)) continue;
-    try {
-      const providerOptions = { onDiagnostic: emit };
-      providers.push(
-        providerId === 'claude-code'
-          ? new ClaudeCodeProvider(providerOptions)
-          : providerId === 'opencode'
-            ? new OpenCodeProvider(providerOptions)
-            : new CodexProvider({
-                ...providerOptions,
-                includeCompressedRollouts: options.includeCompressedRollouts === true,
-              }),
-      );
-    } catch {
-      const diagnostic: SessionProviderDiagnostic = {
-        providerId,
-        kind: 'construction_failed',
-        severity: 'error',
-        phase: 'construct',
-        message: `${providerId} could not be constructed and was omitted.`,
-      };
-      emit(diagnostic);
-    }
-  }
-
-  return { providers, diagnostics };
+  return createSessionProvidersFrom(
+    SESSION_PROVIDER_IDS.map((providerId) => BUILT_IN_FACTORIES[providerId]),
+    options,
+  );
 }

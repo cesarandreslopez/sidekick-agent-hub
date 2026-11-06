@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import chalk from 'chalk';
 
@@ -299,6 +300,7 @@ describe('usage report costs, pricing basis, reasoning, and sessions', () => {
       utc: true,
       breakdown: true,
     });
+    expect(mockCollect).toHaveBeenCalledWith(expect.objectContaining({ excludeSynthetic: true }));
     expect(report.sessionParents).toEqual({ 'child-session-1': 'parent-session-9' });
     const claudeRow = report.rows.find((row) => row.sessionId === 's1')!;
     expect(claudeRow.calls).toBe(3);
@@ -401,11 +403,29 @@ describe('usageReportAction', () => {
     process.exitCode = undefined;
   });
 
-  const makeCmd = (json = false, localOpts: Record<string, unknown> = {}) =>
+  const makeCmd = (
+    json = false,
+    localOpts: Record<string, unknown> = {},
+    project: string | undefined = undefined,
+  ) =>
     ({
-      parent: { opts: () => ({ json, project: undefined }) },
+      parent: { opts: () => ({ json, project }) },
       opts: () => localOpts,
     }) as unknown as import('commander').Command;
+
+  it('scopes --project strictly to sessions inside the resolved path', async () => {
+    await usageReportAction('day', {}, makeCmd(true, {}, 'work/project'));
+    expect(mockCollect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspacePath: path.resolve('work/project'),
+        scope: 'contained',
+        excludeSynthetic: true,
+      }),
+    );
+    mockCollect.mockClear();
+    await usageReportAction('day', {}, makeCmd(true));
+    expect(mockCollect.mock.calls[0][0]).not.toHaveProperty('scope');
+  });
 
   it('prints JSON with the report shape, honouring --utc and --since', async () => {
     await usageReportAction('month', {}, makeCmd(true, { since: '2026-01-15', utc: true }));

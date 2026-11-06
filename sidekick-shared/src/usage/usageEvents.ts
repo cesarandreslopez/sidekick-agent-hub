@@ -35,22 +35,37 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { codexRolloutOrigin } from '../parsers/codexRolloutOrigin';
+import { getClaudeSubagentsDir, parseClaudeSubagentFileName } from '../claudePaths';
 import { getConfigDir } from '../paths';
 import { readPromptOrdinalMarks, type PromptOrdinalMark } from '../promptHistory';
-import { readFirstLineAsync } from '../providers/codexRollouts';
+import { PROMPT_ORDINAL_SCHEME_VERSION } from '../promptOrdinalScheme';
 import type {
   ProviderId,
   SessionProviderBase,
   SessionProviderDiagnostic,
 } from '../providers/types';
 import { listSessionPreviewsAsync } from '../sessionPreviews';
-import type { SessionPreview } from '../sessionPreviews';
+import type { SessionPreview, SessionScopeMode } from '../sessionPreviews';
+import { SYNTHETIC_MODEL } from './claudeUsageDedupe';
+import {
+  ordinalAtOrBefore,
+  readCodexRolloutHead,
+  readFirstRecordTimestamp,
+  resolveCodexRoot,
+  type CodexRolloutHead,
+} from './subagentLineage';
+import { pathWithinRoots } from '../workspaceRoots';
+import { getPricingCatalogInfo } from '../modelInfo';
+import { computeSessionKey } from '../sessionKey';
+import { assertListingAlone, isSessionListing, type SessionListing } from '../sessionListing';
 import type { TokenTotals } from '../types/historicalData';
 import { calculateNormalizedUsageCost, extractNormalizedUsage } from '../usageNormalization';
 import type { NormalizedUsage, PricingProvenance } from '../usageNormalization';
 import { atomicWriteJson } from '../writers/atomic';
-import { resolveWorkspaceRoots, type ResolvedWorkspaceRoots } from '../workspaceRoots';
+import type { SessionHomesOptions } from '../agentHomes';
+import { claudeCodeProviderFactory } from '../providers/claudeCode';
+import { codexProviderFactory } from '../providers/codex';
+import { createSessionProvidersFrom } from '../providers/sessionProviderRegistry';
 
 /**
  * Bump when the cached record shape or the counting rules change; older files
@@ -91,6 +106,8 @@ export interface UsageEventRecord {
   costProvenance: PricingProvenance;
   /** Session file the event came from; tells apart two files with one session id. */
   filePath?: string;
+  /** Key of that file, as prompt history and `listAgentSessions()` report it. */
+  sessionKey?: string;
   /**
    * Ordinal of the human prompt this call followed: the highest ordinal among
    * the session's prompts timestamped at or before the event, as
@@ -112,8 +129,28 @@ export interface UsageEventRecord {
    * Set when a subagent made the call. Claude Code: the agent id from its
    * transcript name (`agent-<id>.jsonl`), parent = this session. Codex: the
    * forked or spawned rollout's own session id and the session it came from.
+   * `rootSessionId` is the session at the top of the chain when known (a
+   * Claude Code subagent's root is its session; a Codex one's is
+   * `session_meta.session_id`, else the end of its parent chain). `kind` is
+   * `subagent` for an agent-spawned one and `fork` for a person's fork.
    */
-  subagent?: { agentId: string; parentSessionId: string };
+  subagent?: {
+    agentId: string;
+    parentSessionId: string;
+    rootSessionId?: string;
+    kind?: 'subagent' | 'fork';
+  };
+  /**
+   * Subagent calls only: the ordinal of the root session's prompt in effect
+   * when the subagent started (its transcript's first record for Claude
+   * Code, `session_meta.payload.timestamp` for Codex), so a background agent
+   * that keeps working after the next prompt still counts toward the prompt
+   * that started it (`promptOrdinal` follows the call's own time). `null`
+   * when the root was not found, is out of scope, or no prompt precedes the
+   * start. Absent for human forks, OpenCode, and calls that are not a
+   * subagent's.
+   */
+  parentPromptOrdinal?: number | null;
 }
 
 /** One session that contributed events. */
@@ -127,10 +164,23 @@ export interface UsageSessionRecord {
   lastTimestamp: number | null;
   eventCount: number;
   fromCache: boolean;
+  /** Key of the session file, as prompt history and `listAgentSessions()` report it. */
+  sessionKey?: string;
 }
 
 export interface CollectUsageEventsOptions {
-  providers: SessionProviderBase[];
+  /**
+   * Providers to read. Omit to read Claude Code and Codex through providers
+   * built for this call from `homes` (OpenCode is read only when passed
+   * here). Passing both `providers` and `homes` is a `TypeError`.
+   */
+  providers?: SessionProviderBase[];
+  /**
+   * Claude Code and Codex homes for the providers this call builds (see
+   * `SessionHomesOptions`; `[]` skips that provider). A relative or blank
+   * explicit entry throws `RangeError`.
+   */
+  homes?: SessionHomesOptions;
   /** Only sessions modified after this instant, and only events at or after it. */
   since?: Date | string;
   /** Only events at or before this instant. */
@@ -149,6 +199,46 @@ export interface CollectUsageEventsOptions {
    * true with `workspacePaths`, false with `workspacePath`.
    */
   includeWorktrees?: boolean;
+  /**
+   * `contained` (the default with `workspacePaths`): a session counts only
+   * when the cwd it recorded resolves inside one of the roots, checked per
+   * session before it is read; a session with no cwd, or one whose directory
+   * no longer exists, is left out and counted in `stats.sessionsOutOfScope`.
+   * Claude Code subagent transcripts follow their parent session.
+   * `listed` (the default with the legacy `workspacePath`): whatever the
+   * providers' workspace filters list, which can include look-alike
+   * projects (`/a/app` and `/b/app`, or a Codex session in a parent folder).
+   */
+  scope?: SessionScopeMode;
+  /**
+   * Leave out Claude Code's `<synthetic>` placeholder messages (never
+   * billed), counting them in `stats.syntheticEventsExcluded`. Default false.
+   */
+  excludeSynthetic?: boolean;
+  /**
+   * A listing from `listAgentSessions()` to read instead of listing again
+   * (its roots scope the call; `scope` still applies). Passing
+   * `workspacePath`, `workspacePaths`, `includeWorktrees` or `homes` with it
+   * is a `TypeError`. Without `providers`, Claude Code and Codex providers
+   * are built for the listing's homes.
+   */
+  listing?: SessionListing;
+  /**
+   * Per-call limits on the sessions read from disk (cache hits are free and
+   * never counted). A session is never split: the call stops before the
+   * session that would pass a bound, returns `hasMore: true`, and the
+   * returned `cursor` continues from there. The first read of a call always
+   * proceeds. Without `bounds` (and `cursor`) every session is read.
+   */
+  bounds?: UsageEventsBounds;
+  /**
+   * The `cursor` of an earlier result. Sessions whose fingerprint it already
+   * records are skipped (counted in `stats.sessionsSkippedUnchanged`);
+   * changed and new ones come back whole, listed in `changed`. When prices
+   * changed since (`pricingChanged`), every session comes back. Cannot be
+   * combined with `until` (`TypeError`).
+   */
+  cursor?: UsageEventsCursor;
   /** Preview-read concurrency (see `listSessionPreviewsAsync`). */
   concurrency?: number;
   /** Cache directory (default `<configDir>/usage-cache`). */
@@ -165,6 +255,51 @@ export interface CollectUsageEventsOptions {
   signal?: AbortSignal;
 }
 
+export interface CollectUsageEventsStats {
+  /** Sessions a `contained` scope left out (no recorded cwd, or one outside the roots). */
+  sessionsOutOfScope: number;
+  /** `<synthetic>` events left out by `excludeSynthetic`. */
+  syntheticEventsExcluded: number;
+  /** Sessions skipped because the `cursor` already had them unchanged. */
+  sessionsSkippedUnchanged: number;
+}
+
+/** Per-call bounds on the sessions `collectUsageEvents` reads from disk. */
+export interface UsageEventsBounds {
+  /** Sessions read from disk (cache misses). */
+  maxSessions?: number;
+  /** Bytes of the session files (and Claude Code subagent transcripts) read from disk. */
+  maxTotalBytes?: number;
+  /** Events in the window from the sessions read from disk. */
+  maxEvents?: number;
+  /** Wall-clock budget, checked before each read from disk. */
+  deadlineMs?: number;
+}
+
+export type UsageEventsBound = 'maxSessions' | 'maxTotalBytes' | 'maxEvents' | 'deadline';
+
+/**
+ * Where an incremental collection stands: the fingerprint each session was
+ * delivered at, the session key the next call starts from, and the pricing
+ * digest the events were priced with. Plain JSON; store it as is.
+ */
+export interface UsageEventsCursor {
+  version: 1;
+  /** Session key → fingerprint delivered. */
+  sessions: Record<string, string>;
+  /** Session key the next call starts at, after a bound stopped this one. */
+  next?: string;
+  /** `getPricingCatalogInfo().digest` when the events were priced. */
+  pricing?: string;
+}
+
+/** A session a result returned because it was new or changed. */
+export interface UsageSessionRef {
+  provider: ProviderId;
+  sessionId: string;
+  sessionKey: string;
+}
+
 export interface CollectUsageEventsResult {
   /** Events within the window, oldest first. */
   events: UsageEventRecord[];
@@ -174,6 +309,28 @@ export interface CollectUsageEventsResult {
   cacheMisses: number;
   /** Realpaths of the roots listed, after worktree expansion, when the call was scoped. */
   roots?: string[];
+  /*
+   * The fields below are always set by `collectUsageEvents()` since 0.31. They
+   * are optional in the type so results built by hand (test doubles) before
+   * 0.31 keep compiling.
+   */
+  stats?: CollectUsageEventsStats;
+  /** Pass to the next call to receive only what changed (see `cursor`). */
+  cursor?: UsageEventsCursor;
+  /** A bound stopped the call; call again with `cursor` to continue. */
+  hasMore?: boolean;
+  /** The bounds that stopped this call. */
+  boundsHit?: UsageEventsBound[];
+  /** Sessions returned whose fingerprint differed from the given cursor (all, without one). */
+  changed?: UsageSessionRef[];
+  /** Prices changed since the given cursor, so every session was returned again. */
+  pricingChanged?: boolean;
+  /**
+   * The scheme `promptOrdinal` and `parentPromptOrdinal` follow
+   * (`PROMPT_ORDINAL_SCHEME_VERSION`), shared with prompt history and
+   * tool-call origins.
+   */
+  promptOrdinalScheme?: number;
 }
 
 /** Compact on-disk event: raw counts only, priced when loaded. */
@@ -197,6 +354,18 @@ interface CachedUsageEvent {
   sa?: string;
 }
 
+/** A Codex session that is a subagent or fork, as cached. */
+interface CachedSessionSubagent {
+  agentId: string;
+  parentSessionId: string;
+  /** Start (`session_meta.payload.timestamp`, ms); null when unrecorded. */
+  s?: number | null;
+  /** Kind; absent only in entries written before parent prompts were recorded. */
+  k?: 'subagent' | 'fork';
+  /** `session_meta.session_id` when it names another session (the root). */
+  r?: string;
+}
+
 interface UsageCacheFile {
   version: number;
   provider: ProviderId;
@@ -205,7 +374,11 @@ interface UsageCacheFile {
   project: string | null;
   events: CachedUsageEvent[];
   /** The whole session is a subagent or fork (Codex): applies to events without `sa`. */
-  subagent?: { agentId: string; parentSessionId: string };
+  subagent?: CachedSessionSubagent;
+  /** Prompt marks of the main transcript as `[ordinal, timestampMs]`. */
+  pm?: Array<[number, number]>;
+  /** Claude Code: start (first record, ms) of each subagent transcript, by agent id. */
+  as?: Record<string, number | null>;
 }
 
 export function getUsageCacheDir(): string {
@@ -321,7 +494,6 @@ function priceCachedEvent(
   sessionId: string,
   project: string | null,
   sessionFile: string,
-  sessionSubagent: UsageCacheFile['subagent'],
 ): UsageEventRecord {
   const reasoningTokens = typeof cached.rt === 'number' && cached.rt > 0 ? cached.rt : 0;
   const usage: NormalizedUsage = {
@@ -342,10 +514,6 @@ function priceCachedEvent(
     usage,
     modelId: cached.m === 'unknown' ? undefined : cached.m,
   });
-  const subagent =
-    typeof cached.sa === 'string' && cached.sa
-      ? { agentId: cached.sa, parentSessionId: sessionId }
-      : sessionSubagent;
   return {
     timestamp: cached.t,
     provider,
@@ -367,7 +535,6 @@ function priceCachedEvent(
       ? { promptOrdinal: cached.po }
       : {}),
     ...(typeof cached.rid === 'string' ? { requestId: cached.rid } : {}),
-    ...(subagent ? { subagent: { ...subagent } } : {}),
   };
 }
 
@@ -380,15 +547,13 @@ interface SubagentFile {
   modifiedAt: number;
 }
 
-const CLAUDE_AGENT_FILE = /^agent-(.+)\.jsonl$/;
-
 /** Claude Code subagent transcripts of a session, sorted by name. */
 function claudeSubagentFiles(preview: SessionPreview): SubagentFile[] {
   if (preview.provider !== 'claude-code') return [];
-  const dir = path.join(path.dirname(preview.filePath), preview.sessionId, 'subagents');
+  const dir = getClaudeSubagentsDir(preview.filePath);
   let names: string[];
   try {
-    names = fs.readdirSync(dir).filter((name) => CLAUDE_AGENT_FILE.test(name));
+    names = fs.readdirSync(dir).filter((name) => parseClaudeSubagentFileName(name) !== null);
   } catch {
     return [];
   }
@@ -399,7 +564,7 @@ function claudeSubagentFiles(preview: SessionPreview): SubagentFile[] {
       files.push({
         path: path.join(dir, name),
         name,
-        agentId: CLAUDE_AGENT_FILE.exec(name)?.[1] ?? name,
+        agentId: parseClaudeSubagentFileName(name) ?? name,
         sizeBytes: stat.size,
         modifiedAt: stat.mtimeMs,
       });
@@ -508,35 +673,85 @@ function assignPromptOrdinals(
 async function addPromptOrdinals(
   preview: SessionPreview,
   events: CachedUsageEvent[],
-): Promise<boolean> {
-  if (preview.provider !== 'claude-code' && preview.provider !== 'codex') return true;
+): Promise<{ ok: boolean; marks?: PromptOrdinalMark[] }> {
+  if (preview.provider !== 'claude-code' && preview.provider !== 'codex') return { ok: true };
   let marks: PromptOrdinalMark[];
   try {
     marks = await readPromptOrdinalMarks(preview.provider, preview.sessionId, preview.filePath);
   } catch {
-    return false;
+    return { ok: false };
   }
   assignPromptOrdinals(events, marks);
+  return { ok: true, marks };
+}
+
+function packMarks(marks: readonly PromptOrdinalMark[]): Array<[number, number]> {
+  return marks.map((mark) => [mark.ordinal, mark.timestampMs]);
+}
+
+function unpackMarks(value: unknown): PromptOrdinalMark[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const marks: PromptOrdinalMark[] = [];
+  for (const item of value) {
+    if (!Array.isArray(item) || typeof item[0] !== 'number' || typeof item[1] !== 'number') {
+      return undefined;
+    }
+    marks.push({ ordinal: item[0], timestampMs: item[1] });
+  }
+  return marks;
+}
+
+function validAgentStarts(value: unknown): Record<string, number | null> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const starts: Record<string, number | null> = {};
+  for (const [agentId, start] of Object.entries(value as Record<string, unknown>)) {
+    if (start !== null && (typeof start !== 'number' || !Number.isFinite(start))) return undefined;
+    starts[agentId] = start;
+  }
+  return starts;
+}
+
+/**
+ * An entry written before parent prompts were recorded lacks what this
+ * version needs to attribute subagent calls; it is read again (once: the
+ * new entry has the fields).
+ */
+function cacheEntryComplete(entry: UsageCacheFile): boolean {
+  if (
+    entry.provider === 'claude-code' &&
+    entry.events.some((event) => typeof event.sa === 'string')
+  ) {
+    return validAgentStarts(entry.as) !== undefined && unpackMarks(entry.pm) !== undefined;
+  }
+  if (entry.provider === 'codex' && entry.subagent) {
+    return entry.subagent.k === 'subagent' || entry.subagent.k === 'fork';
+  }
   return true;
+}
+
+/** Start of each Claude Code subagent transcript: its first record's time. */
+async function claudeAgentStarts(
+  subagents: readonly SubagentFile[],
+): Promise<Record<string, number | null>> {
+  const starts: Record<string, number | null> = {};
+  for (const file of subagents) starts[file.agentId] = await readFirstRecordTimestamp(file.path);
+  return starts;
 }
 
 /** Parent of a Codex rollout that is a fork or a spawned subagent, from its first line only. */
 async function codexSessionSubagent(
   preview: SessionPreview,
-): Promise<UsageCacheFile['subagent'] | undefined> {
+): Promise<CachedSessionSubagent | undefined> {
   if (preview.provider !== 'codex') return undefined;
-  const { line } = await readFirstLineAsync(preview.filePath);
-  if (!line) return undefined;
-  let first: unknown;
-  try {
-    first = JSON.parse(line);
-  } catch {
-    return undefined;
-  }
-  const origin = codexRolloutOrigin(first);
-  if (!origin.parentId || (!origin.isSubagent && !origin.forkedFromId)) return undefined;
-  if (origin.parentId === preview.sessionId) return undefined;
-  return { agentId: preview.sessionId, parentSessionId: origin.parentId };
+  const head = await readCodexRolloutHead(preview.sessionId, preview.filePath);
+  if (!head?.parentId || !head.kind) return undefined;
+  return {
+    agentId: preview.sessionId,
+    parentSessionId: head.parentId,
+    s: head.startMs,
+    k: head.kind,
+    ...(head.recordedRootId ? { r: head.recordedRootId } : {}),
+  };
 }
 
 function yieldToEventLoop(): Promise<void> {
@@ -560,37 +775,214 @@ export async function collectUsageEvents(
   const useCache = !options.noCache;
   const signal = options.signal;
 
+  if (options.providers && options.homes) {
+    throw new TypeError('collectUsageEvents: pass either `providers` or `homes`, not both.');
+  }
+  if (options.cursor !== undefined && options.until !== undefined) {
+    throw new TypeError(
+      'collectUsageEvents: `until` cannot be combined with `cursor` (a cursor records whole sessions).',
+    );
+  }
+  if (options.listing !== undefined) {
+    if (!isSessionListing(options.listing)) {
+      throw new TypeError('collectUsageEvents: `listing` must come from listAgentSessions().');
+    }
+    assertListingAlone('collectUsageEvents', options as unknown as Record<string, unknown>, [
+      'workspacePath',
+      'workspacePaths',
+      'includeWorktrees',
+      'homes',
+    ]);
+  }
+  const bounds = validBounds(options.bounds);
+  const owned = options.providers ? [] : createUsageProviders(options.homes, options.listing);
+  try {
+    return await collectWithProviders(
+      { ...options, providers: options.providers ?? owned },
+      { sinceMs, untilMs, cacheDir, useCache, signal, bounds },
+    );
+  } finally {
+    for (const provider of owned) provider.dispose?.();
+  }
+}
+
+/**
+ * Claude Code and Codex providers for a call that passed homes, a listing,
+ * or nothing (OpenCode is read only when passed in `providers`).
+ */
+function createUsageProviders(
+  homes: SessionHomesOptions | undefined,
+  listing: SessionListing | undefined,
+): SessionProviderBase[] {
+  const factories = [claudeCodeProviderFactory, codexProviderFactory];
+  if (listing) {
+    return createSessionProvidersFrom(factories, {
+      providerIds: listing.providers,
+      homes: { claudeHomes: listing.homes.claude, codexHomes: listing.homes.codex },
+      includeCompressedRollouts: listing.includeCompressedRollouts,
+    }).providers;
+  }
+  return createSessionProvidersFrom(factories, homes ? { homes } : {}).providers;
+}
+
+function validBounds(bounds: UsageEventsBounds | undefined): UsageEventsBounds | undefined {
+  if (bounds === undefined) return undefined;
+  const checked: UsageEventsBounds = {};
+  for (const name of ['maxSessions', 'maxTotalBytes', 'maxEvents', 'deadlineMs'] as const) {
+    const value = bounds[name];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || Number.isNaN(value) || value < 0) {
+      throw new RangeError(`collectUsageEvents: \`bounds.${name}\` must be a number >= 0.`);
+    }
+    checked[name] = value;
+  }
+  return checked;
+}
+
+interface CollectContext {
+  sinceMs: number | null;
+  untilMs: number | null;
+  cacheDir: string;
+  useCache: boolean;
+  signal: AbortSignal | undefined;
+  bounds: UsageEventsBounds | undefined;
+}
+
+/** A listed session in collection order. */
+interface OrderedPreview {
+  preview: SessionPreview;
+  key: string;
+  /** Position in the listing (newest first), the order `sessions` keeps. */
+  index: number;
+}
+
+/** One session read (or loaded from cache) in this call. */
+interface LoadedSession extends OrderedPreview {
+  provider: SessionProviderBase;
+  cachedEvents: CachedUsageEvent[];
+  sessionSubagent: CachedSessionSubagent | undefined;
+  /** Prompt marks of the main transcript, when known. */
+  marks?: PromptOrdinalMark[];
+  /** Claude Code: start of each subagent transcript. */
+  agentStarts?: Record<string, number | null>;
+  project: string | null;
+  fingerprint: string;
+  fromCache: boolean;
+  /** Read from disk in this call (a cache miss). */
+  missed: boolean;
+}
+
+function rotateOrdered(ordered: OrderedPreview[], next: string | undefined): OrderedPreview[] {
+  if (!next) return ordered;
+  const index = ordered.findIndex((item) => item.key >= next);
+  return index <= 0 ? ordered : [...ordered.slice(index), ...ordered.slice(0, index)];
+}
+
+async function collectWithProviders(
+  options: CollectUsageEventsOptions & { providers: SessionProviderBase[] },
+  context: CollectContext,
+): Promise<CollectUsageEventsResult> {
+  const { sinceMs, untilMs, cacheDir, useCache, signal, bounds } = context;
+  const startedAt = Date.now();
   signal?.throwIfAborted();
-  const scope = usageScope(options);
-  const listed = await listScopedPreviews(options, scope?.listingRoots);
+  const cursorIn =
+    options.cursor === undefined ? undefined : parseUsageEventsCursor(options.cursor);
+  const pricing = getPricingCatalogInfo().digest;
+  const pricingChanged = cursorIn?.pricing !== undefined && cursorIn.pricing !== pricing;
+
+  const listed = await listSessionPreviewsAsync(options.providers, {
+    since: options.since,
+    ...(options.listing
+      ? { listing: options.listing }
+      : {
+          workspacePath: options.workspacePath,
+          workspacePaths: options.workspacePaths,
+          includeWorktrees: options.includeWorktrees,
+        }),
+    scope: options.scope,
+    limit: Number.MAX_SAFE_INTEGER,
+    concurrency: options.concurrency,
+  });
   signal?.throwIfAborted();
+  const stats: CollectUsageEventsStats = {
+    sessionsOutOfScope: listed.stats?.sessionsOutOfScope ?? 0,
+    syntheticEventsExcluded: 0,
+    sessionsSkippedUnchanged: 0,
+  };
   const diagnostics = [...listed.diagnostics];
   for (const diagnostic of listed.diagnostics) options.onDiagnostic?.(diagnostic);
   const providerById = new Map(options.providers.map((provider) => [provider.id, provider]));
 
-  const events: UsageEventRecord[] = [];
-  const sessions: UsageSessionRecord[] = [];
+  // Deterministic order (by session key), resumed where the cursor stopped.
+  const ordered = rotateOrdered(
+    listed.previews
+      .map((preview, index) => ({
+        preview,
+        key: computeSessionKey(preview.provider, preview.sessionId, preview.filePath),
+        index,
+      }))
+      .sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0)),
+    cursorIn?.next,
+  );
+
+  const cursorOut: UsageEventsCursor = { version: 1, sessions: {}, pricing };
+  const boundsHit = new Set<UsageEventsBound>();
+  const loaded: LoadedSession[] = [];
   let cacheHits = 0;
   let cacheMisses = 0;
+  let missBytes = 0;
+  let missEvents = 0;
   let wroteCache = false;
+  let stoppedAt: number | null = null;
 
-  for (const preview of listed.previews) {
+  const boundReached = (sessionBytes: number): UsageEventsBound | null => {
+    // The first miss of a call always proceeds, so every call makes progress.
+    if (!bounds || cacheMisses === 0) return null;
+    if (bounds.deadlineMs !== undefined && Date.now() - startedAt >= bounds.deadlineMs) {
+      return 'deadline';
+    }
+    if (bounds.maxSessions !== undefined && cacheMisses >= bounds.maxSessions) return 'maxSessions';
+    if (bounds.maxEvents !== undefined && missEvents >= bounds.maxEvents) return 'maxEvents';
+    if (bounds.maxTotalBytes !== undefined && missBytes + sessionBytes > bounds.maxTotalBytes) {
+      return 'maxTotalBytes';
+    }
+    return null;
+  };
+
+  for (let position = 0; position < ordered.length; position++) {
+    const item = ordered[position];
+    const { preview, key } = item;
     signal?.throwIfAborted();
     const provider = providerById.get(preview.provider);
     if (!provider) continue;
     const subagentFiles = claudeSubagentFiles(preview);
     const fingerprint = sessionFingerprint(preview, subagentFiles);
+    if (cursorIn && !pricingChanged && cursorIn.sessions[key] === fingerprint) {
+      // Delivered whole by an earlier call and unchanged since.
+      cursorOut.sessions[key] = fingerprint;
+      stats.sessionsSkippedUnchanged += 1;
+      continue;
+    }
     const filePath = cacheFilePath(cacheDir, preview.provider, preview.sessionId);
 
     let cachedEvents: CachedUsageEvent[] | null = null;
-    let sessionSubagent: UsageCacheFile['subagent'];
+    let sessionSubagent: CachedSessionSubagent | undefined;
+    let marks: PromptOrdinalMark[] | undefined;
+    let agentStarts: Record<string, number | null> | undefined;
     let project = preview.workspacePath;
     let fromCache = false;
     if (useCache) {
       const cached = readCache(filePath);
-      if (cached && cached.fingerprint === fingerprint && cached.sessionId === preview.sessionId) {
+      if (
+        cached &&
+        cached.fingerprint === fingerprint &&
+        cached.sessionId === preview.sessionId &&
+        cacheEntryComplete(cached)
+      ) {
         cachedEvents = cached.events;
         sessionSubagent = validSubagent(cached.subagent);
+        marks = unpackMarks(cached.pm);
+        agentStarts = validAgentStarts(cached.as);
         project = project ?? cached.project;
         fromCache = true;
         cacheHits += 1;
@@ -599,7 +991,16 @@ export async function collectUsageEvents(
     }
 
     if (!cachedEvents) {
+      const sessionBytes =
+        preview.sizeBytes + subagentFiles.reduce((sum, file) => sum + file.sizeBytes, 0);
+      const stop = boundReached(sessionBytes);
+      if (stop) {
+        boundsHit.add(stop);
+        stoppedAt = position;
+        break;
+      }
       cacheMisses += 1;
+      missBytes += sessionBytes;
       try {
         cachedEvents = readSessionUsage(provider, preview, subagentFiles);
       } catch (error) {
@@ -617,9 +1018,11 @@ export async function collectUsageEvents(
         continue;
       }
       // Ordinals and origin are best-effort: a failure costs only the cache write.
-      const ordinalsRead = await addPromptOrdinals(preview, cachedEvents);
+      const ordinals = await addPromptOrdinals(preview, cachedEvents);
+      marks = ordinals.marks;
       sessionSubagent = await codexSessionSubagent(preview).catch(() => undefined);
-      if (useCache && ordinalsRead) {
+      if (subagentFiles.length > 0) agentStarts = await claudeAgentStarts(subagentFiles);
+      if (useCache && ordinals.ok) {
         const record: UsageCacheFile = {
           version: USAGE_CACHE_VERSION,
           provider: preview.provider,
@@ -628,6 +1031,8 @@ export async function collectUsageEvents(
           project,
           events: cachedEvents,
           ...(sessionSubagent ? { subagent: sessionSubagent } : {}),
+          ...(marks ? { pm: packMarks(marks) } : {}),
+          ...(agentStarts ? { as: agentStarts } : {}),
         };
         try {
           await atomicWriteJson(filePath, record);
@@ -639,22 +1044,63 @@ export async function collectUsageEvents(
       await yieldToEventLoop();
     }
 
+    const session: LoadedSession = {
+      ...item,
+      provider,
+      cachedEvents,
+      sessionSubagent,
+      ...(marks ? { marks } : {}),
+      ...(agentStarts ? { agentStarts } : {}),
+      project,
+      fingerprint,
+      fromCache,
+      missed: !fromCache,
+    };
+    loaded.push(session);
+    cursorOut.sessions[key] = fingerprint;
+    if (session.missed) missEvents += countWindowEvents(cachedEvents, sinceMs, untilMs);
+  }
+
+  if (stoppedAt !== null) {
+    // Sessions after the stop keep what an earlier call delivered.
+    for (const { key } of ordered.slice(stoppedAt)) {
+      const previous = cursorIn?.sessions[key];
+      if (previous !== undefined) cursorOut.sessions[key] = previous;
+    }
+    cursorOut.next = ordered[stoppedAt].key;
+  }
+
+  if (wroteCache) pruneUsageCache(MAX_USAGE_CACHE_FILES, cacheDir);
+
+  const lineage = await codexLineage(loaded, listed.previews, listed.roots, providerById);
+
+  const events: UsageEventRecord[] = [];
+  const sessions: UsageSessionRecord[] = [];
+  const changed: UsageSessionRef[] = [];
+  for (const session of [...loaded].sort((left, right) => left.index - right.index)) {
+    const { preview, key } = session;
+    const codex = lineage.get(session);
     let first: number | null = null;
     let last: number | null = null;
     let count = 0;
-    for (const cached of cachedEvents) {
+    for (const cached of session.cachedEvents) {
       if (sinceMs !== null && cached.t < sinceMs) continue;
       if (untilMs !== null && cached.t > untilMs) continue;
-      events.push(
-        priceCachedEvent(
+      if (options.excludeSynthetic && cached.m === SYNTHETIC_MODEL) {
+        stats.syntheticEventsExcluded += 1;
+        continue;
+      }
+      events.push({
+        ...priceCachedEvent(
           cached,
           preview.provider,
           preview.sessionId,
-          project,
+          session.project,
           preview.filePath,
-          sessionSubagent,
         ),
-      );
+        sessionKey: key,
+        ...eventSubagent(session, cached, codex),
+      });
       first = first === null ? cached.t : Math.min(first, cached.t);
       last = last === null ? cached.t : Math.max(last, cached.t);
       count += 1;
@@ -663,16 +1109,18 @@ export async function collectUsageEvents(
       provider: preview.provider,
       sessionId: preview.sessionId,
       filePath: preview.filePath,
-      project,
-      fingerprint,
+      project: session.project,
+      fingerprint: session.fingerprint,
       firstTimestamp: first,
       lastTimestamp: last,
       eventCount: count,
-      fromCache,
+      fromCache: session.fromCache,
+      sessionKey: key,
     });
+    if (pricingChanged || cursorIn?.sessions[key] !== session.fingerprint) {
+      changed.push({ provider: preview.provider, sessionId: preview.sessionId, sessionKey: key });
+    }
   }
-
-  if (wroteCache) pruneUsageCache(MAX_USAGE_CACHE_FILES, cacheDir);
 
   events.sort((a, b) => a.timestamp - b.timestamp);
   return {
@@ -681,59 +1129,219 @@ export async function collectUsageEvents(
     diagnostics,
     cacheHits,
     cacheMisses,
-    ...(scope ? { roots: scope.roots } : {}),
+    ...(listed.roots ? { roots: listed.roots } : {}),
+    stats,
+    cursor: cursorOut,
+    hasMore: stoppedAt !== null,
+    boundsHit: [...boundsHit],
+    changed,
+    pricingChanged,
+    promptOrdinalScheme: PROMPT_ORDINAL_SCHEME_VERSION,
   };
 }
 
-function validSubagent(value: unknown): UsageCacheFile['subagent'] {
-  if (typeof value !== 'object' || value === null) return undefined;
-  const { agentId, parentSessionId } = value as Record<string, unknown>;
-  return typeof agentId === 'string' && typeof parentSessionId === 'string'
-    ? { agentId, parentSessionId }
-    : undefined;
+function countWindowEvents(
+  events: readonly CachedUsageEvent[],
+  sinceMs: number | null,
+  untilMs: number | null,
+): number {
+  let count = 0;
+  for (const event of events) {
+    if (sinceMs !== null && event.t < sinceMs) continue;
+    if (untilMs !== null && event.t > untilMs) continue;
+    count += 1;
+  }
+  return count;
 }
 
-/** The roots to list, or undefined for an unscoped (or legacy single-root) call. */
-function usageScope(options: CollectUsageEventsOptions): ResolvedWorkspaceRoots | undefined {
-  if (options.workspacePaths) {
-    return resolveWorkspaceRoots(options.workspacePaths, {
-      includeWorktrees: options.includeWorktrees !== false,
-    });
+/**
+ * A usage cursor from storage or the wire, checked; undefined when it is not
+ * one this version wrote (callers then start over).
+ */
+export function parseUsageEventsCursor(value: unknown): UsageEventsCursor | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.version !== 1) return undefined;
+  const sessions = candidate.sessions;
+  if (typeof sessions !== 'object' || sessions === null || Array.isArray(sessions)) {
+    return undefined;
   }
-  if (options.workspacePath && options.includeWorktrees === true) {
-    return resolveWorkspaceRoots([options.workspacePath], { includeWorktrees: true });
+  const parsed: UsageEventsCursor = { version: 1, sessions: {} };
+  for (const [key, fingerprint] of Object.entries(sessions as Record<string, unknown>)) {
+    if (typeof fingerprint !== 'string') return undefined;
+    parsed.sessions[key] = fingerprint;
   }
-  return undefined;
+  if (candidate.next !== undefined) {
+    if (typeof candidate.next !== 'string') return undefined;
+    parsed.next = candidate.next;
+  }
+  if (candidate.pricing !== undefined) {
+    if (typeof candidate.pricing !== 'string') return undefined;
+    parsed.pricing = candidate.pricing;
+  }
+  return parsed;
 }
 
-/** Lists previews once per root and keeps each session file once. */
-async function listScopedPreviews(
-  options: CollectUsageEventsOptions,
-  listingRoots: string[] | undefined,
-): Promise<{ previews: SessionPreview[]; diagnostics: SessionProviderDiagnostic[] }> {
-  const list = (workspacePath: string | undefined) =>
-    listSessionPreviewsAsync(options.providers, {
-      since: options.since,
-      workspacePath,
-      limit: Number.MAX_SAFE_INTEGER,
-      concurrency: options.concurrency,
-    });
-  if (!listingRoots) return list(options.workspacePath);
-  const byFile = new Map<string, SessionPreview>();
-  const diagnostics = new Map<string, SessionProviderDiagnostic>();
-  for (const root of listingRoots) {
-    options.signal?.throwIfAborted();
-    const listed = await list(root);
-    // Each root lists every provider again; report each problem once.
-    for (const diagnostic of listed.diagnostics) {
-      diagnostics.set(JSON.stringify(diagnostic), diagnostic);
-    }
-    for (const preview of listed.previews) {
-      if (!byFile.has(preview.filePath)) byFile.set(preview.filePath, preview);
-    }
-  }
-  const previews = [...byFile.values()].sort(
-    (left, right) => Date.parse(right.modifiedAt) - Date.parse(left.modifiedAt),
+/** What a Codex subagent or fork's events carry: its root and parent prompt. */
+interface CodexLineage {
+  rootSessionId?: string;
+  /** Subagents only; null when the root or its prompts are unknown. */
+  parentPromptOrdinal?: number | null;
+}
+
+/**
+ * Root and parent prompt of every Codex subagent or fork that was loaded.
+ * Roots are looked up among the loaded and listed sessions first, then by
+ * id through the Codex provider; a root found that way must be inside the
+ * call's roots when the call was scoped.
+ */
+async function codexLineage(
+  loaded: readonly LoadedSession[],
+  previews: readonly SessionPreview[],
+  roots: readonly string[] | undefined,
+  providerById: ReadonlyMap<ProviderId, SessionProviderBase>,
+): Promise<Map<LoadedSession, CodexLineage>> {
+  const result = new Map<LoadedSession, CodexLineage>();
+  const children = loaded.filter(
+    (session) => session.preview.provider === 'codex' && session.sessionSubagent,
   );
-  return { previews, diagnostics: [...diagnostics.values()] };
+  if (children.length === 0) return result;
+
+  const loadedById = new Map<string, LoadedSession>();
+  for (const session of loaded) {
+    if (session.preview.provider === 'codex') loadedById.set(session.preview.sessionId, session);
+  }
+  const listedById = new Map<string, SessionPreview>();
+  for (const preview of previews) {
+    if (preview.provider === 'codex') listedById.set(preview.sessionId, preview);
+  }
+  const codexProvider = providerById.get('codex');
+  const heads = new Map<string, Promise<{ head: CodexRolloutHead; filePath: string } | null>>();
+  const realpaths = new Map<string, string | null>();
+
+  const locate = (sessionId: string) => {
+    let found = heads.get(sessionId);
+    if (!found) {
+      found = (async () => {
+        const known = loadedById.get(sessionId);
+        if (known) {
+          const sub = known.sessionSubagent;
+          return {
+            filePath: known.preview.filePath,
+            head: {
+              sessionId,
+              ...(sub?.k ? { parentId: sub.parentSessionId, kind: sub.k } : {}),
+              ...(sub?.r ? { recordedRootId: sub.r } : {}),
+              startMs: sub?.s ?? null,
+              cwd: known.project,
+            },
+          };
+        }
+        const listed = listedById.get(sessionId);
+        let filePath = listed?.filePath ?? null;
+        if (!filePath) {
+          try {
+            filePath = codexProvider?.findSessionById?.('', sessionId) ?? null;
+          } catch {
+            filePath = null;
+          }
+        }
+        if (!filePath) return null;
+        const head = await readCodexRolloutHead(sessionId, filePath);
+        if (!head) return null;
+        // A root found outside the listing must still be in scope.
+        if (!listed && roots && !pathWithinRoots(head.cwd, roots, realpaths)) return null;
+        return { head, filePath };
+      })();
+      heads.set(sessionId, found);
+    }
+    return found;
+  };
+
+  const marksCache = new Map<string, Promise<PromptOrdinalMark[] | null>>();
+  const marksOf = (sessionId: string, filePath: string) => {
+    let marks = marksCache.get(sessionId);
+    if (!marks) {
+      const known = loadedById.get(sessionId)?.marks;
+      marks = known
+        ? Promise.resolve(known)
+        : readPromptOrdinalMarks('codex', sessionId, filePath).catch(() => null);
+      marksCache.set(sessionId, marks);
+    }
+    return marks;
+  };
+
+  for (const child of children) {
+    const sub = child.sessionSubagent!;
+    const head: CodexRolloutHead = {
+      sessionId: child.preview.sessionId,
+      parentId: sub.parentSessionId,
+      ...(sub.k ? { kind: sub.k } : {}),
+      ...(sub.r ? { recordedRootId: sub.r } : {}),
+      startMs: sub.s ?? null,
+      cwd: child.project,
+    };
+    const resolved = await resolveCodexRoot(head, async (id) => (await locate(id))?.head ?? null);
+    const lineage: CodexLineage = {
+      ...(resolved.rootSessionId ? { rootSessionId: resolved.rootSessionId } : {}),
+    };
+    if (sub.k === 'subagent') {
+      let ordinal: number | null = null;
+      if (resolved.rootSessionId && resolved.root) {
+        const located = await locate(resolved.rootSessionId);
+        const marks = located ? await marksOf(resolved.rootSessionId, located.filePath) : null;
+        ordinal = marks ? ordinalAtOrBefore(marks, sub.s) : null;
+      }
+      lineage.parentPromptOrdinal = ordinal;
+    }
+    result.set(child, lineage);
+  }
+  return result;
+}
+
+/** The subagent tag (and parent prompt) of one event. */
+function eventSubagent(
+  session: LoadedSession,
+  cached: CachedUsageEvent,
+  codex: CodexLineage | undefined,
+): Pick<UsageEventRecord, 'subagent' | 'parentPromptOrdinal'> {
+  const sessionId = session.preview.sessionId;
+  if (typeof cached.sa === 'string' && cached.sa) {
+    const start = session.agentStarts?.[cached.sa];
+    return {
+      subagent: {
+        agentId: cached.sa,
+        parentSessionId: sessionId,
+        rootSessionId: sessionId,
+        kind: 'subagent',
+      },
+      ...(session.marks ? { parentPromptOrdinal: ordinalAtOrBefore(session.marks, start) } : {}),
+    };
+  }
+  const sub = session.sessionSubagent;
+  if (!sub) return {};
+  return {
+    subagent: {
+      agentId: sub.agentId,
+      parentSessionId: sub.parentSessionId,
+      ...(codex?.rootSessionId ? { rootSessionId: codex.rootSessionId } : {}),
+      ...(sub.k ? { kind: sub.k } : {}),
+    },
+    ...(codex && codex.parentPromptOrdinal !== undefined
+      ? { parentPromptOrdinal: codex.parentPromptOrdinal }
+      : {}),
+  };
+}
+
+function validSubagent(value: unknown): CachedSessionSubagent | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { agentId, parentSessionId, s, k, r } = value as Record<string, unknown>;
+  if (typeof agentId !== 'string' || typeof parentSessionId !== 'string') return undefined;
+  return {
+    agentId,
+    parentSessionId,
+    ...(s === null || (typeof s === 'number' && Number.isFinite(s)) ? { s } : {}),
+    ...(k === 'subagent' || k === 'fork' ? { k } : {}),
+    ...(typeof r === 'string' && r ? { r } : {}),
+  };
 }

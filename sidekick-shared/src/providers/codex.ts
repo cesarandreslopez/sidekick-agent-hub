@@ -41,6 +41,9 @@ import { discoverCodexSubagents } from './codexSubagents';
 import { codexRolloutOrigin } from '../parsers/codexRolloutOrigin';
 import type { RolloutFileInfo } from './rolloutWalker';
 import { getCodexSessionsDirs } from '../codexPaths';
+import { resolveMonitoredHomes } from '../monitoredHomes';
+import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
+import type { SessionProviderFactory } from './sessionProviderRegistry';
 import {
   cwdMatches,
   findCodexRolloutFile,
@@ -99,11 +102,12 @@ function hasRolloutFile(dir: string): boolean {
   return walkRolloutFiles([dir], { limit: 1 }).length > 0;
 }
 
-/** Every rollout across the monitored homes, newest first, deduplicated by path. */
+/** Every rollout across the monitored homes (or `homes`), newest first, deduplicated by path. */
 function findRolloutFilesInConfiguredHomes(
   options: { limit?: number; includeCompressed?: boolean } = {},
+  homes?: readonly string[],
 ): RolloutFileInfo[] {
-  return walkRolloutFiles(getSessionsDirs(), options);
+  return walkRolloutFiles(getSessionsDirs(homes), options);
 }
 
 /** Whether a rollout's session_meta says a subagent wrote it. */
@@ -115,8 +119,8 @@ export { findCodexRolloutFile };
 export type { FindCodexRolloutFileOptions } from './codexRollouts';
 
 /** Pick the best sessions directory for UI/search entrypoints. */
-function getSessionsDir(): string {
-  const dirs = getCodexSessionsDirs(undefined, { includeArchived: false });
+function getSessionsDir(homes?: readonly string[]): string {
+  const dirs = getCodexSessionsDirs(homes, { includeArchived: false });
   for (const dir of dirs) {
     if (hasRolloutFile(dir)) {
       return dir;
@@ -126,8 +130,8 @@ function getSessionsDir(): string {
 }
 
 /** Pick the home that owns the preferred sessions directory. */
-function getCodexHome(): string {
-  return path.dirname(getSessionsDir());
+function getCodexHome(homes?: readonly string[]): string {
+  return path.dirname(getSessionsDir(homes));
 }
 
 /**
@@ -592,6 +596,15 @@ export interface CodexProviderOptions extends SessionProviderOptions {
    * session and history counts are unchanged.
    */
   includeCompressedRollouts?: boolean;
+  /**
+   * Codex homes to read instead of following `CODEX_HOME` at each call.
+   * Validated at construction without touching files (`RangeError` for a
+   * relative or blank explicit entry). With `codexHomes`, exactly those
+   * homes; otherwise the environment's home plus, unless
+   * `includeProfileHomes: false`, sidekick profile homes that recorded
+   * sessions. `codexHomes: []` leaves every listing and lookup empty.
+   */
+  homes?: SessionHomesOptions;
 }
 
 /**
@@ -619,10 +632,31 @@ export class CodexProvider implements SessionProviderBase {
   private readonly compressedRequested: boolean;
   private readonly onDiagnostic: SessionProviderOptions['onDiagnostic'];
 
+  /** Configured homes, or null to follow the monitored homes at each call. */
+  private readonly homesOptions: SessionHomesOptions | null;
+
   constructor(options: CodexProviderOptions = {}) {
     this.diagnostics = new ProviderDiagnosticTracker(this.id, options);
     this.compressedRequested = options.includeCompressedRollouts === true;
     this.onDiagnostic = options.onDiagnostic;
+    if (options.homes) {
+      // Validate now (pure); profile homes are looked up when first needed.
+      resolveAgentHomes(options.homes);
+      this.homesOptions = { ...options.homes };
+    } else {
+      this.homesOptions = null;
+    }
+  }
+
+  /** The configured Codex homes, or undefined to use the monitored homes. */
+  private homes(): readonly string[] | undefined {
+    if (!this.homesOptions) return undefined;
+    return resolveMonitoredHomes(this.homesOptions).codex;
+  }
+
+  /** Configured with `codexHomes: []`: nothing to read. */
+  private get disabled(): boolean {
+    return this.homesOptions?.codexHomes !== undefined && this.homesOptions.codexHomes.length === 0;
   }
 
   /**
@@ -648,8 +682,9 @@ export class CodexProvider implements SessionProviderBase {
   private ensureDb(): CodexDatabase | null {
     if (this.dbInitialized) return this.db;
     this.dbInitialized = true;
+    if (this.disabled) return null;
 
-    const codexHome = getCodexHome();
+    const codexHome = getCodexHome(this.homes());
     const db = new CodexDatabase(codexHome);
     if (db.isAvailable() && db.open()) {
       this.db = db;
@@ -662,7 +697,7 @@ export class CodexProvider implements SessionProviderBase {
 
   private async ensureDbAsync(): Promise<CodexDatabase> {
     if (this.db) return this.db;
-    return new CodexDatabase(getCodexHome());
+    return new CodexDatabase(getCodexHome(this.homes()));
   }
 
   /**
@@ -699,7 +734,7 @@ export class CodexProvider implements SessionProviderBase {
         return path.dirname(thread.rollout_path);
       }
     }
-    const directory = getSessionsDir();
+    const directory = getSessionsDir(this.homes());
     this.recordDatabaseFallback('getSessionDirectory', true);
     return directory;
   }
@@ -717,7 +752,7 @@ export class CodexProvider implements SessionProviderBase {
 
     // File scan: look for any rollout file whose session_meta.cwd matches
     // (newest first; the cwd read is cached per path).
-    const files = findRolloutFilesInConfiguredHomes();
+    const files = findRolloutFilesInConfiguredHomes({}, this.homes());
     if (files.length === 0) {
       this.recordDatabaseFallback('discoverSessionDirectory', true);
       return null;
@@ -732,7 +767,8 @@ export class CodexProvider implements SessionProviderBase {
     }
 
     // Fallback: return the most relevant base sessions dir if one exists
-    const directory = getSessionsDir();
+    if (this.disabled) return null;
+    const directory = getSessionsDir(this.homes());
     this.recordDatabaseFallback('discoverSessionDirectory', true);
     return directory;
   }
@@ -752,7 +788,7 @@ export class CodexProvider implements SessionProviderBase {
 
     // File scan fallback (newest first; cwd reads are cached per path).
     // Subagent rollouts share their parent's cwd but are not the session.
-    for (const file of findRolloutFilesInConfiguredHomes()) {
+    for (const file of findRolloutFilesInConfiguredHomes({}, this.homes())) {
       const cwd = readSessionCwd(file.path);
       if (cwd && cwdMatches(cwd, workspacePath) && !isSubagentRollout(file.path)) {
         this.recordDatabaseFallback('findActiveSession', true);
@@ -779,9 +815,10 @@ export class CodexProvider implements SessionProviderBase {
     }
 
     // File scan (newest first; cwd reads are cached per path)
-    const sessions = findRolloutFilesInConfiguredHomes({
-      includeCompressed: this.includeCompressed,
-    })
+    const sessions = findRolloutFilesInConfiguredHomes(
+      { includeCompressed: this.includeCompressed },
+      this.homes(),
+    )
       .filter((f) => {
         const cwd = readSessionCwd(f.path);
         return cwd !== null && cwdMatches(cwd, workspacePath);
@@ -793,7 +830,10 @@ export class CodexProvider implements SessionProviderBase {
 
   findSessionById(_workspacePath: string, sessionId: string): string | null {
     try {
-      const found = findCodexRolloutFile(sessionId, { includeCompressed: this.includeCompressed });
+      const found = findCodexRolloutFile(sessionId, {
+        includeCompressed: this.includeCompressed,
+        codexHomes: this.homes(),
+      });
       this.recordDatabaseFallback('findSessionById', true);
       return found;
     } catch {
@@ -812,7 +852,10 @@ export class CodexProvider implements SessionProviderBase {
   }
 
   listAllSessionFiles(): SessionFileInfo[] {
-    const files = findRolloutFilesInConfiguredHomes({ includeCompressed: this.includeCompressed });
+    const files = findRolloutFilesInConfiguredHomes(
+      { includeCompressed: this.includeCompressed },
+      this.homes(),
+    );
     this.recordDatabaseFallback('listAllSessionFiles', true);
     return files;
   }
@@ -821,9 +864,14 @@ export class CodexProvider implements SessionProviderBase {
     workspacePath?: string,
     options: ListSessionFilesOptions = {},
   ): Promise<SessionFileInfo[]> {
+    const homes = this.homes();
     const results = await listCodexSessionFilesAsync(
       workspacePath,
-      { ...options, includeCompressed: this.includeCompressed },
+      {
+        ...options,
+        includeCompressed: this.includeCompressed,
+        ...(homes ? { sessionsDirs: getSessionsDirs(homes) } : {}),
+      },
       this.directoryCache,
     );
     // Filesystem enumeration bypasses the database, so record that here as
@@ -882,7 +930,7 @@ export class CodexProvider implements SessionProviderBase {
     const db = this.ensureDb();
     if (db) {
       const cwdStats = db.getAllDistinctCwds();
-      const sessionsDir = getSessionsDir();
+      const sessionsDir = getSessionsDir(this.homes());
       for (const stat of cwdStats) {
         seenCwds.set(stat.cwd, {
           dir: sessionsDir,
@@ -898,9 +946,10 @@ export class CodexProvider implements SessionProviderBase {
     // after its last update can be missing from it, so older files are not
     // opened; the cwd read itself is cached per path either way.
     const indexedUpTo = db ? db.getDbMtime() : 0;
-    for (const file of findRolloutFilesInConfiguredHomes({
-      includeCompressed: this.includeCompressed,
-    })) {
+    for (const file of findRolloutFilesInConfiguredHomes(
+      { includeCompressed: this.includeCompressed },
+      this.homes(),
+    )) {
       if (db && indexedUpTo > 0 && file.mtime.getTime() <= indexedUpTo) continue;
       const cwd = readSessionCwd(file.path);
       if (!cwd) continue;
@@ -1063,11 +1112,17 @@ export class CodexProvider implements SessionProviderBase {
       onDiagnostic: this.onDiagnostic,
       sessionRolloutPath: () =>
         this.resolveRollout(db?.getThread(sessionId)?.rollout_path) ??
-        findCodexRolloutFile(sessionId, { includeCompressed: this.includeCompressed }),
+        findCodexRolloutFile(sessionId, {
+          includeCompressed: this.includeCompressed,
+          codexHomes: this.homes(),
+        }),
       // The walk stops after the 50 newest-dated files instead of
       // enumerating the whole history and slicing afterwards.
       fallbackFiles: () =>
-        findRolloutFilesInConfiguredHomes({ limit: 50, includeCompressed: this.includeCompressed }),
+        findRolloutFilesInConfiguredHomes(
+          { limit: 50, includeCompressed: this.includeCompressed },
+          this.homes(),
+        ),
     });
   }
 
@@ -1124,11 +1179,11 @@ export class CodexProvider implements SessionProviderBase {
   }
 
   getProjectsBaseDir(): string {
-    return getSessionsDir();
+    return getSessionsDir(this.homes());
   }
 
   getWatchRoots(): string[] {
-    return getSessionsDirs();
+    return getSessionsDirs(this.homes());
   }
 
   // --- Stats ---
@@ -1213,3 +1268,17 @@ export class CodexProvider implements SessionProviderBase {
     );
   }
 }
+
+/**
+ * Builds a {@link CodexProvider} for `createSessionProvidersFrom()`, with the
+ * call's diagnostic sink, homes and compressed-rollout choice.
+ */
+export const codexProviderFactory: SessionProviderFactory = {
+  providerId: 'codex',
+  create: (context) =>
+    new CodexProvider({
+      onDiagnostic: context.onDiagnostic,
+      includeCompressedRollouts: context.includeCompressedRollouts,
+      ...(context.homes ? { homes: context.homes } : {}),
+    }),
+};

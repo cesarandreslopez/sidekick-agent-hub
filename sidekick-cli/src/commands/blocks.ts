@@ -8,6 +8,7 @@
  * local estimate with its own label.
  */
 
+import * as path from 'path';
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import {
@@ -111,6 +112,8 @@ export async function buildBlocksReport(options: BuildBlocksReportOptions): Prom
     since: new Date(windowStart.getTime() - LOOKBACK_MS),
     until: now,
     workspacePath: options.workspacePath,
+    // `--project` counts only sessions whose recorded cwd is inside it.
+    ...(options.workspacePath ? { scope: 'contained' as const } : {}),
     noCache: options.noCache,
   });
   const blocks = computeBillingBlocks(collected.events, { now }).filter(
@@ -322,7 +325,7 @@ export async function blocksAction(_opts: Record<string, unknown>, cmd: Command)
       now,
       mode,
       windowStart,
-      workspacePath: globalOpts.project ? String(globalOpts.project) : undefined,
+      workspacePath: globalOpts.project ? path.resolve(String(globalOpts.project)) : undefined,
       noCache: localOpts.cache === false,
     });
 

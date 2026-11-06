@@ -1656,3 +1656,81 @@ export type { ClassifyToolOptions, ToolCategory } from './toolCategory';
 // Workspace roots (realpath plus git worktree expansion)
 export { resolveWorkspaceRoots } from './workspaceRoots';
 export type { ResolveWorkspaceRootsOptions, ResolvedWorkspaceRoots } from './workspaceRoots';
+
+// Agent homes: explicit Claude Code / Codex homes for session readers
+export { CLAUDE_CONFIG_DIR_ENV_VAR, CODEX_HOME_ENV_VAR, resolveAgentHomes } from './agentHomes';
+export type {
+  AgentHomeProvider,
+  AgentHomesEnv,
+  IgnoredAgentHome,
+  ResolvedAgentHomes,
+  SessionHomesOptions,
+} from './agentHomes';
+export { resolveMonitoredHomes } from './monitoredHomes';
+export type { CodexMonitoringHomesOptions } from './codexPaths';
+export { CLAUDE_PROJECTS_SUBDIR } from './claudePaths';
+export type { ClaudeCodeProviderOptions } from './providers/claudeCode';
+
+// Git worktrees read from the filesystem (no `git` process)
+export {
+  GIT_METADATA_READ_BYTES,
+  MAX_GIT_WORKTREE_ENTRIES,
+  resolveGitWorktrees,
+} from './gitWorktrees';
+export type { GitWorktree, GitWorktreeKind, GitWorktreeLayout } from './gitWorktrees';
+
+// Claude Code subagent transcript paths
+export {
+  CLAUDE_AGENT_ID_PATTERN,
+  getClaudeSubagentTranscriptPath,
+  getClaudeSubagentsDir,
+  isClaudeAgentId,
+  parseClaudeSubagentFileName,
+} from './claudePaths';
+
+// Agent transcript paths and versions (also on `sidekick-shared/agentPaths`)
+export { classifyAgentTranscriptPath } from './agentPaths';
+export type {
+  AgentTranscriptKind,
+  AgentTranscriptPath,
+  ClassifyAgentTranscriptPathOptions,
+} from './agentPaths';
+export { DEFAULT_AGENT_VERSION_WINDOW_BYTES, readAgentVersion } from './agentVersion';
+export type {
+  AgentVersionInfo,
+  AgentVersionProvider,
+  ReadAgentVersionOptions,
+} from './agentVersion';
+export { extractRolloutSessionId, isCompressedRolloutFile, isRolloutFile } from './codexLayout';
+
+// Strict workspace scope for session listings and usage
+export { pathWithinRoots } from './workspaceRoots';
+export type { SessionPreviewListStats, SessionScopeMode } from './sessionPreviews';
+export type { CollectUsageEventsStats } from './usage/usageEvents';
+
+// One shared session listing; bounded, cursor-based usage collection
+export { listAgentSessions } from './sessionListing';
+export type {
+  ListAgentSessionsOptions,
+  SessionListing,
+  SessionListingFile,
+  SessionListingProvider,
+} from './sessionListing';
+export { computeSessionKey } from './sessionKey';
+export { parseUsageEventsCursor } from './usage/usageEvents';
+export type {
+  UsageEventsBound,
+  UsageEventsBounds,
+  UsageEventsCursor,
+  UsageSessionRef,
+} from './usage/usageEvents';
+
+// Provider-selective construction (bundle only the providers you build)
+export { createSessionProvidersFrom } from './providers/sessionProviderRegistry';
+export type {
+  SessionProviderFactory,
+  SessionProviderFactoryContext,
+} from './providers/sessionProviderRegistry';
+export { claudeCodeProviderFactory } from './providers/claudeCode';
+export { codexProviderFactory } from './providers/codex';
+export { openCodeProviderFactory } from './providers/openCode';

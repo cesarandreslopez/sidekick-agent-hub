@@ -6,9 +6,10 @@
  * mtime; an append to an existing file does not. So a listing can be reused
  * for as long as the directory's mtime and inode are unchanged, and the per
  * file size/mtime it carries is only refreshed by `refreshFile()` (the watch
- * event path) or by `revalidateRecent` on catch-up passes. Full discovery is
- * then one stat per directory instead of one readdir per directory plus one
- * stat per file.
+ * event path), by `revalidateRecent` on catch-up passes, or by `revalidateAll`
+ * when a caller reports sizes and mtimes it must not get stale. Full
+ * discovery is then one stat per directory instead of one readdir per
+ * directory plus one stat per file.
  *
  * @module providers/directoryListingCache
  */
@@ -53,6 +54,13 @@ export interface DirectoryListingCacheOptions {
 export interface ListDirectoryOptions {
   /** Re-stat files modified within the recent window even if the directory is unchanged. */
   revalidateRecent?: boolean;
+  /**
+   * Re-stat every listed file, whatever its age, even when the directory is
+   * unchanged (only the readdir is saved). For callers that report or key on
+   * file sizes and mtimes: an append changes neither the directory's mtime
+   * nor, for an old file, anything `revalidateRecent` would look at.
+   */
+  revalidateAll?: boolean;
   /** A stat of the directory the caller already took; saves one syscall. */
   dirStat?: fs.Stats;
   stats?: DirectoryListingCounters;
@@ -125,7 +133,8 @@ export class DirectoryListingCache {
       dirStat.mtimeMs < cached.listedAtMs - COARSE_MTIME_GUARD_MS;
     if (cached && unchanged) {
       this.touch(dir, cached);
-      if (options.revalidateRecent) await this.revalidateRecent(dir, cached, options.stats);
+      if (options.revalidateAll) await this.revalidateAll(dir, cached, options.stats);
+      else if (options.revalidateRecent) await this.revalidateRecent(dir, cached, options.stats);
       return cached;
     }
 
@@ -153,7 +162,12 @@ export class DirectoryListingCache {
       // recent enough to be live; a directory change is a create, delete, or
       // rename, and only the new names need a fresh stat.
       const previous = cached?.files.get(entry.name);
-      if (isCandidateFile && previous && !this.isRecent(previous, listedAtMs)) {
+      if (
+        isCandidateFile &&
+        previous &&
+        !options.revalidateAll &&
+        !this.isRecent(previous, listedAtMs)
+      ) {
         files.set(entry.name, previous);
         continue;
       }
@@ -232,6 +246,21 @@ export class DirectoryListingCache {
     for (const [name, cached] of [...listing.files]) {
       if (!this.isRecent(cached, now)) continue;
       await this.refreshFile(path.join(dir, name), stats);
+    }
+  }
+
+  private async revalidateAll(
+    dir: string,
+    listing: CachedDirectoryListing,
+    stats?: DirectoryListingCounters,
+  ): Promise<void> {
+    let sinceYield = 0;
+    for (const name of [...listing.files.keys()]) {
+      await this.refreshFile(path.join(dir, name), stats);
+      if (++sinceYield >= 200) {
+        sinceYield = 0;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
     }
   }
 

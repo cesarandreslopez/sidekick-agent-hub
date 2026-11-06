@@ -19,7 +19,11 @@
  */
 
 import * as fs from 'fs';
+import { readClaudeSessionCwdAsync } from './providers/claudeListing';
+import { readSessionCwdAsync } from './providers/codexRollouts';
 import { isCompressedRolloutPath, readRolloutHead } from './providers/compressedRollouts';
+import { pathWithinRoots, resolveWorkspaceRoots } from './workspaceRoots';
+import { assertListingAlone, isSessionListing, type SessionListing } from './sessionListing';
 import type {
   ProviderId,
   SessionFileInfo,
@@ -77,8 +81,51 @@ export interface AsyncSessionPreviewOptions {
 export interface ReadSessionPreviewAsyncOptions
   extends ReadSessionPreviewOptions, AsyncSessionPreviewOptions {}
 
+/**
+ * How a scoped listing decides membership. `contained`: a session counts
+ * only when the working directory it recorded resolves to one of the roots
+ * or below one (fail closed: no cwd, or one that no longer exists, is out).
+ * `listed`: whatever the providers' workspace filters return (Claude Code
+ * matches project-directory names, Codex a cwd that equals, contains or
+ * sits inside the root), which can include look-alike projects.
+ */
+export type SessionScopeMode = 'contained' | 'listed';
+
 export interface ListSessionPreviewsAsyncOptions
-  extends ListSessionPreviewsOptions, AsyncSessionPreviewOptions {}
+  extends ListSessionPreviewsOptions, AsyncSessionPreviewOptions {
+  /**
+   * Restrict to the sessions of several workspaces, listed once each and
+   * counted once even when roots overlap. Takes precedence over
+   * `workspacePath`. Roots that do not resolve are dropped; when none
+   * resolves, nothing is listed.
+   */
+  workspacePaths?: string[];
+  /**
+   * Also list each root's main checkout and git worktrees. Default true with
+   * `workspacePaths`, false with `workspacePath`.
+   */
+  includeWorktrees?: boolean;
+  /**
+   * Default `contained` with `workspacePaths`, `listed` with `workspacePath`.
+   * With `contained`, the check runs before `limit`, on each session's
+   * recorded cwd (Codex: `session_meta`; Claude Code: the first record with
+   * one, at most 1 MiB in).
+   */
+  scope?: SessionScopeMode;
+  /**
+   * A listing from `listAgentSessions()` to preview instead of enumerating
+   * again: its files for the given providers (matched by id; a provider the
+   * listing does not cover contributes nothing) and its roots, `contained`
+   * by default. Passing `workspacePath`, `workspacePaths` or
+   * `includeWorktrees` with it is a `TypeError`.
+   */
+  listing?: SessionListing;
+}
+
+export interface SessionPreviewListStats {
+  /** Sessions a `contained` scope dropped because their cwd was missing or outside the roots. */
+  sessionsOutOfScope: number;
+}
 
 export interface SessionPreviewReadResult {
   preview: SessionPreview | null;
@@ -90,6 +137,10 @@ export interface SessionPreviewListResult {
   diagnostics: SessionProviderDiagnostic[];
   /** True when more candidates existed than `limit` allowed; the caller may offer a larger limit. */
   hasMore: boolean;
+  /** Realpaths of the roots, after worktree expansion, when the listing was scoped by roots. */
+  roots?: string[];
+  /** Always set by `listSessionPreviewsAsync` (optional only for hand-built results). */
+  stats?: SessionPreviewListStats;
 }
 
 const DEFAULT_PREFIX_BYTES = 16 * 1024;
@@ -239,35 +290,104 @@ export async function listSessionPreviewsAsync(
 ): Promise<SessionPreviewListResult> {
   const limit = Math.max(0, options.limit ?? DEFAULT_LIMIT);
   const sinceMs = resolveSinceMs(options.since);
-  const candidates: Array<{ provider: SessionProviderBase; info: SessionFileInfo }> = [];
+  const stats: SessionPreviewListStats = { sessionsOutOfScope: 0 };
+  const listing = options.listing;
+  if (listing !== undefined) {
+    if (!isSessionListing(listing)) {
+      throw new TypeError(
+        'listSessionPreviewsAsync: `listing` must come from listAgentSessions().',
+      );
+    }
+    assertListingAlone('listSessionPreviewsAsync', options as Record<string, unknown>, [
+      'workspacePath',
+      'workspacePaths',
+      'includeWorktrees',
+    ]);
+  }
+  const scope = previewScope(options);
+  if (scope && scope.roots.length === 0) {
+    return { previews: [], diagnostics: [], hasMore: false, roots: [], stats };
+  }
+  const byPath = new Map<string, { provider: SessionProviderBase; info: SessionFileInfo }>();
   const operationDiagnostics: SessionProviderDiagnostic[] = [];
+  const listingRoots: Array<string | undefined> = scope
+    ? scope.listingRoots
+    : [options.workspacePath];
+
+  if (listing) {
+    const byId = new Map(providers.map((provider) => [provider.id, provider]));
+    for (const file of listing.files) {
+      const provider = byId.get(file.provider);
+      if (!provider) continue;
+      if (sinceMs !== null && file.mtimeMs <= sinceMs) continue;
+      byPath.set(file.filePath, {
+        provider,
+        info: {
+          path: file.filePath,
+          mtime: new Date(file.mtimeMs),
+          sizeBytes: file.sizeBytes,
+          sessionId: file.sessionId,
+          ...(file.workspacePath ? { workspacePath: file.workspacePath } : {}),
+        },
+      });
+    }
+  }
 
   await Promise.all(
     providers.map(async (provider) => {
-      let files: SessionFileInfo[] = [];
-      try {
-        files = provider.listSessionFilesAsync
-          ? await provider.listSessionFilesAsync(options.workspacePath)
-          : await enumerateSessionFilesAsyncFallback(provider, options.workspacePath, options);
-      } catch {
-        files = [];
-        operationDiagnostics.push({
-          providerId: provider.id,
-          kind: 'read_failed',
-          severity: 'error',
-          phase: 'enumerate',
-          message: `${provider.id} session enumeration failed.`,
-        });
-      }
-      for (const info of files) {
-        const mtimeMs = info.mtime.getTime();
-        if (sinceMs !== null && mtimeMs <= sinceMs) continue;
-        candidates.push({ provider, info });
+      if (listing) return;
+      for (const workspacePath of listingRoots) {
+        let files: SessionFileInfo[] = [];
+        try {
+          // Sizes and mtimes are reported (and key the usage cache), so a reused
+          // provider must re-stat files its directory cache already knows.
+          files = provider.listSessionFilesAsync
+            ? await provider.listSessionFilesAsync(workspacePath, { revalidateAll: true })
+            : await enumerateSessionFilesAsyncFallback(provider, workspacePath, options);
+        } catch {
+          files = [];
+          operationDiagnostics.push({
+            providerId: provider.id,
+            kind: 'read_failed',
+            severity: 'error',
+            phase: 'enumerate',
+            message: `${provider.id} session enumeration failed.`,
+          });
+        }
+        for (const info of files) {
+          const mtimeMs = info.mtime.getTime();
+          if (sinceMs !== null && mtimeMs <= sinceMs) continue;
+          // Each root lists every provider again; keep each file once.
+          if (!byPath.has(info.path)) byPath.set(info.path, { provider, info });
+        }
       }
     }),
   );
 
-  candidates.sort((left, right) => right.info.mtime.getTime() - left.info.mtime.getTime());
+  let candidates = [...byPath.values()];
+  if (scope?.contained) {
+    const realpaths = new Map<string, string | null>();
+    const kept = await mapWithConcurrency(
+      candidates,
+      async (candidate) => {
+        const cwd = await recordedCwd(candidate.provider, candidate.info);
+        return pathWithinRoots(cwd, scope.roots, realpaths) ? candidate : null;
+      },
+      concurrency(options),
+    );
+    const inScope = kept.filter((candidate) => candidate !== null);
+    stats.sessionsOutOfScope = candidates.length - inScope.length;
+    candidates = inScope;
+  }
+
+  // Newest first; ties broken by provider and path so the order never
+  // depends on which provider's enumeration finished first.
+  candidates.sort(
+    (left, right) =>
+      right.info.mtime.getTime() - left.info.mtime.getTime() ||
+      compareText(left.provider.id, right.provider.id) ||
+      compareText(left.info.path, right.info.path),
+  );
   const selected = candidates.slice(0, limit);
   const labels = new Map<SessionProviderBase, Map<string, string | null>>();
   await Promise.all(
@@ -313,7 +433,65 @@ export async function listSessionPreviewsAsync(
       ...operationDiagnostics,
       ...providers.flatMap(providerDiagnostics),
     ]),
+    ...(scope ? { roots: scope.roots } : {}),
+    stats,
   };
+}
+
+interface PreviewScope {
+  roots: string[];
+  listingRoots: string[];
+  contained: boolean;
+}
+
+/** Roots and scope mode of a listing, or undefined for an unscoped or legacy single-root one. */
+function previewScope(options: ListSessionPreviewsAsyncOptions): PreviewScope | undefined {
+  if (options.listing) {
+    return {
+      roots: options.listing.roots,
+      listingRoots: options.listing.listingRoots,
+      contained: (options.scope ?? 'contained') === 'contained',
+    };
+  }
+  if (options.workspacePaths) {
+    return {
+      ...resolveWorkspaceRoots(options.workspacePaths, {
+        includeWorktrees: options.includeWorktrees !== false,
+      }),
+      contained: (options.scope ?? 'contained') === 'contained',
+    };
+  }
+  if (
+    options.workspacePath &&
+    (options.includeWorktrees === true || options.scope === 'contained')
+  ) {
+    return {
+      ...resolveWorkspaceRoots([options.workspacePath], {
+        includeWorktrees: options.includeWorktrees === true,
+      }),
+      contained: options.scope === 'contained',
+    };
+  }
+  return undefined;
+}
+
+/** The working directory a session recorded, from its listing or a bounded read. */
+async function recordedCwd(
+  provider: SessionProviderBase,
+  info: SessionFileInfo,
+): Promise<string | null> {
+  if (info.workspacePath) return info.workspacePath;
+  try {
+    if (provider.id === 'claude-code') return await readClaudeSessionCwdAsync(info.path);
+    if (provider.id === 'codex') return await readSessionCwdAsync(info.path);
+  } catch {
+    // Unreadable: out of scope.
+  }
+  return null;
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function resolveSinceMs(since: Date | string | undefined): number | null {

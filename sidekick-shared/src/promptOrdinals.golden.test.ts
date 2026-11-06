@@ -306,6 +306,7 @@ describe('prompt-ordinal scheme golden fixtures', { timeout: 60_000 }, () => {
     const providers = [new ClaudeCodeProvider(), new CodexProvider()];
     try {
       const result = await collectUsageEvents({ providers, noCache: true });
+      expect(result.promptOrdinalScheme, CHANGED).toBe(PROMPT_ORDINAL_SCHEME_VERSION);
       const byFile: Record<string, Array<number | null | undefined>> = {};
       for (const name of Object.keys(expected.files)) byFile[name] = [];
       for (const event of result.events) {

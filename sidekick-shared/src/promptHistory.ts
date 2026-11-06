@@ -29,7 +29,10 @@ import * as path from 'path';
 import { HUMAN_CODEX_SOURCES, humanPromptText, type HumanPromptProvider } from './humanPrompt';
 import { PROMPT_ORDINAL_SCHEME_VERSION } from './promptOrdinalScheme';
 import { listClaudeSessionFilesAsync } from './providers/claudeListing';
-import { listCodexSessionFilesAsync } from './providers/codexRollouts';
+import { getSessionsDirs, listCodexSessionFilesAsync } from './providers/codexRollouts';
+import { resolveAgentHomes, type SessionHomesOptions } from './agentHomes';
+import { getClaudeProjectsDir } from './claudePaths';
+import { resolveMonitoredHomes } from './monitoredHomes';
 import {
   canReadCompressedRollouts,
   openRolloutReadHandle,
@@ -40,8 +43,10 @@ import {
 import { DirectoryListingCache } from './providers/directoryListingCache';
 import type { SessionFileInfo } from './providers/types';
 import type { CanonicalTranscriptBlock, CanonicalTranscriptMessage } from './transcript';
-import { realpathOrNull, resolveWorkspaceRoots } from './workspaceRoots';
+import { pathWithinRoots, resolveWorkspaceRoots } from './workspaceRoots';
 import { fileHeadOf, HEAD_BYTES, headMatches, type FileHead } from './fileHead';
+import { computeSessionKey } from './sessionKey';
+import { assertListingAlone, isSessionListing, type SessionListing } from './sessionListing';
 
 export type PromptHistoryProvider = HumanPromptProvider;
 
@@ -258,8 +263,8 @@ export interface PromptHistoryStats {
 }
 
 export interface CollectPromptHistoryOptions {
-  /** Absolute workspace roots; realpath-normalized internally. */
-  workspacePaths: string[];
+  /** Absolute workspace roots; realpath-normalized internally. Required unless `listing` is given. */
+  workspacePaths?: string[];
   /** Add git worktree siblings of each root. Default true. */
   includeWorktrees?: boolean;
   /** Default both. */
@@ -285,6 +290,19 @@ export interface CollectPromptHistoryOptions {
    * Default false.
    */
   includeCompressedRollouts?: boolean;
+  /**
+   * Claude Code and Codex homes to read instead of following this process's
+   * environment (see `SessionHomesOptions`; `[]` skips that provider). A
+   * relative or blank explicit entry throws `RangeError`.
+   */
+  homes?: SessionHomesOptions;
+  /**
+   * A listing from `listAgentSessions()` to use instead of listing again:
+   * its roots, homes, worktree expansion and compressed-rollout choice
+   * apply, so passing `workspacePaths`, `includeWorktrees`, `homes` or
+   * `includeCompressedRollouts` with it is a `TypeError`.
+   */
+  listing?: SessionListing;
 }
 
 export interface PromptHistoryResult {
@@ -463,21 +481,24 @@ export async function collectPromptHistory(
     ordinalScheme: PROMPT_ORDINAL_SCHEME_VERSION,
   });
 
+  const listing = listingOption('collectPromptHistory', options);
+  const listingDirs = listing ? undefined : candidateListingDirs(options.homes);
   const realpaths = new Map<string, string | null>();
-  const { roots, listingRoots } = resolveRoots(
-    options.workspacePaths,
-    options.includeWorktrees !== false,
-    realpaths,
-  );
+  const { roots, listingRoots } = listing
+    ? { roots: listing.roots, listingRoots: listing.listingRoots }
+    : resolveRoots(options.workspacePaths ?? [], options.includeWorktrees !== false, realpaths);
   scannedRoots = roots;
   if (roots.length === 0) return finish();
 
   const sinceMs = options.since ? options.since.getTime() : null;
   const providers = options.providers ?? ALL_PROVIDERS;
   const candidates = rotate(
-    await listCandidates(providers, listingRoots, sinceMs, {
-      includeCompressedRollouts: options.includeCompressedRollouts,
-    }),
+    listing
+      ? listingCandidates(listing, providers, sinceMs)
+      : await listCandidates(providers, listingRoots, sinceMs, {
+          includeCompressedRollouts: options.includeCompressedRollouts,
+          dirs: listingDirs,
+        }),
     previousNext,
   );
   const moved = movedSessionKeys(previous, candidates);
@@ -657,7 +678,7 @@ export async function readPromptOrdinalMarks(
     },
   };
   await scanFile(
-    { provider, sessionId, filePath, key: `${provider}:${sessionId}:${hashPath(filePath)}` },
+    { provider, sessionId, filePath, key: computeSessionKey(provider, sessionId, filePath) },
     stat,
     undefined,
     { bytes: unbounded, bound: 'maxFileBytes', forceProgress: true },
@@ -864,15 +885,84 @@ function scopedCwd(
   roots: string[],
   realpaths: Map<string, string | null>,
 ): string | null {
-  if (typeof cwd !== 'string' || cwd.length === 0) return null;
-  const real = realpathOrNull(cwd, realpaths);
-  if (!real) return null;
-  for (const root of roots) {
-    if (real === root) return real;
-    const prefix = root.endsWith(path.sep) ? root : root + path.sep;
-    if (real.startsWith(prefix)) return real;
+  return pathWithinRoots(cwd, roots, realpaths);
+}
+
+/** Options a `listing` already decides. @internal */
+export const LISTING_FIXED_OPTIONS = [
+  'workspacePaths',
+  'includeWorktrees',
+  'homes',
+  'includeCompressedRollouts',
+] as const;
+
+/**
+ * The `listing` option of a prompt-family collector, checked: `TypeError`
+ * when options it fixes are passed too, or when neither it nor
+ * `workspacePaths` is given.
+ * @internal
+ */
+export function listingOption(
+  caller: string,
+  options: { listing?: SessionListing; workspacePaths?: string[] },
+): SessionListing | undefined {
+  if (options.listing !== undefined) {
+    if (!isSessionListing(options.listing)) {
+      throw new TypeError(`${caller}: \`listing\` must come from listAgentSessions().`);
+    }
+    assertListingAlone(caller, options as Record<string, unknown>, LISTING_FIXED_OPTIONS);
+    return options.listing;
   }
-  return null;
+  if (!Array.isArray(options.workspacePaths)) {
+    throw new TypeError(`${caller}: pass \`workspacePaths\` or \`listing\`.`);
+  }
+  return undefined;
+}
+
+/** A listing's files as scan candidates, in `listCandidates()` order. @internal */
+export function listingCandidates(
+  listing: SessionListing,
+  providers: readonly PromptHistoryProvider[],
+  sinceMs: number | null,
+): Candidate[] {
+  const wanted = new Set(providers.filter((provider) => ALL_PROVIDERS.includes(provider)));
+  return listing.files
+    .filter((file) => wanted.has(file.provider) && (sinceMs === null || file.mtimeMs >= sinceMs))
+    .map((file) => ({
+      provider: file.provider,
+      sessionId: file.sessionId,
+      filePath: file.filePath,
+      key: file.sessionKey,
+    }))
+    .sort(
+      (left, right) =>
+        compareStrings(left.provider, right.provider) ||
+        compareStrings(left.sessionId, right.sessionId) ||
+        compareStrings(left.key, right.key),
+    );
+}
+
+/**
+ * The directories a candidate listing walks for configured homes, or
+ * undefined to follow this process's environment. Validates the homes
+ * (`RangeError`), so callers resolve this before anything else.
+ * @internal
+ */
+export interface CandidateListingDirs {
+  /** Claude Code `projects/` directories. */
+  claude: string[];
+  /** Codex rollout directories (`sessions/`, `archived_sessions/`). */
+  codex: string[];
+}
+
+/** @internal */
+export function candidateListingDirs(
+  homes: SessionHomesOptions | undefined,
+): CandidateListingDirs | undefined {
+  if (!homes) return undefined;
+  const claude = resolveAgentHomes(homes).claude.map((home) => getClaudeProjectsDir(home));
+  const codexHomes = resolveMonitoredHomes(homes).codex;
+  return { claude, codex: codexHomes.length > 0 ? getSessionsDirs(codexHomes) : [] };
 }
 
 /** @internal */
@@ -880,12 +970,14 @@ export async function listCandidates(
   providers: PromptHistoryProvider[],
   listingRoots: string[],
   sinceMs: number | null,
-  options: { includeCompressedRollouts?: boolean } = {},
+  options: { includeCompressedRollouts?: boolean; dirs?: CandidateListingDirs } = {},
 ): Promise<Candidate[]> {
   const byPath = new Map<string, Candidate>();
   const listOptions = sinceMs !== null ? { since: sinceMs } : {};
   for (const provider of [...new Set(providers)]) {
     if (!ALL_PROVIDERS.includes(provider)) continue;
+    const dirs = options.dirs?.[provider === 'claude-code' ? 'claude' : 'codex'];
+    if (dirs && dirs.length === 0) continue;
     // Listings are only candidate supersets; scope is re-checked per prompt.
     const cache = new DirectoryListingCache();
     for (const root of listingRoots) {
@@ -893,13 +985,18 @@ export async function listCandidates(
       try {
         files =
           provider === 'claude-code'
-            ? await listClaudeSessionFilesAsync(root, listOptions, cache)
+            ? await listClaudeSessionFilesAsync(
+                root,
+                { ...listOptions, ...(dirs ? { projectsDirs: dirs } : {}) },
+                cache,
+              )
             : await listCodexSessionFilesAsync(
                 root,
                 {
                   ...listOptions,
                   includeCompressed:
                     options.includeCompressedRollouts === true && canReadCompressedRollouts(),
+                  ...(dirs ? { sessionsDirs: dirs } : {}),
                 },
                 cache,
               );
@@ -913,7 +1010,7 @@ export async function listCandidates(
           provider,
           sessionId,
           filePath: file.path,
-          key: `${provider}:${sessionId}:${hashPath(file.path)}`,
+          key: computeSessionKey(provider, sessionId, file.path),
         });
       }
     }
@@ -960,10 +1057,6 @@ function movedSessionKeys(
     if (listedIds.has(id) && !moved.has(id)) moved.set(id, key);
   }
   return moved;
-}
-
-function hashPath(filePath: string): string {
-  return createHash('sha256').update(filePath).digest('hex').slice(0, 12);
 }
 
 async function readAt(handle: RolloutReadHandle, offset: number, length: number): Promise<Buffer> {

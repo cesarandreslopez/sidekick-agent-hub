@@ -152,6 +152,13 @@
       "require": "./dist/headless.js",
       "default": "./dist/headless.js"
     },
+    "./agentPaths": {
+      "types": "./dist/agentPaths.d.ts",
+      "module": "./dist/esm/agentPaths.js",
+      "import": "./dist/agentPaths.js",
+      "require": "./dist/agentPaths.js",
+      "default": "./dist/agentPaths.js"
+    },
     "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -210,6 +217,9 @@
       ],
       "headless": [
         "dist/headless.d.ts"
+      ],
+      "agentPaths": [
+        "dist/agentPaths.d.ts"
       ]
     }
   },
