@@ -887,5 +887,22 @@ describe(
         expect(node[name], name).toBe(1024);
       }
     });
+
+    it('exports turn lifecycle and turn state from the root and the browser entry', () => {
+      const root = pkgRequire('sidekick-shared');
+      const browser = pkgRequire('sidekick-shared/browser');
+      const node = pkgRequire('sidekick-shared/node');
+      for (const name of [
+        'classifyTurnState',
+        'createTurnStateTracker',
+        'turnLifecycleFromEvent',
+        'isTurnLifecycleSystemEvent',
+        'describeTurnLifecycle',
+      ]) {
+        expect(typeof browser[name], name).toBe('function');
+        expect(root[name], name).toBe(browser[name]);
+      }
+      expect(node.isTurnLifecycleSystemEvent).toBe(browser.isTurnLifecycleSystemEvent);
+    });
   },
 );

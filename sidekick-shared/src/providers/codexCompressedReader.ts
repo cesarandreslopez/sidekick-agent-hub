@@ -31,7 +31,10 @@ export interface CompressedCodexReaderCallbacks {
 
 /** Reads a `.jsonl.zst` rollout through a {@link CodexRolloutParser}. */
 export class CompressedCodexRolloutReader implements SessionReader {
-  private parser = new CodexRolloutParser({ includeSubagentActivity: true });
+  private parser = new CodexRolloutParser({
+    includeSubagentActivity: true,
+    includeTurnLifecycle: true,
+  });
   /** Offset after the last line parsed (the content is complete, so its end). */
   private position = 0;
   /** Size and mtime of the compressed file the position refers to. */

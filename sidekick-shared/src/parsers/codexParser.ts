@@ -53,6 +53,12 @@ import {
   type SubagentActivityKind,
 } from '../subagentActivity';
 import {
+  TURN_LIFECYCLE_BLOCK_TYPE,
+  TURN_LIFECYCLE_ORIGIN_KIND,
+  type TurnLifecycle,
+  type TurnLifecycleKind,
+} from '../turnLifecycle';
+import {
   codexInheritedHistoryBoundary,
   isCodexInheritedRecord,
   parseCodexInheritedHistoryBoundary,
@@ -298,6 +304,16 @@ export interface CodexRolloutParserOptions {
    */
   includeSubagentActivity?: boolean;
   /**
+   * Emit each turn's boundaries as `system` events with `subtype`
+   * `task_started`, `task_complete`, or `turn_aborted` and `origin: { kind:
+   * 'turn-lifecycle' }` (read them with `turnLifecycleFromEvent()`). Without
+   * them a Codex turn never visibly ends; `classifyTurnState()` and the
+   * session activity detector use them. Transcripts, context attribution,
+   * and the aggregator's counts skip them. Default false: those records
+   * produce no events (plan-mode tool uses aside).
+   */
+  includeTurnLifecycle?: boolean;
+  /**
    * How much of the rollout's `session_meta` the parser keeps, in memory and
    * in `exportResumeState()`. `'full'` (default) keeps the payload as
    * written; `'identity'` keeps only the fields that identify the session
@@ -307,6 +323,15 @@ export interface CodexRolloutParserOptions {
    */
   sessionMeta?: 'full' | 'identity';
 }
+
+/** Codex turn events (and their v2 aliases) by the lifecycle kind they report. */
+const TURN_LIFECYCLE_KINDS: Readonly<Record<string, TurnLifecycleKind>> = {
+  task_started: 'task_started',
+  turn_started: 'task_started',
+  task_complete: 'task_complete',
+  turn_complete: 'task_complete',
+  turn_aborted: 'turn_aborted',
+};
 
 /** The `session_meta` fields kept with `sessionMeta: 'identity'`. */
 const SESSION_META_IDENTITY_FIELDS = [
@@ -583,6 +608,7 @@ export class CodexRolloutParser {
   private readonly metadataOnly: boolean;
   private readonly includeSubagentActivity: boolean;
   private readonly identityMetaOnly: boolean;
+  private readonly includeTurnLifecycle: boolean;
   /** JSON length of `sessionMeta`, computed when first asked for. */
   private sessionMetaBytes: number | null = null;
   /**
@@ -611,6 +637,7 @@ export class CodexRolloutParser {
     this.metadataOnly = options.metadataOnly === true;
     this.includeSubagentActivity = options.includeSubagentActivity === true;
     this.identityMetaOnly = options.sessionMeta === 'identity';
+    this.includeTurnLifecycle = options.includeTurnLifecycle === true;
   }
 
   /** Stores the rollout's own session metadata as the `sessionMeta` option asks. */
@@ -1734,10 +1761,12 @@ export class CodexRolloutParser {
       case 'turn_started':
       case 'turn_complete':
       case 'task_started': {
+        const lifecycle = this.turnLifecycleEvents(timestamp, event);
         const collaborationMode = (event as CodexTaskStartedEvent).collaboration_mode_kind;
-        if (collaborationMode !== 'plan' || this.inPlanMode) return [];
+        if (collaborationMode !== 'plan' || this.inPlanMode) return lifecycle;
         this.inPlanMode = true;
         return [
+          ...lifecycle,
           {
             type: 'assistant',
             message: {
@@ -1761,8 +1790,9 @@ export class CodexRolloutParser {
         ];
       }
 
-      case 'task_complete':
-        if (!this.inPlanMode) return [];
+      case 'task_complete': {
+        const lifecycle = this.turnLifecycleEvents(timestamp, event);
+        if (!this.inPlanMode) return lifecycle;
         this.inPlanMode = false;
         return [
           {
@@ -1785,12 +1815,16 @@ export class CodexRolloutParser {
             },
             timestamp,
           },
+          ...lifecycle,
         ];
+      }
 
       case 'item_completed':
         return this.handleItemCompleted(timestamp, event as CodexItemCompletedEvent);
 
       case 'turn_aborted':
+        return this.turnLifecycleEvents(timestamp, event);
+
       case 'agent_reasoning':
       case 'agent_message':
       case 'user_message':
@@ -1800,6 +1834,39 @@ export class CodexRolloutParser {
       default:
         return [];
     }
+  }
+
+  /** A turn boundary as a turn-lifecycle `system` event (opt-in). */
+  private turnLifecycleEvents(timestamp: string, event: CodexEventMsg): SessionEvent[] {
+    if (!this.includeTurnLifecycle) return [];
+    const payload = event as unknown as Record<string, unknown>;
+    const kind = TURN_LIFECYCLE_KINDS[String(payload.type)];
+    if (!kind) return [];
+    const turnId = nonEmptyString(payload.turn_id);
+    const reason = kind === 'turn_aborted' ? nonEmptyString(payload.reason) : undefined;
+    const failed =
+      kind === 'task_complete' && payload.error !== undefined && payload.error !== null;
+    const lifecycle: TurnLifecycle = {
+      kind,
+      ...(turnId ? { turnId } : {}),
+      ...(reason ? { reason } : {}),
+      ...(failed ? { failed: true as const } : {}),
+    };
+    return [
+      {
+        type: 'system',
+        subtype: kind,
+        timestamp,
+        origin: { kind: TURN_LIFECYCLE_ORIGIN_KIND },
+        message: {
+          role: 'system',
+          id: `turn-lifecycle:${kind}:${turnId ?? timestamp}`,
+          sourceLabel: 'turn lifecycle',
+          content: [{ type: TURN_LIFECYCLE_BLOCK_TYPE, ...lifecycle }],
+        },
+        providerMetadata: { providerId: 'codex', source: 'codex-rollout' },
+      },
+    ];
   }
 
   private handleTokenCount(

@@ -5,6 +5,8 @@ import {
   detectSessionActivity,
   refreshSessionActivityState,
 } from './sessionActivityDetector';
+import { CodexRolloutParser } from './codexParser';
+import type { CodexRolloutLine } from '../types/codex';
 
 vi.mock('fs');
 const mockFs = vi.mocked(fs);
@@ -191,6 +193,51 @@ describe('classifySessionActivity', () => {
       state: 'ended',
       reason: 'no-events',
     });
+  });
+
+  it('ends a Codex turn on its lifecycle events, which carry no stop reason', () => {
+    const parser = new CodexRolloutParser({ includeTurnLifecycle: true });
+    const at = (seconds: number) => new Date(NOW - 60_000 + seconds * 1000).toISOString();
+    const rows = [
+      { type: 'session_meta', payload: { id: 'thread-1', cwd: '/work/repo', source: 'cli' } },
+      { type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-1' } },
+      {
+        type: 'response_item',
+        payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'hello' }],
+        },
+      },
+      { type: 'event_msg', payload: { type: 'task_complete', turn_id: 'turn-1' } },
+    ];
+    const events = rows.flatMap((row, index) =>
+      parser.convertLine({ ...row, timestamp: at(index) } as unknown as CodexRolloutLine),
+    );
+    // Without the lifecycle events the assistant reply reads as ongoing work.
+    const midTurn = events.filter(
+      (event) => !(event.type === 'system' && event.origin?.kind === 'turn-lifecycle'),
+    );
+    expect(
+      classifySessionActivity({ events: midTurn, mtimeMs: NOW - 10_000, now: NOW }),
+    ).toMatchObject({ state: 'ongoing', reason: 'ai-activity-after-ending' });
+    expect(classifySessionActivity({ events, mtimeMs: NOW - 10_000, now: NOW })).toMatchObject({
+      state: 'ended',
+      reason: 'ending-event',
+    });
+    // A new turn that started is ongoing again.
+    const next = parser.convertLine({
+      timestamp: at(9),
+      type: 'event_msg',
+      payload: { type: 'task_started', turn_id: 'turn-2' },
+    } as unknown as CodexRolloutLine);
+    expect(
+      classifySessionActivity({ events: [...events, ...next], mtimeMs: NOW - 10_000, now: NOW }),
+    ).toMatchObject({ state: 'ongoing' });
   });
 });
 

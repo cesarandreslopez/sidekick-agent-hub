@@ -346,7 +346,10 @@ class CodexReader implements SessionReader {
     private readonly onRateLimits?: (limits: CodexRateLimits) => void,
     private readonly onTokenUsage?: (usage: TokenUsage) => void,
   ) {
-    this.parser = new CodexRolloutParser({ includeSubagentActivity: true });
+    this.parser = new CodexRolloutParser({
+      includeSubagentActivity: true,
+      includeTurnLifecycle: true,
+    });
   }
 
   /** Get the parser's session metadata. */

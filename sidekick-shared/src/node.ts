@@ -335,6 +335,15 @@ export type {
   SubagentActivity,
   SubagentActivityKind,
 } from './subagentActivity';
+// Codex turn lifecycle events (0.31)
+export {
+  TURN_LIFECYCLE_BLOCK_TYPE,
+  TURN_LIFECYCLE_ORIGIN_KIND,
+  describeTurnLifecycle,
+  isTurnLifecycleSystemEvent,
+  turnLifecycleFromEvent,
+} from './turnLifecycle';
+export type { TurnLifecycle, TurnLifecycleKind } from './turnLifecycle';
 export {
   getPricingCatalogInfo,
   registerModelPricing,

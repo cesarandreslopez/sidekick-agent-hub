@@ -565,6 +565,31 @@ export type {
   SubagentActivity,
   SubagentActivityKind,
 } from './subagentActivity';
+// Codex turn lifecycle events (0.31)
+export {
+  TURN_LIFECYCLE_BLOCK_TYPE,
+  TURN_LIFECYCLE_ORIGIN_KIND,
+  describeTurnLifecycle,
+  isTurnLifecycleSystemEvent,
+  turnLifecycleFromEvent,
+} from './turnLifecycle';
+export type { TurnLifecycle, TurnLifecycleKind } from './turnLifecycle';
+// Turn state: working / waiting / idle / ended (0.31)
+export {
+  DEFAULT_TURN_STATE_IDLE_MS,
+  DEFAULT_TURN_STATE_STALE_MS,
+  TURN_STATE_REPLY_GRACE_MS,
+  classifyTurnState,
+  createTurnStateTracker,
+} from './turnState';
+export type {
+  TurnState,
+  TurnStateOptions,
+  TurnStateReason,
+  TurnStateResult,
+  TurnStateSnapshot,
+  TurnStateTracker,
+} from './turnState';
 
 // Parsers — Subagent scanning
 export { scanSubagentDir, extractTaskInfo, readAgentMeta } from './parsers/subagentScanner';

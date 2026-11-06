@@ -83,6 +83,7 @@ import {
   isTaskStatusSystemEvent,
   isAgentsKilledSystemEvent,
   isSubagentActivitySystemEvent,
+  isTurnLifecycleSystemEvent,
   agentsStoppedNoticeFromEvent,
   describeSubagentActivity,
   resolveSubagentDisplayState,
@@ -2555,6 +2556,11 @@ export class SessionMonitor implements vscode.Disposable {
     ) {
       this.stats.lastUpdated = new Date();
       this.addTimelineEvent(event);
+      return;
+    }
+    // A Codex turn boundary is bookkeeping too, with no timeline entry (yet).
+    if (isTurnLifecycleSystemEvent(event)) {
+      this.stats.lastUpdated = new Date();
       return;
     }
 
