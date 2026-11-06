@@ -42,7 +42,7 @@ import {
 import { DirectoryListingCache } from './providers/directoryListingCache';
 import type { SessionFileInfo } from './providers/types';
 import type { CanonicalTranscriptBlock, CanonicalTranscriptMessage } from './transcript';
-import { realpathOrNull, resolveWorkspaceRoots } from './workspaceRoots';
+import { pathWithinRoots, resolveWorkspaceRoots } from './workspaceRoots';
 import { fileHeadOf, HEAD_BYTES, headMatches, type FileHead } from './fileHead';
 
 export type PromptHistoryProvider = HumanPromptProvider;
@@ -833,15 +833,7 @@ function scopedCwd(
   roots: string[],
   realpaths: Map<string, string | null>,
 ): string | null {
-  if (typeof cwd !== 'string' || cwd.length === 0) return null;
-  const real = realpathOrNull(cwd, realpaths);
-  if (!real) return null;
-  for (const root of roots) {
-    if (real === root) return real;
-    const prefix = root.endsWith(path.sep) ? root : root + path.sep;
-    if (real.startsWith(prefix)) return real;
-  }
-  return null;
+  return pathWithinRoots(cwd, roots, realpaths);
 }
 
 /**

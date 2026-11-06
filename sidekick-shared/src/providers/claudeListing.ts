@@ -11,6 +11,65 @@ import { encodeWorkspacePath as encodeWsPath } from '../parsers/sessionPathResol
 import { DirectoryListingCache } from './directoryListingCache';
 import type { ListSessionFilesOptions, SessionFileInfo } from './types';
 
+/** Bytes `readClaudeSessionCwdAsync` reads at most before giving up. */
+export const CLAUDE_CWD_SCAN_BYTES = 1024 * 1024;
+
+const CWD_CACHE_LIMIT = 5000;
+const cwdCache = new Map<string, string>();
+
+/**
+ * The first working directory a Claude Code session file records (the
+ * top-level `cwd` of its earliest record that has one), streaming at most
+ * `maxBytes` (default 1 MiB) from the start. Null when none is found in
+ * that prefix or the file cannot be read. A found cwd is cached per path
+ * (it never changes); a miss is not, since the line may not be written yet.
+ */
+export async function readClaudeSessionCwdAsync(
+  sessionPath: string,
+  maxBytes = CLAUDE_CWD_SCAN_BYTES,
+): Promise<string | null> {
+  const cached = cwdCache.get(sessionPath);
+  if (cached !== undefined) return cached;
+  let handle: fs.promises.FileHandle | null = null;
+  try {
+    handle = await fs.promises.open(sessionPath, 'r');
+    const chunkSize = 64 * 1024;
+    let offset = 0;
+    let pending = '';
+    while (offset < maxBytes) {
+      const buffer = Buffer.alloc(Math.min(chunkSize, maxBytes - offset));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+      pending += buffer.toString('utf8', 0, bytesRead);
+      let newline: number;
+      while ((newline = pending.indexOf('\n')) !== -1) {
+        const line = pending.slice(0, newline);
+        pending = pending.slice(newline + 1);
+        if (!line.includes('"cwd"')) continue;
+        try {
+          const record = JSON.parse(line) as { cwd?: unknown };
+          if (typeof record?.cwd === 'string' && record.cwd) {
+            if (cwdCache.size >= CWD_CACHE_LIMIT) {
+              const oldest = cwdCache.keys().next().value;
+              if (oldest !== undefined) cwdCache.delete(oldest);
+            }
+            cwdCache.set(sessionPath, record.cwd);
+            return record.cwd;
+          }
+        } catch {
+          // A malformed line; keep looking.
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+}
+
 /** Matches project directory names that may hold sessions for `workspacePath`. */
 export function workspaceDirectoryFilter(
   workspacePath?: string,

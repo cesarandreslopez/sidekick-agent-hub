@@ -46,12 +46,12 @@ import type {
   SessionProviderDiagnostic,
 } from '../providers/types';
 import { listSessionPreviewsAsync } from '../sessionPreviews';
-import type { SessionPreview } from '../sessionPreviews';
+import type { SessionPreview, SessionScopeMode } from '../sessionPreviews';
+import { SYNTHETIC_MODEL } from './claudeUsageDedupe';
 import type { TokenTotals } from '../types/historicalData';
 import { calculateNormalizedUsageCost, extractNormalizedUsage } from '../usageNormalization';
 import type { NormalizedUsage, PricingProvenance } from '../usageNormalization';
 import { atomicWriteJson } from '../writers/atomic';
-import { resolveWorkspaceRoots, type ResolvedWorkspaceRoots } from '../workspaceRoots';
 import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
 import { ClaudeCodeProvider } from '../providers/claudeCode';
 import { CodexProvider } from '../providers/codex';
@@ -164,6 +164,22 @@ export interface CollectUsageEventsOptions {
    * true with `workspacePaths`, false with `workspacePath`.
    */
   includeWorktrees?: boolean;
+  /**
+   * `contained` (the default with `workspacePaths`): a session counts only
+   * when the cwd it recorded resolves inside one of the roots, checked per
+   * session before it is read; a session with no cwd, or one whose directory
+   * no longer exists, is left out and counted in `stats.sessionsOutOfScope`.
+   * Claude Code subagent transcripts follow their parent session.
+   * `listed` (the default with the legacy `workspacePath`): whatever the
+   * providers' workspace filters list, which can include look-alike
+   * projects (`/a/app` and `/b/app`, or a Codex session in a parent folder).
+   */
+  scope?: SessionScopeMode;
+  /**
+   * Leave out Claude Code's `<synthetic>` placeholder messages (never
+   * billed), counting them in `stats.syntheticEventsExcluded`. Default false.
+   */
+  excludeSynthetic?: boolean;
   /** Preview-read concurrency (see `listSessionPreviewsAsync`). */
   concurrency?: number;
   /** Cache directory (default `<configDir>/usage-cache`). */
@@ -180,6 +196,13 @@ export interface CollectUsageEventsOptions {
   signal?: AbortSignal;
 }
 
+export interface CollectUsageEventsStats {
+  /** Sessions a `contained` scope left out (no recorded cwd, or one outside the roots). */
+  sessionsOutOfScope: number;
+  /** `<synthetic>` events left out by `excludeSynthetic`. */
+  syntheticEventsExcluded: number;
+}
+
 export interface CollectUsageEventsResult {
   /** Events within the window, oldest first. */
   events: UsageEventRecord[];
@@ -189,6 +212,7 @@ export interface CollectUsageEventsResult {
   cacheMisses: number;
   /** Realpaths of the roots listed, after worktree expansion, when the call was scoped. */
   roots?: string[];
+  stats: CollectUsageEventsStats;
 }
 
 /** Compact on-disk event: raw counts only, priced when loaded. */
@@ -615,9 +639,20 @@ async function collectWithProviders(
 ): Promise<CollectUsageEventsResult> {
   const { sinceMs, untilMs, cacheDir, useCache, signal } = context;
   signal?.throwIfAborted();
-  const scope = usageScope(options);
-  const listed = await listScopedPreviews(options, scope?.listingRoots);
+  const listed = await listSessionPreviewsAsync(options.providers, {
+    since: options.since,
+    workspacePath: options.workspacePath,
+    workspacePaths: options.workspacePaths,
+    includeWorktrees: options.includeWorktrees,
+    scope: options.scope,
+    limit: Number.MAX_SAFE_INTEGER,
+    concurrency: options.concurrency,
+  });
   signal?.throwIfAborted();
+  const stats: CollectUsageEventsStats = {
+    sessionsOutOfScope: listed.stats?.sessionsOutOfScope ?? 0,
+    syntheticEventsExcluded: 0,
+  };
   const diagnostics = [...listed.diagnostics];
   for (const diagnostic of listed.diagnostics) options.onDiagnostic?.(diagnostic);
   const providerById = new Map(options.providers.map((provider) => [provider.id, provider]));
@@ -699,6 +734,10 @@ async function collectWithProviders(
     for (const cached of cachedEvents) {
       if (sinceMs !== null && cached.t < sinceMs) continue;
       if (untilMs !== null && cached.t > untilMs) continue;
+      if (options.excludeSynthetic && cached.m === SYNTHETIC_MODEL) {
+        stats.syntheticEventsExcluded += 1;
+        continue;
+      }
       events.push(
         priceCachedEvent(
           cached,
@@ -735,7 +774,8 @@ async function collectWithProviders(
     diagnostics,
     cacheHits,
     cacheMisses,
-    ...(scope ? { roots: scope.roots } : {}),
+    ...(listed.roots ? { roots: listed.roots } : {}),
+    stats,
   };
 }
 
@@ -745,49 +785,4 @@ function validSubagent(value: unknown): UsageCacheFile['subagent'] {
   return typeof agentId === 'string' && typeof parentSessionId === 'string'
     ? { agentId, parentSessionId }
     : undefined;
-}
-
-/** The roots to list, or undefined for an unscoped (or legacy single-root) call. */
-function usageScope(options: CollectUsageEventsOptions): ResolvedWorkspaceRoots | undefined {
-  if (options.workspacePaths) {
-    return resolveWorkspaceRoots(options.workspacePaths, {
-      includeWorktrees: options.includeWorktrees !== false,
-    });
-  }
-  if (options.workspacePath && options.includeWorktrees === true) {
-    return resolveWorkspaceRoots([options.workspacePath], { includeWorktrees: true });
-  }
-  return undefined;
-}
-
-/** Lists previews once per root and keeps each session file once. */
-async function listScopedPreviews(
-  options: CollectUsageEventsOptions & { providers: SessionProviderBase[] },
-  listingRoots: string[] | undefined,
-): Promise<{ previews: SessionPreview[]; diagnostics: SessionProviderDiagnostic[] }> {
-  const list = (workspacePath: string | undefined) =>
-    listSessionPreviewsAsync(options.providers, {
-      since: options.since,
-      workspacePath,
-      limit: Number.MAX_SAFE_INTEGER,
-      concurrency: options.concurrency,
-    });
-  if (!listingRoots) return list(options.workspacePath);
-  const byFile = new Map<string, SessionPreview>();
-  const diagnostics = new Map<string, SessionProviderDiagnostic>();
-  for (const root of listingRoots) {
-    options.signal?.throwIfAborted();
-    const listed = await list(root);
-    // Each root lists every provider again; report each problem once.
-    for (const diagnostic of listed.diagnostics) {
-      diagnostics.set(JSON.stringify(diagnostic), diagnostic);
-    }
-    for (const preview of listed.previews) {
-      if (!byFile.has(preview.filePath)) byFile.set(preview.filePath, preview);
-    }
-  }
-  const previews = [...byFile.values()].sort(
-    (left, right) => Date.parse(right.modifiedAt) - Date.parse(left.modifiedAt),
-  );
-  return { previews, diagnostics: [...diagnostics.values()] };
 }

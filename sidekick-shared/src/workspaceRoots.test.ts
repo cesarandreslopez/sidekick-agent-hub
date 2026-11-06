@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { realpathOrNull, resolveWorkspaceRoots } from './workspaceRoots';
+import { pathWithinRoots, realpathOrNull, resolveWorkspaceRoots } from './workspaceRoots';
 
 let root: string;
 
@@ -67,5 +67,28 @@ describe('resolveWorkspaceRoots', () => {
     expect(realpathOrNull(root, cache)).toBe(root);
     expect(cache.get(root)).toBe(root);
     expect(realpathOrNull('relative', cache)).toBeNull();
+  });
+});
+
+describe('pathWithinRoots', () => {
+  it('accepts a root and anything below it, by realpath', () => {
+    const app = path.join(root, 'app');
+    fs.mkdirSync(path.join(app, 'pkg'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'app-v2'), { recursive: true });
+    fs.symlinkSync(app, path.join(root, 'alias'), 'dir');
+    expect(pathWithinRoots(app, [app])).toBe(app);
+    expect(pathWithinRoots(path.join(app, 'pkg'), [app])).toBe(path.join(app, 'pkg'));
+    expect(pathWithinRoots(path.join(root, 'alias', 'pkg'), [app])).toBe(path.join(app, 'pkg'));
+    // A sibling sharing the prefix, and an ancestor, are outside.
+    expect(pathWithinRoots(path.join(root, 'app-v2'), [app])).toBeNull();
+    expect(pathWithinRoots(root, [app])).toBeNull();
+  });
+
+  it('fails closed on anything it cannot resolve', () => {
+    const app = path.join(root, 'app');
+    fs.mkdirSync(app);
+    for (const cwd of [undefined, null, 42, '', 'relative', path.join(app, 'deleted')]) {
+      expect(pathWithinRoots(cwd, [app])).toBeNull();
+    }
   });
 });

@@ -37,7 +37,7 @@ import {
 import { getClaudeSubagentsDir, parseClaudeSubagentFileName } from './claudePaths';
 import { codexRolloutOrigin } from './parsers/codexRolloutOrigin';
 import { readFirstLineAsync } from './providers/codexRollouts';
-import { realpathOrNull } from './workspaceRoots';
+import { pathWithinRoots } from './workspaceRoots';
 
 export interface FindToolCallOriginsOptions {
   /** Tool-call ids to locate: Claude `tool_use` ids, Codex `call_id`s or completed-item ids. */
@@ -271,14 +271,7 @@ async function readFirstRecord(filePath: string): Promise<unknown> {
 
 /** Fail-closed scope check on a recorded working directory. */
 function inScope(cwd: unknown, roots: string[], realpaths: Map<string, string | null>): boolean {
-  if (typeof cwd !== 'string' || cwd.length === 0) return false;
-  const real = realpathOrNull(cwd, realpaths);
-  if (!real) return false;
-  return roots.some((root) => {
-    if (real === root) return true;
-    const prefix = root.endsWith(path.sep) ? root : root + path.sep;
-    return real.startsWith(prefix);
-  });
+  return pathWithinRoots(cwd, roots, realpaths) !== null;
 }
 
 const ID_PATTERN = /"(?:id|call_id)"\s*:\s*"([^"\\]{1,256})"/g;

@@ -408,3 +408,8 @@ export type {
   ReadAgentVersionOptions,
 } from './agentVersion';
 export { extractRolloutSessionId, isCompressedRolloutFile, isRolloutFile } from './codexLayout';
+
+// Strict workspace scope for session listings and usage
+export { pathWithinRoots } from './workspaceRoots';
+export type { SessionPreviewListStats, SessionScopeMode } from './sessionPreviews';
+export type { CollectUsageEventsStats } from './usage/usageEvents';

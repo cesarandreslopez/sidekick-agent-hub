@@ -44,6 +44,28 @@ export function realpathOrNull(
 }
 
 /**
+ * The realpath of a recorded working directory when it is one of `roots` or
+ * below one, else null. Fails closed: a non-string, empty, relative, or
+ * unresolvable `cwd` (a deleted directory, for instance) is never in scope.
+ * `roots` must already be realpaths (see `resolveWorkspaceRoots`).
+ */
+export function pathWithinRoots(
+  cwd: unknown,
+  roots: readonly string[],
+  realpaths: Map<string, string | null> = new Map(),
+): string | null {
+  if (typeof cwd !== 'string' || cwd.length === 0) return null;
+  const real = realpathOrNull(cwd, realpaths);
+  if (!real) return null;
+  for (const root of roots) {
+    if (real === root) return real;
+    const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+    if (real.startsWith(prefix)) return real;
+  }
+  return null;
+}
+
+/**
  * Realpaths each absolute root and, by default, adds its main checkout and
  * git worktree siblings. Relative and unresolvable roots are dropped.
  */
