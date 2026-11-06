@@ -58,6 +58,7 @@ import type {
   SessionProviderOptions,
 } from './types';
 import { ProviderDiagnosticTracker, diagnosticFromRuntimeStatus } from './diagnostics';
+import type { SessionProviderFactory } from './sessionProviderRegistry';
 import type {
   SessionEvent,
   TokenUsage,
@@ -2291,3 +2292,9 @@ export class OpenCodeProvider implements SessionProviderBase {
     }
   }
 }
+
+/** Builds an {@link OpenCodeProvider} for `createSessionProvidersFrom()`. */
+export const openCodeProviderFactory: SessionProviderFactory = {
+  providerId: 'opencode',
+  create: (context) => new OpenCodeProvider({ onDiagnostic: context.onDiagnostic }),
+};

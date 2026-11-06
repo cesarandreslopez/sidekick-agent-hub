@@ -61,9 +61,10 @@ import type { TokenTotals } from '../types/historicalData';
 import { calculateNormalizedUsageCost, extractNormalizedUsage } from '../usageNormalization';
 import type { NormalizedUsage, PricingProvenance } from '../usageNormalization';
 import { atomicWriteJson } from '../writers/atomic';
-import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
-import { ClaudeCodeProvider } from '../providers/claudeCode';
-import { CodexProvider } from '../providers/codex';
+import type { SessionHomesOptions } from '../agentHomes';
+import { claudeCodeProviderFactory } from '../providers/claudeCode';
+import { codexProviderFactory } from '../providers/codex';
+import { createSessionProvidersFrom } from '../providers/sessionProviderRegistry';
 
 /**
  * Bump when the cached record shape or the counting rules change; older files
@@ -795,37 +796,21 @@ export async function collectUsageEvents(
 
 /**
  * Claude Code and Codex providers for a call that passed homes, a listing,
- * or nothing.
+ * or nothing (OpenCode is read only when passed in `providers`).
  */
 function createUsageProviders(
   homes: SessionHomesOptions | undefined,
   listing: SessionListing | undefined,
 ): SessionProviderBase[] {
+  const factories = [claudeCodeProviderFactory, codexProviderFactory];
   if (listing) {
-    const providers: SessionProviderBase[] = [];
-    if (listing.providers.includes('claude-code')) {
-      providers.push(new ClaudeCodeProvider({ homes: { claudeHomes: listing.homes.claude } }));
-    }
-    if (listing.providers.includes('codex')) {
-      providers.push(
-        new CodexProvider({
-          homes: { codexHomes: listing.homes.codex },
-          includeCompressedRollouts: listing.includeCompressedRollouts,
-        }),
-      );
-    }
-    return providers;
+    return createSessionProvidersFrom(factories, {
+      providerIds: listing.providers,
+      homes: { claudeHomes: listing.homes.claude, codexHomes: listing.homes.codex },
+      includeCompressedRollouts: listing.includeCompressedRollouts,
+    }).providers;
   }
-  // Validate before constructing anything (RangeError on a bad explicit home).
-  if (homes) resolveAgentHomes(homes);
-  const providers: SessionProviderBase[] = [];
-  if (homes?.claudeHomes?.length !== 0) {
-    providers.push(new ClaudeCodeProvider(homes ? { homes } : {}));
-  }
-  if (homes?.codexHomes?.length !== 0) {
-    providers.push(new CodexProvider(homes ? { homes } : {}));
-  }
-  return providers;
+  return createSessionProvidersFrom(factories, homes ? { homes } : {}).providers;
 }
 
 function validBounds(bounds: UsageEventsBounds | undefined): UsageEventsBounds | undefined {

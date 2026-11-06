@@ -812,7 +812,7 @@ describe('packaging contract', { timeout: 30_000 }, () => {
 
 // Bundles consumers build from one entry, minified the way they ship.
 describe('lean bundles', { timeout: 60_000 }, () => {
-  async function bundle(source: string): Promise<string> {
+  async function bundle(source: string, minify = true): Promise<string> {
     const { build } = await import('vite');
     const { builtinModules } = await import('node:module');
     let scratch: string | undefined;
@@ -830,7 +830,7 @@ describe('lean bundles', { timeout: 60_000 }, () => {
         build: {
           ssr: entry,
           write: false,
-          minify: true,
+          minify,
           rollupOptions: {
             external: [...builtinModules, ...builtinModules.map((m) => `node:${m}`), /^zod/],
           },
@@ -851,5 +851,22 @@ describe('lean bundles', { timeout: 60_000 }, () => {
     expect(code).toContain('classifyAgentTranscriptPath');
     expect(code).not.toMatch(/from\s*["']zod/);
     expect(code.length).toBeLessThan(8 * 1024);
+  });
+
+  it('leaves OpenCode out of a bundle that builds only Claude Code and Codex', async () => {
+    const entry = [
+      'export {',
+      '  createSessionProvidersFrom,',
+      '  claudeCodeProviderFactory,',
+      '  codexProviderFactory,',
+      "} from 'sidekick-shared/node';",
+      '',
+    ].join('\n');
+    // Unminified, so class names survive for the check.
+    const code = await bundle(entry, false);
+    expect(code).toMatch(/\bClaudeCodeProvider = class\b|\bclass ClaudeCodeProvider\b/);
+    expect(code).toMatch(/\bCodexProvider = class\b|\bclass CodexProvider\b/);
+    expect(code).not.toContain('OpenCodeDatabase');
+    expect(code).not.toContain('OpenCodeProvider');
   });
 });

@@ -61,6 +61,7 @@ import { extractSessionEvents } from '../schemas/sessionEvent';
 import { getClaudeProjectsDir } from '../claudePaths';
 import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
 import { listClaudeSessionFilesAsync, workspaceDirectoryFilter } from './claudeListing';
+import type { SessionProviderFactory } from './sessionProviderRegistry';
 
 /** Options for {@link ClaudeCodeProvider}; every field is optional and additive. */
 export interface ClaudeCodeProviderOptions extends SessionProviderOptions {
@@ -760,3 +761,16 @@ export class ClaudeCodeProvider implements SessionProviderBase {
     });
   }
 }
+
+/**
+ * Builds a {@link ClaudeCodeProvider} for `createSessionProvidersFrom()`,
+ * with the call's diagnostic sink and homes.
+ */
+export const claudeCodeProviderFactory: SessionProviderFactory = {
+  providerId: 'claude-code',
+  create: (context) =>
+    new ClaudeCodeProvider({
+      onDiagnostic: context.onDiagnostic,
+      ...(context.homes ? { homes: context.homes } : {}),
+    }),
+};

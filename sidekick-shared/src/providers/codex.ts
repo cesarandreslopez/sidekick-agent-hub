@@ -43,6 +43,7 @@ import type { RolloutFileInfo } from './rolloutWalker';
 import { getCodexSessionsDirs } from '../codexPaths';
 import { resolveMonitoredHomes } from '../monitoredHomes';
 import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
+import type { SessionProviderFactory } from './sessionProviderRegistry';
 import {
   cwdMatches,
   findCodexRolloutFile,
@@ -1264,3 +1265,17 @@ export class CodexProvider implements SessionProviderBase {
     );
   }
 }
+
+/**
+ * Builds a {@link CodexProvider} for `createSessionProvidersFrom()`, with the
+ * call's diagnostic sink, homes and compressed-rollout choice.
+ */
+export const codexProviderFactory: SessionProviderFactory = {
+  providerId: 'codex',
+  create: (context) =>
+    new CodexProvider({
+      onDiagnostic: context.onDiagnostic,
+      includeCompressedRollouts: context.includeCompressedRollouts,
+      ...(context.homes ? { homes: context.homes } : {}),
+    }),
+};

@@ -1625,3 +1625,13 @@ export type {
   UsageEventsCursor,
   UsageSessionRef,
 } from './usage/usageEvents';
+
+// Provider-selective construction (bundle only the providers you build)
+export { createSessionProvidersFrom } from './providers/sessionProviderRegistry';
+export type {
+  SessionProviderFactory,
+  SessionProviderFactoryContext,
+} from './providers/sessionProviderRegistry';
+export { claudeCodeProviderFactory } from './providers/claudeCode';
+export { codexProviderFactory } from './providers/codex';
+export { openCodeProviderFactory } from './providers/openCode';

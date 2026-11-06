@@ -3,7 +3,14 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSessionLogFixtures, writeJsonl } from '../testing/sessionLogFixtures';
+import { claudeCodeProviderFactory } from './claudeCode';
+import { codexProviderFactory } from './codex';
 import { createSessionProviders } from './factory';
+import {
+  createSessionProvidersFrom,
+  type SessionProviderFactory,
+  type SessionProviderFactoryContext,
+} from './sessionProviderRegistry';
 import { SESSION_PROVIDER_IDS } from './types';
 
 describe('createSessionProviders with explicit homes', () => {
@@ -113,5 +120,88 @@ describe('createSessionProviders', () => {
     expect(result!.providers.map((provider) => provider.id)).toEqual(SESSION_PROVIDER_IDS);
     expect(result!.diagnostics).toEqual([]);
     for (const provider of result!.providers) provider.dispose();
+  });
+});
+
+describe('createSessionProvidersFrom', () => {
+  it('builds only the given factories, in their order, first per id winning', () => {
+    const shadow: SessionProviderFactory = {
+      providerId: 'codex',
+      create: () => {
+        throw new Error('never reached');
+      },
+    };
+    const { providers, diagnostics } = createSessionProvidersFrom([
+      codexProviderFactory,
+      claudeCodeProviderFactory,
+      shadow,
+    ]);
+    try {
+      expect(providers.map((provider) => provider.id)).toEqual(['codex', 'claude-code']);
+      expect(diagnostics).toEqual([]);
+    } finally {
+      for (const provider of providers) provider.dispose();
+    }
+  });
+
+  it('applies providerIds and isolates a factory that throws', () => {
+    const onDiagnostic = vi.fn();
+    const broken: SessionProviderFactory = {
+      providerId: 'opencode',
+      create: () => {
+        throw new Error('boom');
+      },
+    };
+    const { providers, diagnostics } = createSessionProvidersFrom(
+      [claudeCodeProviderFactory, broken, codexProviderFactory],
+      { providerIds: ['claude-code', 'opencode'], onDiagnostic },
+    );
+    try {
+      expect(providers.map((provider) => provider.id)).toEqual(['claude-code']);
+      expect(diagnostics).toEqual([
+        expect.objectContaining({ providerId: 'opencode', kind: 'construction_failed' }),
+      ]);
+      expect(onDiagnostic).toHaveBeenCalledTimes(1);
+    } finally {
+      for (const provider of providers) provider.dispose();
+    }
+  });
+
+  it('hands every factory the shared sink, homes and compressed-rollout choice', () => {
+    const contexts: SessionProviderFactoryContext[] = [];
+    const spy: SessionProviderFactory = {
+      providerId: 'codex',
+      create: (context) => {
+        contexts.push(context);
+        return codexProviderFactory.create(context);
+      },
+    };
+    const homes = { codexHomes: ['/abs/codex'] };
+    const { providers } = createSessionProvidersFrom([spy], {
+      homes,
+      includeCompressedRollouts: true,
+    });
+    try {
+      expect(contexts).toEqual([
+        { onDiagnostic: expect.any(Function), homes, includeCompressedRollouts: true },
+      ]);
+      expect(providers[0].getWatchRoots?.()).toEqual(['/abs/codex/sessions']);
+    } finally {
+      for (const provider of providers) provider.dispose();
+    }
+  });
+
+  it('leaves out a provider whose explicit home list is empty and validates homes', () => {
+    const { providers } = createSessionProvidersFrom(
+      [claudeCodeProviderFactory, codexProviderFactory],
+      { homes: { codexHomes: [] } },
+    );
+    expect(providers.map((provider) => provider.id)).toEqual(['claude-code']);
+    for (const provider of providers) provider.dispose();
+    expect(() =>
+      createSessionProvidersFrom([claudeCodeProviderFactory], {
+        homes: { claudeHomes: ['relative'] },
+      }),
+    ).toThrow(RangeError);
   });
 });
