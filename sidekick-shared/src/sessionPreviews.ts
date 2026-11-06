@@ -246,8 +246,10 @@ export async function listSessionPreviewsAsync(
     providers.map(async (provider) => {
       let files: SessionFileInfo[] = [];
       try {
+        // Sizes and mtimes are reported (and key the usage cache), so a reused
+        // provider must re-stat files its directory cache already knows.
         files = provider.listSessionFilesAsync
-          ? await provider.listSessionFilesAsync(options.workspacePath)
+          ? await provider.listSessionFilesAsync(options.workspacePath, { revalidateAll: true })
           : await enumerateSessionFilesAsyncFallback(provider, options.workspacePath, options);
       } catch {
         files = [];

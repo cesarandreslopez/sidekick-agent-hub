@@ -110,6 +110,12 @@ export interface ListSessionFilesOptions {
   since?: number;
   /** Re-stat recently modified files even when their directory is unchanged. */
   revalidateRecent?: boolean;
+  /**
+   * Re-stat every file even when its directory is unchanged, so sizes and
+   * mtimes are current after an append (a reused provider instance otherwise
+   * reports what its directory cache saw last). Costs one stat per file.
+   */
+  revalidateAll?: boolean;
   /** Counters the enumerator increments for real readdir/stat calls. */
   stats?: SessionEnumerationCounters;
 }

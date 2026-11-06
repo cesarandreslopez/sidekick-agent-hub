@@ -57,6 +57,7 @@ export async function listClaudeSessionFilesAsync(
   }
   const root = await cache.listDirectory(projectsRoot, () => false, {
     revalidateRecent: options.revalidateRecent,
+    revalidateAll: options.revalidateAll,
     stats: options.stats,
   });
   if (!root) {
@@ -107,6 +108,7 @@ export async function listClaudeSessionFilesAsync(
       {
         dirStat: candidate.stat,
         revalidateRecent: options.revalidateRecent,
+        revalidateAll: options.revalidateAll,
         stats: options.stats,
       },
     );

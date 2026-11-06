@@ -165,6 +165,27 @@ describe('collectUsageEvents', () => {
     expect(result.events).toHaveLength(3);
   });
 
+  it('sees an append on a reused provider whose project directory looks unchanged', async () => {
+    const sessionPath = writeSession(BASE_ROWS);
+    // An append never touches the directory's mtime; put it well past the
+    // listing cache's coarse-mtime guard so the cached listing is trusted.
+    const past = new Date(Date.now() - 60 * 60_000);
+    fs.utimesSync(path.dirname(sessionPath), past, past);
+    const first = await collectUsageEvents({ providers: [provider] });
+    expect(first.events).toHaveLength(2);
+
+    fs.appendFileSync(
+      sessionPath,
+      JSON.stringify(assistantRow('2026-09-04T13:00:05.000Z', 300)) + '\n',
+    );
+    fs.utimesSync(path.dirname(sessionPath), past, past);
+    const second = await collectUsageEvents({ providers: [provider] });
+
+    expect(second.cacheMisses).toBe(1);
+    expect(second.events).toHaveLength(3);
+    expect(second.sessions[0].fingerprint).not.toBe(first.sessions[0].fingerprint);
+  });
+
   it('filters events by since and until on the event timestamp', async () => {
     writeSession(BASE_ROWS);
     const result = await collectUsageEvents({

@@ -65,6 +65,8 @@ export interface WalkRolloutFilesOptions {
   cache?: DirectoryListingCache;
   /** With `cache`: re-stat recently modified files even in unchanged directories. */
   revalidateRecent?: boolean;
+  /** With `cache`: re-stat every file even in unchanged directories. */
+  revalidateAll?: boolean;
   /** Payload-free counters of what the walk cost. */
   stats?: DirectoryListingCounters;
 }
@@ -115,6 +117,7 @@ interface WalkState {
   includeCompressed: boolean;
   cache: DirectoryListingCache | null;
   revalidateRecent: boolean;
+  revalidateAll: boolean;
   stats: DirectoryListingCounters | undefined;
 }
 
@@ -132,6 +135,7 @@ function walkState(options: WalkRolloutFilesOptions): WalkState {
     includeCompressed: options.includeCompressed ?? false,
     cache: options.cache ?? null,
     revalidateRecent: options.revalidateRecent ?? false,
+    revalidateAll: options.revalidateAll ?? false,
     stats: options.stats,
   };
 }
@@ -265,6 +269,7 @@ async function visitCached(
   if (state.since !== null && isDatedDirectoryBefore(segments, state.since)) return;
   const listing = await cache.listDirectory(dir, (name) => matchesFilter(state, name), {
     revalidateRecent: state.revalidateRecent,
+    revalidateAll: state.revalidateAll,
     stats: state.stats,
   });
   if (!listing) return;

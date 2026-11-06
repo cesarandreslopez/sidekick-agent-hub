@@ -258,6 +258,7 @@ export async function listCodexSessionFilesAsync(
     since: options.since,
     cache,
     revalidateRecent: options.revalidateRecent,
+    revalidateAll: options.revalidateAll,
     stats: options.stats,
     includeCompressed: options.includeCompressed,
   });
