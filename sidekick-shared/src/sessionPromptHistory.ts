@@ -15,15 +15,18 @@
  */
 
 import { statRolloutContent, type RolloutContentStat } from './providers/compressedRollouts';
+import type { SessionHomesOptions } from './agentHomes';
 import {
   DEFAULT_BOUNDS,
   PROMPT_HISTORY_ORDINAL_MAX_RECORD_BYTES,
+  candidateListingDirs,
   compareStrings,
   emptyStats,
   listCandidates,
   resolveRoots,
   scanFile,
   type Candidate,
+  type CandidateListingDirs,
   type FileOutcome,
   type PromptHistoryEntry,
   type PromptHistoryExclusion,
@@ -92,6 +95,8 @@ export interface CollectSessionPromptHistoryOptions {
    * `collectPromptHistory()`. Default false.
    */
   includeCompressedRollouts?: boolean;
+  /** Claude Code and Codex homes to read, as for `collectPromptHistory()`. */
+  homes?: SessionHomesOptions;
 }
 
 export interface PromptHistorySessionPrompt extends Omit<
@@ -231,6 +236,7 @@ export async function collectSessionPromptHistory(
     };
   };
 
+  const listingDirs = candidateListingDirs(options.homes);
   const realpaths = new Map<string, string | null>();
   const { roots, listingRoots } = resolveRoots(
     options.workspacePaths,
@@ -239,7 +245,7 @@ export async function collectSessionPromptHistory(
   );
   if (roots.length === 0) return finish();
 
-  const selected = await selectCandidates(options, listingRoots);
+  const selected = await selectCandidates(options, listingRoots, listingDirs);
   stats.sessionsMatched = selected.length;
   const limit =
     typeof options.limit === 'number' && options.limit > 0 ? Math.floor(options.limit) : Infinity;
@@ -377,11 +383,13 @@ function definedBounds(bounds: SessionPromptHistoryBounds | undefined): SessionP
 async function selectCandidates(
   options: CollectSessionPromptHistoryOptions,
   listingRoots: string[],
+  listingDirs: CandidateListingDirs | undefined,
 ): Promise<StatedCandidate[]> {
   const sinceMs = options.since ? options.since.getTime() : null;
   const providers = options.providers ?? ['claude-code', 'codex'];
   let candidates = await listCandidates(providers, listingRoots, sinceMs, {
     includeCompressedRollouts: options.includeCompressedRollouts,
+    dirs: listingDirs,
   });
   if (options.sessionIds || options.sessionRefs) {
     const ids = new Set(options.sessionIds ?? []);

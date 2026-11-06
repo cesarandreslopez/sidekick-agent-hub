@@ -66,9 +66,12 @@ export function encodeWorkspacePath(workspacePath: string): string {
  * // => "/home/user/.claude/projects/-home-user-code-project"
  * ```
  */
-export function getSessionDirectory(workspacePath: string): string {
+export function getSessionDirectory(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string {
   const encoded = encodeWorkspacePath(workspacePath);
-  return path.join(getClaudeProjectsDir(), encoded);
+  return path.join(projectsDir, encoded);
 }
 
 /** How recently a file must be modified to be considered "active" (5 minutes) */
@@ -93,9 +96,10 @@ const ACTIVE_SESSION_THRESHOLD_MS = 5 * 60 * 1000;
  * // => ["/home/user/.claude/projects/-home-user-project-packages-app"]
  * ```
  */
-export function findSubdirectorySessionDirs(workspacePath: string): string[] {
-  const projectsDir = getClaudeProjectsDir();
-
+export function findSubdirectorySessionDirs(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string[] {
   try {
     if (!fs.existsSync(projectsDir)) {
       return [];
@@ -190,11 +194,12 @@ export function getMostRecentlyActiveSessionDir(sessionDirs: string[]): string |
  * @param workspacePath - Absolute path to workspace directory
  * @returns Absolute path to session directory, or null if not found
  */
-export function discoverSessionDirectory(workspacePath: string): string | null {
-  const projectsDir = getClaudeProjectsDir();
-
+export function discoverSessionDirectory(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string | null {
   // Strategy 1: Try computed encoded path (exact match)
-  const computedDir = getSessionDirectory(workspacePath);
+  const computedDir = getSessionDirectory(workspacePath, projectsDir);
   if (fs.existsSync(computedDir)) {
     return computedDir;
   }
@@ -203,7 +208,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
   // When Claude Code starts from a subdirectory of the workspace, the session
   // is stored in a directory matching the subdirectory path. We find the most
   // recently active one.
-  const subdirMatches = findSubdirectorySessionDirs(workspacePath);
+  const subdirMatches = findSubdirectorySessionDirs(workspacePath, projectsDir);
   if (subdirMatches.length > 0) {
     const mostRecent = getMostRecentlyActiveSessionDir(subdirMatches);
     if (mostRecent) {
@@ -306,9 +311,12 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
  * }
  * ```
  */
-export function findActiveSession(workspacePath: string): string | null {
+export function findActiveSession(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string | null {
   // Use discovery to find the session directory (handles encoding differences)
-  const sessionDir = discoverSessionDirectory(workspacePath);
+  const sessionDir = discoverSessionDirectory(workspacePath, projectsDir);
 
   try {
     // Check if directory was found
@@ -375,9 +383,12 @@ export function findActiveSession(workspacePath: string): string | null {
  * sessions.forEach(session => console.log(session));
  * ```
  */
-export function findAllSessions(workspacePath: string): string[] {
+export function findAllSessions(
+  workspacePath: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): string[] {
   // Use discovery to find the session directory (handles encoding differences)
-  const sessionDir = discoverSessionDirectory(workspacePath);
+  const sessionDir = discoverSessionDirectory(workspacePath, projectsDir);
 
   try {
     // Check if directory was found
@@ -480,8 +491,10 @@ export function decodeEncodedPath(encoded: string): string {
  * // ]
  * ```
  */
-export function getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
-  const projectsDir = getClaudeProjectsDir();
+export function getAllProjectFolders(
+  workspacePath?: string,
+  projectsDir: string = getClaudeProjectsDir(),
+): ProjectFolderInfo[] {
   const folders: ProjectFolderInfo[] = [];
 
   try {

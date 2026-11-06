@@ -363,3 +363,16 @@ export type {
   JsonlTailReset,
   JsonlTailResetReason,
 } from './watchers/jsonlTail';
+
+// Agent homes: explicit Claude Code / Codex homes for session readers
+export { CLAUDE_CONFIG_DIR_ENV_VAR, CODEX_HOME_ENV_VAR, resolveAgentHomes } from './agentHomes';
+export type {
+  AgentHomeProvider,
+  AgentHomesEnv,
+  IgnoredAgentHome,
+  ResolvedAgentHomes,
+  SessionHomesOptions,
+} from './agentHomes';
+export { resolveMonitoredHomes } from './monitoredHomes';
+export type { CodexMonitoringHomesOptions } from './codexPaths';
+export { CLAUDE_PROJECTS_SUBDIR } from './claudePaths';

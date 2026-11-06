@@ -32,11 +32,21 @@ export function workspaceDirectoryFilter(
   };
 }
 
+/** Options for {@link listClaudeSessionFilesAsync}. */
+export interface ListClaudeSessionFilesOptions extends ListSessionFilesOptions {
+  /**
+   * `projects/` directories to walk, one per Claude Code home (default the
+   * live home's). Files are deduplicated by path across them.
+   */
+  projectsDirs?: readonly string[];
+}
+
 /**
  * Enumerate session files across project directories through the
  * directory cache: one stat per project directory, a readdir only for
  * directories whose mtime changed, and a stat only for files new to a
- * changed directory (or recently modified, with `revalidateRecent`).
+ * changed directory (or recently modified, with `revalidateRecent`; every
+ * file, with `revalidateAll`).
  *
  * With `limit`, directories are visited newest-mtime first and the walk
  * stops once the remaining directories are older than the newest `limit`
@@ -46,22 +56,14 @@ export function workspaceDirectoryFilter(
  */
 export async function listClaudeSessionFilesAsync(
   workspacePath?: string,
-  options: ListSessionFilesOptions = {},
+  options: ListClaudeSessionFilesOptions = {},
   cache: DirectoryListingCache = new DirectoryListingCache(),
 ): Promise<SessionFileInfo[]> {
-  const projectsRoot = getClaudeProjectsDir();
+  const projectsRoots = [...new Set(options.projectsDirs ?? [getClaudeProjectsDir()])];
   if (options.stats) {
     options.stats.directoriesListed ??= 0;
     options.stats.directoriesStatted ??= 0;
     options.stats.filesStatted ??= 0;
-  }
-  const root = await cache.listDirectory(projectsRoot, () => false, {
-    revalidateRecent: options.revalidateRecent,
-    revalidateAll: options.revalidateAll,
-    stats: options.stats,
-  });
-  if (!root) {
-    return [];
   }
 
   const limit =
@@ -77,28 +79,38 @@ export async function listClaudeSessionFilesAsync(
 
   const candidates: Array<{ directory: string; stat: fs.Stats }> = [];
   let sinceYield = 0;
-  for (const name of root.subdirectories) {
-    if (!matchesWorkspace(name)) continue;
-    const directory = path.join(projectsRoot, name);
-    try {
-      const stat = await fs.promises.stat(directory);
-      if (options.stats) {
-        options.stats.directoriesStatted = (options.stats.directoriesStatted ?? 0) + 1;
+  for (const projectsRoot of projectsRoots) {
+    const root = await cache.listDirectory(projectsRoot, () => false, {
+      revalidateRecent: options.revalidateRecent,
+      revalidateAll: options.revalidateAll,
+      stats: options.stats,
+    });
+    if (!root) continue;
+    for (const name of root.subdirectories) {
+      if (!matchesWorkspace(name)) continue;
+      const directory = path.join(projectsRoot, name);
+      try {
+        const stat = await fs.promises.stat(directory);
+        if (options.stats) {
+          options.stats.directoriesStatted = (options.stats.directoriesStatted ?? 0) + 1;
+        }
+        if (stat.isDirectory()) candidates.push({ directory, stat });
+      } catch {
+        continue;
       }
-      if (stat.isDirectory()) candidates.push({ directory, stat });
-    } catch {
-      continue;
-    }
-    if (++sinceYield >= 50) {
-      sinceYield = 0;
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      if (++sinceYield >= 50) {
+        sinceYield = 0;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
     }
   }
+  if (candidates.length === 0) return [];
   if (limit !== null) candidates.sort((left, right) => right.stat.mtimeMs - left.stat.mtimeMs);
 
   const byNewest = (left: SessionFileInfo, right: SessionFileInfo): number =>
     right.mtime.getTime() - left.mtime.getTime();
   const results: SessionFileInfo[] = [];
+  const seen = new Set<string>();
   let cutoffMs: number | null = null;
   for (const candidate of candidates) {
     if (limit !== null && cutoffMs !== null && candidate.stat.mtimeMs < cutoffMs) break;
@@ -117,6 +129,8 @@ export async function listClaudeSessionFilesAsync(
       if (stat.sizeBytes <= 0) continue;
       if (since !== null && stat.mtimeMs < since) continue;
       const sessionPath = path.join(candidate.directory, name);
+      if (seen.has(sessionPath)) continue;
+      seen.add(sessionPath);
       results.push({
         path: sessionPath,
         mtime: new Date(stat.mtimeMs),

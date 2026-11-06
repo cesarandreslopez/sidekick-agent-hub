@@ -1557,3 +1557,17 @@ export type { ClassifyToolOptions, ToolCategory } from './toolCategory';
 // Workspace roots (realpath plus git worktree expansion)
 export { resolveWorkspaceRoots } from './workspaceRoots';
 export type { ResolveWorkspaceRootsOptions, ResolvedWorkspaceRoots } from './workspaceRoots';
+
+// Agent homes: explicit Claude Code / Codex homes for session readers
+export { CLAUDE_CONFIG_DIR_ENV_VAR, CODEX_HOME_ENV_VAR, resolveAgentHomes } from './agentHomes';
+export type {
+  AgentHomeProvider,
+  AgentHomesEnv,
+  IgnoredAgentHome,
+  ResolvedAgentHomes,
+  SessionHomesOptions,
+} from './agentHomes';
+export { resolveMonitoredHomes } from './monitoredHomes';
+export type { CodexMonitoringHomesOptions } from './codexPaths';
+export { CLAUDE_PROJECTS_SUBDIR } from './claudePaths';
+export type { ClaudeCodeProviderOptions } from './providers/claudeCode';

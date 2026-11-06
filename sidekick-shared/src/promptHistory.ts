@@ -28,7 +28,10 @@ import { createHash } from 'crypto';
 import * as path from 'path';
 import { HUMAN_CODEX_SOURCES, humanPromptText, type HumanPromptProvider } from './humanPrompt';
 import { listClaudeSessionFilesAsync } from './providers/claudeListing';
-import { listCodexSessionFilesAsync } from './providers/codexRollouts';
+import { getSessionsDirs, listCodexSessionFilesAsync } from './providers/codexRollouts';
+import { resolveAgentHomes, type SessionHomesOptions } from './agentHomes';
+import { getClaudeProjectsDir } from './claudePaths';
+import { resolveMonitoredHomes } from './monitoredHomes';
 import {
   canReadCompressedRollouts,
   openRolloutReadHandle,
@@ -277,6 +280,12 @@ export interface CollectPromptHistoryOptions {
    * Default false.
    */
   includeCompressedRollouts?: boolean;
+  /**
+   * Claude Code and Codex homes to read instead of following this process's
+   * environment (see `SessionHomesOptions`; `[]` skips that provider). A
+   * relative or blank explicit entry throws `RangeError`.
+   */
+  homes?: SessionHomesOptions;
 }
 
 export interface PromptHistoryResult {
@@ -444,6 +453,7 @@ export async function collectPromptHistory(
     roots: scannedRoots,
   });
 
+  const listingDirs = candidateListingDirs(options.homes);
   const realpaths = new Map<string, string | null>();
   const { roots, listingRoots } = resolveRoots(
     options.workspacePaths,
@@ -458,6 +468,7 @@ export async function collectPromptHistory(
   const candidates = rotate(
     await listCandidates(providers, listingRoots, sinceMs, {
       includeCompressedRollouts: options.includeCompressedRollouts,
+      dirs: listingDirs,
     }),
     previousNext,
   );
@@ -833,17 +844,42 @@ function scopedCwd(
   return null;
 }
 
+/**
+ * The directories a candidate listing walks for configured homes, or
+ * undefined to follow this process's environment. Validates the homes
+ * (`RangeError`), so callers resolve this before anything else.
+ * @internal
+ */
+export interface CandidateListingDirs {
+  /** Claude Code `projects/` directories. */
+  claude: string[];
+  /** Codex rollout directories (`sessions/`, `archived_sessions/`). */
+  codex: string[];
+}
+
+/** @internal */
+export function candidateListingDirs(
+  homes: SessionHomesOptions | undefined,
+): CandidateListingDirs | undefined {
+  if (!homes) return undefined;
+  const claude = resolveAgentHomes(homes).claude.map((home) => getClaudeProjectsDir(home));
+  const codexHomes = resolveMonitoredHomes(homes).codex;
+  return { claude, codex: codexHomes.length > 0 ? getSessionsDirs(codexHomes) : [] };
+}
+
 /** @internal */
 export async function listCandidates(
   providers: PromptHistoryProvider[],
   listingRoots: string[],
   sinceMs: number | null,
-  options: { includeCompressedRollouts?: boolean } = {},
+  options: { includeCompressedRollouts?: boolean; dirs?: CandidateListingDirs } = {},
 ): Promise<Candidate[]> {
   const byPath = new Map<string, Candidate>();
   const listOptions = sinceMs !== null ? { since: sinceMs } : {};
   for (const provider of [...new Set(providers)]) {
     if (!ALL_PROVIDERS.includes(provider)) continue;
+    const dirs = options.dirs?.[provider === 'claude-code' ? 'claude' : 'codex'];
+    if (dirs && dirs.length === 0) continue;
     // Listings are only candidate supersets; scope is re-checked per prompt.
     const cache = new DirectoryListingCache();
     for (const root of listingRoots) {
@@ -851,13 +887,18 @@ export async function listCandidates(
       try {
         files =
           provider === 'claude-code'
-            ? await listClaudeSessionFilesAsync(root, listOptions, cache)
+            ? await listClaudeSessionFilesAsync(
+                root,
+                { ...listOptions, ...(dirs ? { projectsDirs: dirs } : {}) },
+                cache,
+              )
             : await listCodexSessionFilesAsync(
                 root,
                 {
                   ...listOptions,
                   includeCompressed:
                     options.includeCompressedRollouts === true && canReadCompressedRollouts(),
+                  ...(dirs ? { sessionsDirs: dirs } : {}),
                 },
                 cache,
               );

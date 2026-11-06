@@ -1,21 +1,23 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { getAccountsDir, listSavedAccountProfiles } from './accountRegistry';
+import {
+  CODEX_ARCHIVED_SESSIONS_SUBDIR,
+  CODEX_SESSIONS_SUBDIR,
+  getDefaultSystemCodexHome,
+  getExplicitCodexHome,
+  getSystemCodexHome,
+} from './codexLayout';
 
-export function getDefaultSystemCodexHome(): string {
-  return path.join(os.homedir(), '.codex');
-}
-
-export function getExplicitCodexHome(): string | null {
-  const explicitHome = process.env.CODEX_HOME?.trim();
-  return explicitHome ? explicitHome : null;
-}
-
-/** The home the `codex` CLI reads for this process: `CODEX_HOME` or `~/.codex`. */
-export function getSystemCodexHome(): string {
-  return getExplicitCodexHome() ?? getDefaultSystemCodexHome();
-}
+// The home and rollout-directory layout lives in `codexLayout`
+// (dependency-free); re-exported here, where it has always been importable.
+export {
+  CODEX_ARCHIVED_SESSIONS_SUBDIR,
+  CODEX_SESSIONS_SUBDIR,
+  getDefaultSystemCodexHome,
+  getExplicitCodexHome,
+  getSystemCodexHome,
+};
 
 export function resolveSidekickCodexHome(): string {
   // Account switching swaps auth.json inside the system home, so the system
@@ -153,7 +155,7 @@ export function getCodexLoginStatePath(id: string): string {
   return fs.existsSync(dir) ? path.join(dir, 'profile.json') : getCodexProfileStatePath(id);
 }
 
-function dedupePaths(paths: string[]): string[] {
+export function dedupePaths(paths: readonly string[]): string[] {
   const seen = new Set<string>();
   const unique: string[] = [];
 
@@ -167,27 +169,41 @@ function dedupePaths(paths: string[]): string[] {
   return unique;
 }
 
-export function getCodexMonitoringHomes(): string[] {
+/** Sidekick account-profile Codex homes that recorded sessions. */
+export function getCodexProfileHomesWithSessions(): string[] {
+  const homes: string[] = [];
+  for (const profile of listSavedAccountProfiles('codex')) {
+    const profileHome = getCodexProfileHome(profile.id);
+    if (fs.existsSync(path.join(profileHome, CODEX_SESSIONS_SUBDIR))) {
+      homes.push(profileHome);
+    }
+  }
+  return homes;
+}
+
+export interface CodexMonitoringHomesOptions {
+  /**
+   * Add sidekick account-profile homes that recorded sessions, when
+   * `CODEX_HOME` is unset (default true).
+   */
+  includeProfileHomes?: boolean;
+}
+
+/**
+ * The Codex homes this process monitors: `CODEX_HOME` alone when set, else
+ * `~/.codex` plus, by default, the profile homes that recorded sessions.
+ */
+export function getCodexMonitoringHomes(options: CodexMonitoringHomesOptions = {}): string[] {
   const explicitHome = getExplicitCodexHome();
   if (explicitHome) return [explicitHome];
 
   // The system home is the single live home; profile homes only matter for
   // sessions recorded back when they doubled as live CODEX_HOMEs.
   const homes: string[] = [getDefaultSystemCodexHome()];
-  for (const profile of listSavedAccountProfiles('codex')) {
-    const profileHome = getCodexProfileHome(profile.id);
-    if (fs.existsSync(path.join(profileHome, 'sessions'))) {
-      homes.push(profileHome);
-    }
-  }
+  if (options.includeProfileHomes !== false) homes.push(...getCodexProfileHomesWithSessions());
 
   return dedupePaths(homes);
 }
-
-/** Where Codex writes live rollouts, below each home. */
-export const CODEX_SESSIONS_SUBDIR = 'sessions';
-/** Where Codex moves a rollout when its thread is archived, below each home. */
-export const CODEX_ARCHIVED_SESSIONS_SUBDIR = 'archived_sessions';
 
 export interface CodexSessionsDirsOptions {
   /** Also list each home's `archived_sessions` directory when it exists (default true). */
@@ -200,7 +216,7 @@ export interface CodexSessionsDirsOptions {
  * callers that pick one directory pick a live one.
  */
 export function getCodexSessionsDirs(
-  homes: string[] = getCodexMonitoringHomes(),
+  homes: readonly string[] = getCodexMonitoringHomes(),
   options: CodexSessionsDirsOptions = {},
 ): string[] {
   const live = homes.map((home) => path.join(home, CODEX_SESSIONS_SUBDIR));

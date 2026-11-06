@@ -59,7 +59,22 @@ import { scanSubagentDir } from '../parsers/subagentScanner';
 import { getModelContextWindowSize } from '../modelContext';
 import { extractSessionEvents } from '../schemas/sessionEvent';
 import { getClaudeProjectsDir } from '../claudePaths';
+import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
 import { listClaudeSessionFilesAsync, workspaceDirectoryFilter } from './claudeListing';
+
+/** Options for {@link ClaudeCodeProvider}; every field is optional and additive. */
+export interface ClaudeCodeProviderOptions extends SessionProviderOptions {
+  /**
+   * Claude Code homes to read instead of following `CLAUDE_CONFIG_DIR` at
+   * each call. Resolved once, at construction, without touching files
+   * (`RangeError` for a relative or blank explicit entry). Listings walk
+   * every home; single-directory lookups (`getSessionDirectory`,
+   * `discoverSessionDirectory`, `findActiveSession`, `findAllSessions`,
+   * `getProjectsBaseDir`) use the first. `claudeHomes: []` leaves every
+   * listing and lookup empty.
+   */
+  homes?: SessionHomesOptions;
+}
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
@@ -311,33 +326,58 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   /** Project-directory listings reused across async enumerations. */
   private readonly directoryCache = new DirectoryListingCache();
 
-  constructor(options: SessionProviderOptions = {}) {
+  /** Configured homes, or null to follow the live home at each call. */
+  private readonly claudeHomes: readonly string[] | null;
+
+  constructor(options: ClaudeCodeProviderOptions = {}) {
     this.diagnostics = new ProviderDiagnosticTracker(this.id, options);
+    this.claudeHomes = options.homes ? resolveAgentHomes(options.homes).claude : null;
+  }
+
+  /** Every `projects/` directory this provider reads, in home order. */
+  private projectsDirs(): string[] {
+    return this.claudeHomes
+      ? this.claudeHomes.map((home) => getClaudeProjectsDir(home))
+      : [getClaudeProjectsDir()];
+  }
+
+  /** The first home's `projects/` directory (the live one when unconfigured). */
+  private primaryProjectsDir(): string {
+    return this.projectsDirs()[0] ?? getClaudeProjectsDir();
+  }
+
+  /** Configured with `claudeHomes: []`: nothing to read. */
+  private get disabled(): boolean {
+    return this.claudeHomes !== null && this.claudeHomes.length === 0;
   }
 
   // --- Path resolution ---
 
   getSessionDirectory(workspacePath: string): string {
-    return getSessionDir(workspacePath);
+    return getSessionDir(workspacePath, this.primaryProjectsDir());
   }
 
   discoverSessionDirectory(workspacePath: string): string | null {
-    return discoverSessionDir(workspacePath);
+    if (this.disabled) return null;
+    return discoverSessionDir(workspacePath, this.primaryProjectsDir());
   }
 
   // --- Session discovery ---
 
   findActiveSession(workspacePath: string): string | null {
-    return findActiveSessionPath(workspacePath);
+    if (this.disabled) return null;
+    return findActiveSessionPath(workspacePath, this.primaryProjectsDir());
   }
 
   findAllSessions(workspacePath: string): string[] {
-    return findAllSessionPaths(workspacePath);
+    if (this.disabled) return [];
+    return findAllSessionPaths(workspacePath, this.primaryProjectsDir());
   }
 
   findSessionById(workspacePath: string, sessionId: string): string | null {
     const normalizedId = sessionId.trim();
     if (!normalizedId || path.basename(normalizedId) !== normalizedId) return null;
+    if (this.disabled) return null;
     try {
       const directories = new Set<string>();
       directories.add(this.getSessionDirectory(workspacePath));
@@ -381,7 +421,19 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   }
 
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
-    return getAllProjectFoldersRaw(workspacePath);
+    const dirs = this.projectsDirs();
+    if (dirs.length === 1) return getAllProjectFoldersRaw(workspacePath, dirs[0]);
+    // Several homes: each home's folders in its own priority order, homes in order.
+    const seen = new Set<string>();
+    const folders: ProjectFolderInfo[] = [];
+    for (const dir of dirs) {
+      for (const folder of getAllProjectFoldersRaw(workspacePath, dir)) {
+        if (seen.has(folder.dir)) continue;
+        seen.add(folder.dir);
+        folders.push(folder);
+      }
+    }
+    return folders;
   }
 
   listAllSessionFiles(): SessionFileInfo[] {
@@ -417,7 +469,11 @@ export class ClaudeCodeProvider implements SessionProviderBase {
     options: ListSessionFilesOptions = {},
   ): Promise<SessionFileInfo[]> {
     try {
-      return await listClaudeSessionFilesAsync(workspacePath, options, this.directoryCache);
+      return await listClaudeSessionFilesAsync(
+        workspacePath,
+        { ...options, projectsDirs: this.projectsDirs() },
+        this.directoryCache,
+      );
     } finally {
       this.recordHomeStatus('listSessionFilesAsync');
     }
@@ -580,11 +636,11 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   }
 
   getProjectsBaseDir(): string {
-    return getClaudeProjectsDir();
+    return this.primaryProjectsDir();
   }
 
   getWatchRoots(): string[] {
-    return [this.getProjectsBaseDir()];
+    return this.projectsDirs();
   }
 
   // --- Stats ---
@@ -607,6 +663,7 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   getRuntimeStatus(): ProviderRuntimeStatus {
     try {
+      if (this.disabled) throw new Error('No Claude Code home configured.');
       fs.accessSync(this.getProjectsBaseDir(), fs.constants.R_OK);
       return { available: true, kind: 'available' };
     } catch {

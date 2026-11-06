@@ -24,7 +24,9 @@ import * as path from 'path';
 import * as readline from 'readline';
 import { Readable } from 'stream';
 import { isCompressedRolloutPath, readRolloutBufferAsync } from './providers/compressedRollouts';
+import type { SessionHomesOptions } from './agentHomes';
 import {
+  candidateListingDirs,
   listCandidates,
   readPromptOrdinalMarks,
   resolveRoots,
@@ -54,6 +56,8 @@ export interface FindToolCallOriginsOptions {
    * `collectPromptHistory()`. Default false.
    */
   includeCompressedRollouts?: boolean;
+  /** Claude Code and Codex homes to read, as for `collectPromptHistory()`. */
+  homes?: SessionHomesOptions;
 }
 
 export interface ToolCallOrigin {
@@ -112,6 +116,7 @@ export async function findToolCallOrigins(
   const found = new Map<string, ToolCallOrigin>();
   if (wanted.size === 0) return found;
   throwIfAborted(options.signal);
+  const listingDirs = candidateListingDirs(options.homes);
 
   const realpaths = new Map<string, string | null>();
   const { roots, listingRoots } = resolveRoots(
@@ -124,6 +129,7 @@ export async function findToolCallOrigins(
   const sinceMs = options.since ? options.since.getTime() : null;
   const candidates = await listCandidates(providers, listingRoots, sinceMs, {
     includeCompressedRollouts: options.includeCompressedRollouts,
+    dirs: listingDirs,
   });
   const byProviderSession = new Map<string, Candidate>();
   for (const candidate of candidates) {

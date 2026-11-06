@@ -186,6 +186,33 @@ describe('collectUsageEvents', () => {
     expect(second.sessions[0].fingerprint).not.toBe(first.sessions[0].fingerprint);
   });
 
+  it('builds its own Claude Code and Codex providers from homes', async () => {
+    writeSession(BASE_ROWS);
+    const elsewhere = path.join(tmpDir, 'elsewhere');
+    fs.mkdirSync(elsewhere, { recursive: true });
+
+    const fromHomes = await collectUsageEvents({
+      homes: { claudeHomes: [path.join(tmpDir, '.claude')], codexHomes: [] },
+      noCache: true,
+    });
+    expect(fromHomes.events).toHaveLength(2);
+    const fromElsewhere = await collectUsageEvents({
+      homes: { claudeHomes: [elsewhere], codexHomes: [] },
+      noCache: true,
+    });
+    expect(fromElsewhere.events).toHaveLength(0);
+    // Neither providers nor homes: the default homes.
+    const defaults = await collectUsageEvents({ noCache: true });
+    expect(defaults.events).toHaveLength(2);
+
+    await expect(
+      collectUsageEvents({ providers: [provider], homes: { claudeHomes: [elsewhere] } }),
+    ).rejects.toThrow(TypeError);
+    await expect(collectUsageEvents({ homes: { claudeHomes: ['relative'] } })).rejects.toThrow(
+      RangeError,
+    );
+  });
+
   it('filters events by since and until on the event timestamp', async () => {
     writeSession(BASE_ROWS);
     const result = await collectUsageEvents({

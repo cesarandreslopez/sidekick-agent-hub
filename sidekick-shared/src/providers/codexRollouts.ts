@@ -19,9 +19,12 @@ import {
 } from './compressedRollouts';
 import type { ListSessionFilesOptions, SessionFileInfo } from './types';
 
-/** Every directory across the monitored homes that may hold rollouts, archived ones included. */
-export function getSessionsDirs(): string[] {
-  return getCodexSessionsDirs();
+/**
+ * Every directory across the monitored homes (or `homes`) that may hold
+ * rollouts, archived ones included.
+ */
+export function getSessionsDirs(homes?: readonly string[]): string[] {
+  return homes ? getCodexSessionsDirs(homes) : getCodexSessionsDirs();
 }
 
 /**
@@ -236,6 +239,11 @@ export interface ListCodexSessionFilesOptions extends ListSessionFilesOptions {
    * reuse one `cache` across calls that differ in this option.
    */
   includeCompressed?: boolean;
+  /**
+   * Rollout directories to walk (default every monitored home's
+   * `sessions/` and `archived_sessions/`; see `getCodexSessionsDirs()`).
+   */
+  sessionsDirs?: readonly string[];
 }
 
 /**
@@ -253,7 +261,7 @@ export async function listCodexSessionFilesAsync(
   // One capped walk across the homes (deduplicated, newest first) through
   // the directory cache. With a workspace filter the limit applies after
   // filtering, so the walk itself is bounded only by its file cap.
-  const files = await walkRolloutFilesAsync(getSessionsDirs(), {
+  const files = await walkRolloutFilesAsync(options.sessionsDirs ?? getSessionsDirs(), {
     limit: workspacePath ? undefined : options.limit,
     since: options.since,
     cache,
@@ -283,6 +291,11 @@ export interface FindCodexRolloutFileOptions {
    */
   codexHome?: string;
   /**
+   * Codex homes to search, in order (ignored when `codexHome` is set).
+   * Defaults to every monitored home.
+   */
+  codexHomes?: readonly string[];
+  /**
    * Also match a compressed rollout (`.jsonl.zst`) when no `.jsonl` for the
    * id exists (default false).
    */
@@ -311,7 +324,7 @@ export function findCodexRolloutFile(
 
   const sessionsDirs = options.codexHome
     ? getCodexSessionsDirs([options.codexHome])
-    : getSessionsDirs();
+    : getSessionsDirs(options.codexHomes);
 
   // Name-only filter, one walk across the homes, newest modification first.
   const matches = walkRolloutFiles(sessionsDirs, {

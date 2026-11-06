@@ -2,6 +2,7 @@ import { ClaudeCodeProvider } from './claudeCode';
 import { CodexProvider } from './codex';
 import { OpenCodeProvider } from './openCode';
 import { SESSION_PROVIDER_IDS } from './types';
+import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
 import type { ProviderId, SessionProviderBase, SessionProviderDiagnostic } from './types';
 
 export interface CreateSessionProvidersOptions {
@@ -12,6 +13,13 @@ export interface CreateSessionProvidersOptions {
    * `CodexProviderOptions.includeCompressedRollouts`. Default false.
    */
   includeCompressedRollouts?: boolean;
+  /**
+   * Claude Code and Codex homes to read instead of following the process
+   * environment at each call (see `SessionHomesOptions`). An explicit `[]`
+   * leaves that provider out. Validated before anything is constructed:
+   * a relative or blank explicit entry throws `RangeError`.
+   */
+  homes?: SessionHomesOptions;
 }
 
 export interface CreateSessionProvidersResult {
@@ -36,6 +44,13 @@ export function createSessionProviders(
   const diagnosticIndexes = new Map<string, number>();
   const providers: SessionProviderBase[] = [];
   const selected = new Set(options.providerIds ?? SESSION_PROVIDER_IDS);
+  const homes = options.homes;
+  if (homes) {
+    // Invalid explicit homes are a caller bug: fail before constructing anything.
+    resolveAgentHomes(homes);
+    if (homes.claudeHomes?.length === 0) selected.delete('claude-code');
+    if (homes.codexHomes?.length === 0) selected.delete('codex');
+  }
   const emit = (diagnostic: SessionProviderDiagnostic): void => {
     const key = `${diagnostic.providerId}\0${diagnostic.kind}\0${diagnostic.phase}`;
     const existingIndex = diagnosticIndexes.get(key);
@@ -58,12 +73,13 @@ export function createSessionProviders(
       const providerOptions = { onDiagnostic: emit };
       providers.push(
         providerId === 'claude-code'
-          ? new ClaudeCodeProvider(providerOptions)
+          ? new ClaudeCodeProvider({ ...providerOptions, ...(homes ? { homes } : {}) })
           : providerId === 'opencode'
             ? new OpenCodeProvider(providerOptions)
             : new CodexProvider({
                 ...providerOptions,
                 includeCompressedRollouts: options.includeCompressedRollouts === true,
+                ...(homes ? { homes } : {}),
               }),
       );
     } catch {

@@ -51,6 +51,9 @@ import { calculateNormalizedUsageCost, extractNormalizedUsage } from '../usageNo
 import type { NormalizedUsage, PricingProvenance } from '../usageNormalization';
 import { atomicWriteJson } from '../writers/atomic';
 import { resolveWorkspaceRoots, type ResolvedWorkspaceRoots } from '../workspaceRoots';
+import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
+import { ClaudeCodeProvider } from '../providers/claudeCode';
+import { CodexProvider } from '../providers/codex';
 
 /**
  * Bump when the cached record shape or the counting rules change; older files
@@ -130,7 +133,18 @@ export interface UsageSessionRecord {
 }
 
 export interface CollectUsageEventsOptions {
-  providers: SessionProviderBase[];
+  /**
+   * Providers to read. Omit to read Claude Code and Codex through providers
+   * built for this call from `homes` (OpenCode is read only when passed
+   * here). Passing both `providers` and `homes` is a `TypeError`.
+   */
+  providers?: SessionProviderBase[];
+  /**
+   * Claude Code and Codex homes for the providers this call builds (see
+   * `SessionHomesOptions`; `[]` skips that provider). A relative or blank
+   * explicit entry throws `RangeError`.
+   */
+  homes?: SessionHomesOptions;
   /** Only sessions modified after this instant, and only events at or after it. */
   since?: Date | string;
   /** Only events at or before this instant. */
@@ -560,6 +574,47 @@ export async function collectUsageEvents(
   const useCache = !options.noCache;
   const signal = options.signal;
 
+  if (options.providers && options.homes) {
+    throw new TypeError('collectUsageEvents: pass either `providers` or `homes`, not both.');
+  }
+  const owned = options.providers ? [] : createUsageProviders(options.homes);
+  try {
+    return await collectWithProviders(
+      { ...options, providers: options.providers ?? owned },
+      { sinceMs, untilMs, cacheDir, useCache, signal },
+    );
+  } finally {
+    for (const provider of owned) provider.dispose?.();
+  }
+}
+
+/** Claude Code and Codex providers for a call that passed homes (or nothing). */
+function createUsageProviders(homes: SessionHomesOptions | undefined): SessionProviderBase[] {
+  // Validate before constructing anything (RangeError on a bad explicit home).
+  if (homes) resolveAgentHomes(homes);
+  const providers: SessionProviderBase[] = [];
+  if (homes?.claudeHomes?.length !== 0) {
+    providers.push(new ClaudeCodeProvider(homes ? { homes } : {}));
+  }
+  if (homes?.codexHomes?.length !== 0) {
+    providers.push(new CodexProvider(homes ? { homes } : {}));
+  }
+  return providers;
+}
+
+interface CollectContext {
+  sinceMs: number | null;
+  untilMs: number | null;
+  cacheDir: string;
+  useCache: boolean;
+  signal: AbortSignal | undefined;
+}
+
+async function collectWithProviders(
+  options: CollectUsageEventsOptions & { providers: SessionProviderBase[] },
+  context: CollectContext,
+): Promise<CollectUsageEventsResult> {
+  const { sinceMs, untilMs, cacheDir, useCache, signal } = context;
   signal?.throwIfAborted();
   const scope = usageScope(options);
   const listed = await listScopedPreviews(options, scope?.listingRoots);
@@ -708,7 +763,7 @@ function usageScope(options: CollectUsageEventsOptions): ResolvedWorkspaceRoots 
 
 /** Lists previews once per root and keeps each session file once. */
 async function listScopedPreviews(
-  options: CollectUsageEventsOptions,
+  options: CollectUsageEventsOptions & { providers: SessionProviderBase[] },
   listingRoots: string[] | undefined,
 ): Promise<{ previews: SessionPreview[]; diagnostics: SessionProviderDiagnostic[] }> {
   const list = (workspacePath: string | undefined) =>

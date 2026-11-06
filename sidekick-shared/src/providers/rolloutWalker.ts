@@ -29,6 +29,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { DirectoryListingCache, DirectoryListingCounters } from './directoryListingCache';
+import { extractRolloutSessionId, isCompressedRolloutFile, isRolloutFile } from '../codexLayout';
 
 export interface RolloutFileInfo {
   path: string;
@@ -74,37 +75,9 @@ export interface WalkRolloutFilesOptions {
 export const DEFAULT_ROLLOUT_WALK_MAX_DEPTH = 6;
 export const DEFAULT_ROLLOUT_WALK_MAX_FILES = 20_000;
 
-/** Test if a filename is a Codex rollout file (`rollout-….jsonl`; not compressed ones). */
-export function isRolloutFile(filename: string): boolean {
-  return filename.startsWith('rollout-') && filename.endsWith('.jsonl');
-}
-
-/** Test if a filename is a compressed Codex rollout (`rollout-….jsonl.zst`). */
-export function isCompressedRolloutFile(filename: string): boolean {
-  return filename.startsWith('rollout-') && filename.endsWith('.jsonl.zst');
-}
-
-/**
- * Extract the session UUID from a rollout filename.
- * Format: rollout-<timestamp>-<uuid>.jsonl (or .jsonl.zst) -> <uuid>
- */
-export function extractRolloutSessionId(filename: string): string {
-  const name = path.basename(filename);
-  const base = name.endsWith('.jsonl.zst')
-    ? name.slice(0, -'.jsonl.zst'.length)
-    : path.basename(name, '.jsonl');
-  // rollout-YYYYMMDD-HHMMSS-<uuid> or rollout-<timestamp>-<uuid>
-  const parts = base.split('-');
-  // The UUID is typically the last 5 segments (8-4-4-4-12)
-  if (parts.length >= 6) {
-    const possibleUuid = parts.slice(-5).join('-');
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(possibleUuid)) {
-      return possibleUuid;
-    }
-  }
-  // Fallback: use everything after "rollout-"
-  return base.replace(/^rollout-/, '');
-}
+// Rollout file-name rules live in `codexLayout` (dependency-free, for hook
+// bundles); re-exported here, where they have always been importable from.
+export { extractRolloutSessionId, isCompressedRolloutFile, isRolloutFile };
 
 interface WalkState {
   results: RolloutFileInfo[];
