@@ -344,12 +344,12 @@ function classifyCodexErrorInfo(
     case 'rateLimitExceeded':
       return 'rate_limited';
     case 'serverOverloaded':
-    // Flex-tier or policy-restricted capacity is temporarily unavailable.
     case 'flexUnavailable':
     case 'policyCapacityUnavailable':
+      // Flex-tier or policy-restricted capacity is temporarily unavailable too.
       return 'overloaded';
-    // The session hit Codex's limit on denied approvals.
     case 'tooManyDenials':
+      // The turn hit Codex's limit on denied approvals.
       return 'execution_policy_denied';
     case 'internalServerError':
       return 'service_unavailable';
