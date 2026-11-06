@@ -307,6 +307,67 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     }
   });
 
+  // Single-module subpaths for hosts that need only provider-id catalogs or
+  // the handoff URL renderer, without the /browser graph.
+  it('publishes sidekick-shared/providerIds and sidekick-shared/handoffUrl', async () => {
+    const ts = await import('typescript');
+    const subpaths = {
+      providerIds: ['SESSION_PROVIDER_IDS', 'ACCOUNT_PROVIDER_IDS', 'MODEL_PROVIDER_IDS'],
+      handoffUrl: ['renderHandoffUrlTemplate'],
+    };
+    const browser = pkgRequire('sidekick-shared/browser');
+    for (const [name, bindings] of Object.entries(subpaths)) {
+      const specifier = `sidekick-shared/${name}`;
+      expect(pkgRequire.resolve(specifier)).toBe(path.join(distDir, `${name}.js`));
+      const entry = pkgRequire(specifier);
+      for (const binding of bindings) {
+        expect(entry[binding], `${specifier} ${binding}`).toBeDefined();
+        expect(browser[binding], `${specifier} ${binding}`).toBe(entry[binding]);
+      }
+    }
+    let scratch: string | undefined;
+    try {
+      scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'sidekick-shared-tiny-subpaths-'));
+      const packageLink = path.join(scratch, 'node_modules', 'sidekick-shared');
+      await fs.mkdir(path.dirname(packageLink), { recursive: true });
+      await fs.symlink(pkgRoot, packageLink, process.platform === 'win32' ? 'junction' : 'dir');
+      const entry = path.join(scratch, 'entry.ts');
+      await fs.writeFile(
+        entry,
+        [
+          "import { ACCOUNT_PROVIDER_IDS, type AccountProviderId } from 'sidekick-shared/providerIds';",
+          "import { renderHandoffUrlTemplate, type HandoffUrlIdentifiers } from 'sidekick-shared/handoffUrl';",
+          'const id: AccountProviderId = ACCOUNT_PROVIDER_IDS[0];',
+          "const ids: HandoffUrlIdentifiers = { sessionId: 's', provider: id, projectPath: '/p' };",
+          "export const url: string = renderHandoffUrlTemplate('https://x.test/{sessionId}', ids);",
+        ].join('\n'),
+      );
+      for (const moduleResolution of [
+        ts.ModuleResolutionKind.Node10,
+        ts.ModuleResolutionKind.Node16,
+      ]) {
+        const program = ts.createProgram([entry], {
+          module:
+            moduleResolution === ts.ModuleResolutionKind.Node16
+              ? ts.ModuleKind.Node16
+              : ts.ModuleKind.CommonJS,
+          moduleResolution,
+          noEmit: true,
+          strict: true,
+          skipLibCheck: true,
+          target: ts.ScriptTarget.ES2022,
+        });
+        const errors = ts
+          .getPreEmitDiagnostics(program)
+          .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error)
+          .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
+        expect(errors).toEqual([]);
+      }
+    } finally {
+      if (scratch) await fs.rm(scratch, { recursive: true, force: true });
+    }
+  });
+
   it('dist/statusline/index.js exposes the lightweight prompt-render surface', () => {
     expect(existsSync(statuslineJs)).toBe(true);
     const m = require(statuslineJs);

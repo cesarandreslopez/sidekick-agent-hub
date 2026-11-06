@@ -131,6 +131,20 @@
       "require": "./dist/statusline/payload.js",
       "default": "./dist/statusline/payload.js"
     },
+    "./providerIds": {
+      "types": "./dist/providerIds.d.ts",
+      "module": "./dist/esm/providerIds.js",
+      "import": "./dist/providerIds.js",
+      "require": "./dist/providerIds.js",
+      "default": "./dist/providerIds.js"
+    },
+    "./handoffUrl": {
+      "types": "./dist/handoffUrl.d.ts",
+      "module": "./dist/esm/handoffUrl.js",
+      "import": "./dist/handoffUrl.js",
+      "require": "./dist/handoffUrl.js",
+      "default": "./dist/handoffUrl.js"
+    },
     "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -180,6 +194,12 @@
       ],
       "statusline/payload": [
         "dist/statusline/payload.d.ts"
+      ],
+      "providerIds": [
+        "dist/providerIds.d.ts"
+      ],
+      "handoffUrl": [
+        "dist/handoffUrl.d.ts"
       ]
     }
   },

@@ -44,9 +44,12 @@ const NODE_RUNTIME = ['fs', 'child_process', 'http', 'https', 'net', 'tls', 'os'
 
 const SUBPATHS = [
   { name: 'pricing', pure: true, maxModules: 12 },
-  { name: 'providerFailure', pure: true, maxModules: 3 },
+  { name: 'providerFailure', pure: true, maxModules: 1 },
   { name: 'statusline/payload', pure: true, maxModules: 3 },
   { name: 'codex', pure: false, maxModules: 14 },
+  // Single-module entries for hosts that need only these constants or helpers.
+  { name: 'providerIds', pure: true, maxModules: 1 },
+  { name: 'handoffUrl', pure: true, maxModules: 1 },
 ] as const;
 
 describe('lean subpath entries', { timeout: 30_000 }, () => {
