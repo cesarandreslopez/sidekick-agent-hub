@@ -1588,3 +1588,18 @@ export {
   isClaudeAgentId,
   parseClaudeSubagentFileName,
 } from './claudePaths';
+
+// Agent transcript paths and versions (also on `sidekick-shared/agentPaths`)
+export { classifyAgentTranscriptPath } from './agentPaths';
+export type {
+  AgentTranscriptKind,
+  AgentTranscriptPath,
+  ClassifyAgentTranscriptPathOptions,
+} from './agentPaths';
+export { DEFAULT_AGENT_VERSION_WINDOW_BYTES, readAgentVersion } from './agentVersion';
+export type {
+  AgentVersionInfo,
+  AgentVersionProvider,
+  ReadAgentVersionOptions,
+} from './agentVersion';
+export { extractRolloutSessionId, isCompressedRolloutFile, isRolloutFile } from './codexLayout';

@@ -809,3 +809,47 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     }
   });
 });
+
+// Bundles consumers build from one entry, minified the way they ship.
+describe('lean bundles', { timeout: 60_000 }, () => {
+  async function bundle(source: string): Promise<string> {
+    const { build } = await import('vite');
+    const { builtinModules } = await import('node:module');
+    let scratch: string | undefined;
+    try {
+      scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'sidekick-shared-lean-bundle-'));
+      const packageLink = path.join(scratch, 'node_modules', 'sidekick-shared');
+      await fs.mkdir(path.dirname(packageLink), { recursive: true });
+      await fs.symlink(pkgRoot, packageLink, process.platform === 'win32' ? 'junction' : 'dir');
+      const entry = path.join(scratch, 'entry.js');
+      await fs.writeFile(entry, source);
+      const result = await build({
+        configFile: false,
+        root: scratch,
+        logLevel: 'silent',
+        build: {
+          ssr: entry,
+          write: false,
+          minify: true,
+          rollupOptions: {
+            external: [...builtinModules, ...builtinModules.map((m) => `node:${m}`), /^zod/],
+          },
+        },
+      });
+      return (Array.isArray(result) ? result : [result])
+        .flatMap((output) => ('output' in output ? output.output : []))
+        .filter((chunk) => chunk.type === 'chunk')
+        .map((chunk) => chunk.code)
+        .join('\n');
+    } finally {
+      if (scratch) await fs.rm(scratch, { recursive: true, force: true });
+    }
+  }
+
+  it('keeps the whole sidekick-shared/agentPaths entry under 8 KB minified', async () => {
+    const code = await bundle("export * from 'sidekick-shared/agentPaths';\n");
+    expect(code).toContain('classifyAgentTranscriptPath');
+    expect(code).not.toMatch(/from\s*["']zod/);
+    expect(code.length).toBeLessThan(8 * 1024);
+  });
+});

@@ -47,6 +47,7 @@ const SUBPATHS = [
   { name: 'providerFailure', pure: true, maxModules: 3 },
   { name: 'statusline/payload', pure: true, maxModules: 3 },
   { name: 'codex', pure: false, maxModules: 15 },
+  { name: 'agentPaths', pure: false, maxModules: 5 },
 ] as const;
 
 describe('lean subpath entries', { timeout: 30_000 }, () => {
@@ -83,4 +84,23 @@ describe('lean subpath entries', { timeout: 30_000 }, () => {
       });
     });
   }
+});
+
+// Hook bundles may load nothing beyond these: pin the exact closure.
+describe('sidekick-shared/agentPaths closure', () => {
+  it('loads exactly its five modules and only fs, os and path', async () => {
+    const { modules, externals } = await requireClosure(
+      pkgRequire.resolve('sidekick-shared/agentPaths'),
+    );
+    expect([...modules].map((file) => path.relative(distDir, file)).sort()).toEqual([
+      'agentHomes.js',
+      'agentPaths.js',
+      'agentVersion.js',
+      'claudePaths.js',
+      'codexLayout.js',
+    ]);
+    for (const external of externals) {
+      expect(['fs', 'os', 'path'], `agentPaths requires ${external}`).toContain(external);
+    }
+  });
 });

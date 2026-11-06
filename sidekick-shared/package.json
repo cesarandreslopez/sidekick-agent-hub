@@ -131,6 +131,13 @@
       "require": "./dist/statusline/payload.js",
       "default": "./dist/statusline/payload.js"
     },
+    "./agentPaths": {
+      "types": "./dist/agentPaths.d.ts",
+      "module": "./dist/esm/agentPaths.js",
+      "import": "./dist/agentPaths.js",
+      "require": "./dist/agentPaths.js",
+      "default": "./dist/agentPaths.js"
+    },
     "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -180,6 +187,9 @@
       ],
       "statusline/payload": [
         "dist/statusline/payload.d.ts"
+      ],
+      "agentPaths": [
+        "dist/agentPaths.d.ts"
       ]
     }
   },

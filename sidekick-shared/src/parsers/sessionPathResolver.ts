@@ -15,42 +15,16 @@ import * as path from 'path';
 import * as os from 'os';
 
 import type { ProjectFolderInfo } from '../providers/types';
-import { getClaudeProjectsDir } from '../claudePaths';
+import {
+  encodeClaudeWorkspacePath as encodeWorkspacePath,
+  getClaudeProjectsDir,
+} from '../claudePaths';
 import { resolveGitWorktrees } from '../gitWorktrees';
 
-/**
- * Encodes a workspace path to Claude Code's on-disk directory naming scheme
- * under `~/.claude/projects/` — every non-ASCII-alphanumeric character
- * (separators, colons, underscores, dots, spaces) becomes a hyphen, and case
- * is preserved. Exported from the package root as `encodeClaudeWorkspacePath`.
- *
- * Not to be confused with the top-level `encodeWorkspacePath` export from
- * `paths.ts`: that one is Sidekick's own config-store slug (it keeps dots) and
- * does NOT match Claude Code's scheme — using it to build a
- * `~/.claude/projects/` path silently misses for any workspace containing a
- * dot or space. For lookups, prefer `getClaudeSessionDirectory` or the
- * mismatch-tolerant `discoverSessionDirectory` over raw string encoding.
- *
- * @param workspacePath - Absolute path to workspace directory
- * @returns Encoded path string (e.g., "-home-user-code-project")
- *
- * @example
- * ```typescript
- * encodeWorkspacePath('/home/user/code/my_project');
- * // => "-home-user-code-my-project"
- *
- * encodeWorkspacePath('C:\\Users\\user\\code\\my_project'); // Windows
- * // => "C--Users-user-code-my-project"
- * ```
- */
-export function encodeWorkspacePath(workspacePath: string): string {
-  // Normalize path separators to forward slash
-  const normalized = workspacePath.replace(/\\/g, '/');
-
-  // Claude Code replaces every non-alphanumeric path character, including
-  // dots and spaces, with a hyphen.
-  return normalized.replace(/[^a-zA-Z0-9]/g, '-');
-}
+// Claude Code's directory encoding lives in `claudePaths` (dependency-free,
+// for hook bundles); re-exported here under its historical name, so both are
+// the same function.
+export { encodeWorkspacePath };
 
 /**
  * Gets the session directory path for a workspace.
