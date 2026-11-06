@@ -52,6 +52,13 @@ import {
   type SubagentActivity,
   type SubagentActivityKind,
 } from '../subagentActivity';
+import {
+  codexInheritedHistoryBoundary,
+  isCodexInheritedRecord,
+  parseCodexInheritedHistoryBoundary,
+  withCodexStartMarker,
+  type CodexInheritedHistoryBoundary,
+} from './codexInheritedHistory';
 
 /** Pending exec command awaiting its end event. */
 interface PendingExecCommand {
@@ -342,6 +349,13 @@ export interface CodexRolloutResumeState {
    * absent (nothing skipped) in states from earlier versions.
    */
   inheritedHistoryEnd?: number | null;
+  /**
+   * The rollout's inherited-history boundary (see
+   * `getInheritedHistoryBoundary()`), once its `session_meta` was parsed.
+   * Optional: states from earlier versions derive it from
+   * `inheritedHistoryEnd` and `sessionMeta`.
+   */
+  inheritedHistory?: CodexInheritedHistoryBoundary;
 }
 
 /** Entries per table {@link CodexRolloutParser.exportResumeState} keeps by default. */
@@ -368,10 +382,29 @@ function nonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-/** `subagent_history_start_ordinal` of a session_meta payload, when valid. */
-function historyStartOrdinalOf(meta: CodexSessionMeta | null | undefined): number | null {
-  const value = meta?.subagent_history_start_ordinal;
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+/**
+ * The boundary of a resume state from before `inheritedHistory` was saved:
+ * proven when it recorded where the inherited history ends, else derived
+ * from its session metadata (pending until the next record).
+ */
+function legacyBoundary(
+  meta: CodexSessionMeta | null,
+  inheritedEnd: number | null | undefined,
+): CodexInheritedHistoryBoundary | null {
+  if (!meta) return null;
+  const derived = codexInheritedHistoryBoundary([{ type: 'session_meta', payload: meta }], {
+    complete: false,
+  });
+  if (typeof inheritedEnd !== 'number') return derived;
+  const proven: CodexInheritedHistoryBoundary = {
+    ...derived,
+    status: 'proven',
+    proof: 'embedded-ancestor-meta',
+    ownFromOrdinal: inheritedEnd,
+    embeddedMetaOrdinal: 1,
+  };
+  delete proven.reason;
+  return proven;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -501,11 +534,11 @@ export class CodexRolloutParser {
   private readonly metadataOnly: boolean;
   private readonly includeSubagentActivity: boolean;
   /**
-   * Set once a forked child's rollout embeds an ancestor's session_meta: its
-   * own `subagent_history_start_ordinal`, below which records are the
-   * parent's history and are skipped. `null` while nothing is skipped.
+   * Where the rollout's own records start (see `codexInheritedHistory`);
+   * `null` until its own session_meta was parsed. Records it marks as
+   * inherited (a proven fork's embedded parent history) are skipped.
    */
-  private historyStartOrdinal: number | null = null;
+  private inheritedBoundary: CodexInheritedHistoryBoundary | null = null;
   /** Multi-agent tool calls (call id → raw name), only with `includeSubagentActivity`. */
   private collaborationCalls = new Map<string, string>();
   /** Pending calls in insertion order, for the byte budget. */
@@ -567,13 +600,27 @@ export class CodexRolloutParser {
 
   /**
    * In a forked subagent's rollout, the ordinal of its first own record:
-   * records with a lower `ordinal` are the parent history the fork embeds
-   * and produce no events. Known once the rollout's second line (an embedded
-   * ancestor `session_meta`) was parsed; `null` otherwise, and for every
-   * rollout that is not such a fork.
+   * records with a lower `ordinal` (above the rollout's own `session_meta`)
+   * are the parent history the fork embeds and produce no events. Set only
+   * for a proven boundary — once the record at ordinal 1 turned out to be an
+   * ancestor's `session_meta` — so `null` while that is pending and for
+   * every rollout that is not such a fork. See
+   * {@link getInheritedHistoryBoundary} for the full answer.
    */
   getInheritedHistoryEnd(): number | null {
-    return this.historyStartOrdinal;
+    const boundary = this.inheritedBoundary;
+    return boundary?.status === 'proven' ? (boundary.ownFromOrdinal ?? null) : null;
+  }
+
+  /**
+   * Where the rollout's own records start and whether that is proven (see
+   * `codexInheritedHistoryBoundary()`): `pending` until the rollout's own
+   * `session_meta` and the record after it were parsed. A copy.
+   */
+  getInheritedHistoryBoundary(): CodexInheritedHistoryBoundary {
+    return this.inheritedBoundary
+      ? cloneJson(this.inheritedBoundary)
+      : { status: 'pending', reason: 'awaiting-records', isSubagent: false };
   }
 
   /**
@@ -609,9 +656,10 @@ export class CodexRolloutParser {
         this.pendingMcpToolCalls.size,
         limit,
       ),
-      ...(this.historyStartOrdinal !== null
-        ? { inheritedHistoryEnd: this.historyStartOrdinal }
+      ...(this.getInheritedHistoryEnd() !== null
+        ? { inheritedHistoryEnd: this.getInheritedHistoryEnd() }
         : {}),
+      ...(this.inheritedBoundary ? { inheritedHistory: this.inheritedBoundary } : {}),
       ...(this.collaborationCalls.size > 0
         ? {
             collaborationCalls: newest(
@@ -701,6 +749,11 @@ export class CodexRolloutParser {
     ) {
       return false;
     }
+    const inheritedHistory =
+      s.inheritedHistory === undefined
+        ? undefined
+        : parseCodexInheritedHistoryBoundary(s.inheritedHistory);
+    if (s.inheritedHistory !== undefined && inheritedHistory === undefined) return false;
     const collaborationCalls = s.collaborationCalls;
     if (
       collaborationCalls !== undefined &&
@@ -727,7 +780,9 @@ export class CodexRolloutParser {
     });
     this.reset();
     this.sessionMeta = copy.sessionMeta;
-    this.historyStartOrdinal = typeof inheritedEnd === 'number' ? inheritedEnd : null;
+    this.inheritedBoundary =
+      inheritedHistory ??
+      legacyBoundary(copy.sessionMeta, inheritedEnd as number | null | undefined);
     this.currentModel = s.currentModel as string | null;
     this.prevTotalUsage = prevTotalUsage;
     this.lastTokenUsage = lastTokenUsage;
@@ -761,16 +816,15 @@ export class CodexRolloutParser {
    * Converts a single rollout line to zero or more session events.
    */
   convertLine(line: CodexRolloutLine): SessionEvent[] {
-    if (line.type === 'session_meta') {
-      return this.handleSessionMeta(line.timestamp, line.payload as CodexSessionMeta, line.ordinal);
+    if (line.type === 'session_meta' && !this.sessionMeta) {
+      return this.handleSessionMeta(line.timestamp, line.payload as CodexSessionMeta);
     }
-    // A forked subagent rollout embeds the parent's history before its own
-    // records; that history is the parent's, not the child's.
-    if (
-      this.historyStartOrdinal !== null &&
-      typeof line.ordinal === 'number' &&
-      line.ordinal < this.historyStartOrdinal
-    ) {
+    this.observeBoundary(line);
+    // A forked subagent rollout embeds the parent's history (and session_meta)
+    // before its own records; that history is the parent's, not the child's.
+    // Only the rollout's own (first) session_meta counts.
+    const boundary = this.inheritedBoundary;
+    if (line.type === 'session_meta' || (boundary && isCodexInheritedRecord(boundary, line))) {
       return [];
     }
     switch (line.type) {
@@ -787,10 +841,19 @@ export class CodexRolloutParser {
     }
   }
 
-  /** Reset all parser state. */
+  /**
+   * Reset all parser state. A parser reset in the middle of a rollout (for
+   * example to bound memory) forgets what later lines depend on: the
+   * previous cumulative token total, so the next `token_count` that resends
+   * it is counted again; the session metadata and inherited-history
+   * boundary, so a fork's embedded parent history is no longer recognized;
+   * the current model; and pending tool calls, whose end events then emit
+   * tool uses without their details. Persist and restore
+   * `exportResumeState()` instead when continuing a rollout.
+   */
   reset(): void {
     this.sessionMeta = null;
-    this.historyStartOrdinal = null;
+    this.inheritedBoundary = null;
     this.collaborationCalls.clear();
     this.currentModel = null;
     this.pendingExecCommands.clear();
@@ -914,31 +977,30 @@ export class CodexRolloutParser {
 
   // --- Handlers ---
 
-  private handleSessionMeta(
-    timestamp: string,
-    payload: CodexSessionMeta,
-    ordinal: unknown,
-  ): SessionEvent[] {
-    if (this.sessionMeta) {
-      // Only the rollout's own (first) session_meta counts. A forked child
-      // embeds its parent's right after its own, followed by the parent's
-      // history up to the child's `subagent_history_start_ordinal`; from
-      // here on, records below that ordinal are skipped. (Children whose
-      // rollout has no embedded meta keep every record: in some, Codex
-      // recorded a start ordinal past their own records.)
-      const start = historyStartOrdinalOf(this.sessionMeta);
-      if (
-        this.historyStartOrdinal === null &&
-        start !== null &&
-        typeof ordinal === 'number' &&
-        ordinal < start
-      ) {
-        this.historyStartOrdinal = start;
-      }
-      return [];
+  /**
+   * Updates the inherited-history boundary with a record that follows the
+   * rollout's own session_meta: the first such record decides a pending
+   * boundary, and a proven one picks up its start marker.
+   */
+  private observeBoundary(line: CodexRolloutLine): void {
+    const boundary = this.inheritedBoundary;
+    if (!boundary || !this.sessionMeta) return;
+    if (boundary.status === 'pending') {
+      this.inheritedBoundary = codexInheritedHistoryBoundary(
+        [{ type: 'session_meta', payload: this.sessionMeta }, line],
+        { complete: false },
+      );
+    } else if (boundary.status === 'proven' && boundary.startMarker === undefined) {
+      this.inheritedBoundary = withCodexStartMarker(boundary, line);
     }
+  }
+
+  private handleSessionMeta(timestamp: string, payload: CodexSessionMeta): SessionEvent[] {
     if (!payload || typeof payload !== 'object') return [];
     this.sessionMeta = payload;
+    this.inheritedBoundary = codexInheritedHistoryBoundary([{ type: 'session_meta', payload }], {
+      complete: false,
+    });
     const text = payload.base_instructions?.text?.trim();
     return [
       {

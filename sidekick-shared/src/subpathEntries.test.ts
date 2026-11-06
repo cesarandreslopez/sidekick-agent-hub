@@ -46,7 +46,8 @@ const SUBPATHS = [
   { name: 'pricing', pure: true, maxModules: 12 },
   { name: 'providerFailure', pure: true, maxModules: 3 },
   { name: 'statusline/payload', pure: true, maxModules: 3 },
-  { name: 'codex', pure: false, maxModules: 14 },
+  // +1 in 0.31: parsers/codexInheritedHistory (readCodexInheritedHistoryBoundary).
+  { name: 'codex', pure: false, maxModules: 15 },
 ] as const;
 
 describe('lean subpath entries', { timeout: 30_000 }, () => {

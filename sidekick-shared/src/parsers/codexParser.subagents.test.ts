@@ -364,5 +364,108 @@ describe('CodexRolloutParser forked child rollouts', () => {
     );
     expect(parser.getSessionMeta()?.id).toBe(PARENT_ID);
     expect(toolUseIds(parentEvents)).toContain(CALL_SPAWN);
+    expect(parser.getInheritedHistoryBoundary()).toMatchObject({
+      status: 'none',
+      reason: 'not-inherited',
+    });
+  });
+
+  it('reports the inherited-history boundary as it is proven', () => {
+    const parser = new CodexRolloutParser();
+    const rows = childRollout({ cwd: CWD });
+    expect(parser.getInheritedHistoryBoundary()).toMatchObject({ status: 'pending' });
+    parser.convertLine(rows[0] as unknown as CodexRolloutLine);
+    expect(parser.getInheritedHistoryBoundary()).toMatchObject({
+      status: 'pending',
+      reason: 'awaiting-records',
+      isSubagent: true,
+    });
+    for (const row of rows.slice(1)) parser.convertLine(row as unknown as CodexRolloutLine);
+    expect(parser.getInheritedHistoryBoundary()).toEqual({
+      status: 'proven',
+      proof: 'embedded-ancestor-meta',
+      ownFromOrdinal: 6,
+      embeddedMetaOrdinal: 1,
+      startMarker: 'thread_settings_applied',
+      forkedFromId: PARENT_ID,
+      parentId: PARENT_ID,
+      isSubagent: true,
+    });
+    expect(parser.exportResumeState().inheritedHistory).toEqual(
+      parser.getInheritedHistoryBoundary(),
+    );
+    // A copy: changing it does not change the parser.
+    parser.getInheritedHistoryBoundary().ownFromOrdinal = 99;
+    expect(parser.getInheritedHistoryEnd()).toBe(6);
+  });
+
+  it('counts an embedded ancestor meta only at ordinal 1', () => {
+    const rows = childRollout({ cwd: CWD });
+    // The parent's meta moved to ordinal 2: nothing is proven, nothing is skipped.
+    const moved = rows.map((row, index) =>
+      index === 1
+        ? { timestamp: row.timestamp, type: 'turn_context', ordinal: 1, payload: { model: 'm' } }
+        : index === 2
+          ? { ...rows[1], ordinal: 2 }
+          : row,
+    );
+    const parser = new CodexRolloutParser();
+    const events = moved.flatMap((row) => parser.convertLine(row as unknown as CodexRolloutLine));
+    expect(parser.getInheritedHistoryBoundary()).toMatchObject({
+      status: 'unproven',
+      reason: 'no-embedded-meta',
+    });
+    expect(parser.getInheritedHistoryEnd()).toBe(null);
+    expect(toolUseIds(events)).toContain('call_parent_exec');
+    // Nor does a session_meta at ordinal 1 that is not an ancestor's.
+    const stranger = rows.map((row, index) =>
+      index === 1 ? { ...row, payload: { id: 'unrelated', cwd: '/x' } } : row,
+    );
+    const other = new CodexRolloutParser();
+    const kept = stranger.flatMap((row) => other.convertLine(row as unknown as CodexRolloutLine));
+    expect(other.getInheritedHistoryBoundary().reason).toBe('unrelated-embedded-meta');
+    expect(toolUseIds(kept)).toContain('call_parent_exec');
+  });
+
+  it('resumes the boundary from current and earlier resume states', () => {
+    const rows = childRollout({ cwd: CWD });
+    const first = new CodexRolloutParser();
+    for (const row of rows.slice(0, 3)) first.convertLine(row as unknown as CodexRolloutLine);
+    const state = first.exportResumeState();
+    expect(state.inheritedHistory).toMatchObject({ status: 'proven', ownFromOrdinal: 6 });
+
+    const resumed = new CodexRolloutParser();
+    expect(resumed.importResumeState(JSON.parse(JSON.stringify(state)))).toBe(true);
+    expect(resumed.getInheritedHistoryBoundary()).toEqual(first.getInheritedHistoryBoundary());
+
+    // A state from 0.30 has only inheritedHistoryEnd.
+    const { inheritedHistory: _boundary, ...legacy } = state;
+    const fromLegacy = new CodexRolloutParser();
+    expect(fromLegacy.importResumeState(legacy)).toBe(true);
+    expect(fromLegacy.getInheritedHistoryBoundary()).toMatchObject({
+      status: 'proven',
+      ownFromOrdinal: 6,
+      forkedFromId: PARENT_ID,
+    });
+    const events = rows
+      .slice(3)
+      .flatMap((row) => fromLegacy.convertLine(row as unknown as CodexRolloutLine));
+    expect(toolUseIds(events)).toEqual(['call_child_exec', 'call_spawn_deep_dive']);
+
+    // Taken right after the own meta: the next record still decides it.
+    const early = new CodexRolloutParser();
+    early.convertLine(rows[0] as unknown as CodexRolloutLine);
+    const { inheritedHistory: _pending, ...earlyLegacy } = early.exportResumeState();
+    const fromEarly = new CodexRolloutParser();
+    expect(fromEarly.importResumeState(earlyLegacy)).toBe(true);
+    fromEarly.convertLine(rows[1] as unknown as CodexRolloutLine);
+    expect(fromEarly.getInheritedHistoryEnd()).toBe(6);
+
+    expect(
+      new CodexRolloutParser().importResumeState({
+        ...state,
+        inheritedHistory: { status: 'proven', isSubagent: true },
+      }),
+    ).toBe(false);
   });
 });

@@ -400,6 +400,19 @@ export type {
 } from './parsers/codexParser';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
+// Codex inherited-history boundary (0.31)
+export {
+  codexInheritedHistoryBoundary,
+  isCodexInheritedRecord,
+} from './parsers/codexInheritedHistory';
+export type {
+  CodexHistoryBase,
+  CodexInheritedHistoryBoundary,
+  CodexInheritedHistoryOptions,
+  CodexInheritedHistoryProof,
+  CodexInheritedHistoryReason,
+  CodexInheritedHistoryStatus,
+} from './parsers/codexInheritedHistory';
 export {
   SUBAGENT_ACTIVITY_BLOCK_TYPE,
   SUBAGENT_ACTIVITY_ORIGIN_KIND,
