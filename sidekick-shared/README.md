@@ -11,10 +11,10 @@ Types, parsers, providers, readers, formatters, aggregation, search, reporting, 
 
 - **0.31.0: scope, homes, subagent attribution, and lean bundles**
   - **Fixes:** usage on a reused provider no longer goes stale while a session grows; `collectUsageEvents({ workspacePaths })` keeps only sessions inside the roots (`scope: 'contained'`, or `'listed'` for the old matching); worktrees of bare and `--separate-git-dir` repositories are found (`resolveGitWorktrees()`); Codex cache writes are no longer counted twice; failed Codex commands keep their output in signals; Codex turns end; model ids sort by numeric version.
-  - **Homes and paths:** a `homes` option (`claudeHomes`, `codexHomes`, `env`, `includeProfileHomes`) on providers and every collector, `resolveAgentHomes()`, Claude Code subagent path helpers, and the dependency-free `sidekick-shared/agentPaths` entry with `classifyAgentTranscriptPath()` and `readAgentVersion()`.
+  - **Homes and paths:** a `homes` option (`claudeHomes`, `codexHomes`, `env`, `includeProfileHomes`) on providers, `createSessionProviders()`, prompt history, tool-call origins, usage and `listAgentSessions()`, `resolveAgentHomes()`, Claude Code subagent path helpers, and the dependency-free `sidekick-shared/agentPaths` entry with `classifyAgentTranscriptPath()` and `readAgentVersion()`.
   - **Usage:** `bounds` and `cursor` with `hasMore` / `changed`, `excludeSynthetic`, `listAgentSessions()` and a shared `listing` option, `parentPromptOrdinal` on subagent usage and tool-call origins, and `priceProviderUsage()` for raw Anthropic, OpenAI or Codex usage.
   - **Parsing:** `PROMPT_ORDINAL_SCHEME_VERSION` with golden fixtures; structured tool-error signals (`command`, `output`, `exitCode`, `toolUseId`) and `signalLimits`; the Codex inherited-history boundary (`codexInheritedHistoryBoundary()`, `readCodexInheritedHistoryBoundary()`); `createJsonlTail()` gaps and per-read checkpoints; `classifyTurnState()` with Codex turn-lifecycle events; and `sidekick-shared/headless` parsers for `claude -p` stream-json and `codex exec --json`.
-  - **Bundles:** schemas import Zod as a namespace, so a `createSessionProviders()` bundle drops from 544 KB to 311 KB minified; `createSessionProvidersFrom()` builds only the providers you pass; single-module `sidekick-shared/providerIds` and `sidekick-shared/handoffUrl`; `boundedProviderFailureDiagnosisSchema` on `/schemas`.
+  - **Bundles:** schemas import Zod as a namespace, so a `createSessionProviders()` bundle drops from 544 KB to about 330 KB minified (about 282 KB with only the Claude Code and Codex factories); `createSessionProvidersFrom()` builds only the providers you pass; single-module `sidekick-shared/providerIds` and `sidekick-shared/handoffUrl`; `boundedProviderFailureDiagnosisSchema` on `/schemas`.
   - **Removed from `/pricing`:** the deprecated `calculateCost*` helpers (still on the root and `/browser`).
 - **0.30.3: usage-credit balance** — `QuotaExtraUsage.balance` (prepaid usage credits left, minor units) and `balanceExpiresAt`, filled by `fetchQuota(token, { organizationUuid })` from the organization's prepaid-credits endpoint when the plan reports usage credits. `monthlyLimit` is documented as the monthly spend limit, not the balance. New: `fetchClaudePrepaidCredits()`, `parsePrepaidCredits()`, `readLiveClaudeOrganizationUuid()`, `formatUsageCreditBalance()`, `formatExtraUsageSpendLimit()` (the last two also on `sidekick-shared/browser`), and `QuotaPollerCredentials.organizationUuid`. `formatExtraUsage()` now names the cap (`$100.00 available · $0.00 of $40.00 monthly spend limit used`).
 - **0.30.0: Codex subagents, agents that never report, and compressed rollouts**
@@ -456,11 +456,11 @@ const origins = await findToolCallOrigins({
   since: new Date('2026-10-01'), // prunes by file modification time
 });
 for (const [id, origin] of origins) {
-  // { provider, sessionId, sessionKey, filePath, timestamp, afterOrdinal, toolName?, subagent? }
+  // { provider, sessionId, sessionKey, filePath, timestamp, afterOrdinal, toolName?, subagent?, parentPromptOrdinal? }
 }
 ```
 
-Codex call boundaries are tracked to populate optional `enclosingCallId` and `enclosingToolName` fields for unambiguous completed items; Claude Code subagent transcripts are searched too, and the walk stops once every id is found. `afterOrdinal` counts in the prompt history of `sessionId`. For a Codex subagent or fork, that is the parent session; the call's own rollout is in `filePath` and `subagent.agentId`. Ids that are not found are absent from the map.
+Codex call boundaries are tracked to populate optional `enclosingCallId` and `enclosingToolName` fields for unambiguous completed items; Claude Code subagent transcripts are searched too, and the walk stops once every id is found. `afterOrdinal` counts in the prompt history of `sessionId`. For a Codex subagent or fork, that is the parent session; the call's own rollout is in `filePath` and `subagent.agentId`. Subagent calls also carry `parentPromptOrdinal`, the root session's prompt in effect when the subagent started (null when that root is outside the roots). Ids that are not found are absent from the map.
 
 ### Collect whole sessions of prompts
 
@@ -488,7 +488,7 @@ const result = await collectSessionPromptHistory({
 for (const session of result.sessions) {
   // { provider, sessionId, sessionKey, startedAt, lastActivityAt, cwds, gitBranches, models,
   //   prompts: [{ ordinal, timestamp, text, cwd, gitBranch?, model?, usage?, metadataStatus, reply? }],
-  //   signals?: [{ kind, timestamp, afterOrdinal, tool?, toolCategory?, mcpServer?, text?, textTruncated? }],
+  //   signals?: [{ kind, timestamp, afterOrdinal, tool?, toolCategory?, mcpServer?, text?, textTruncated?, command?, output?, exitCode?, toolUseId? }],
   //   complete, truncated, droppedPrompts, excludedRecords }
 }
 if (result.unread.length > 0) {
@@ -503,8 +503,8 @@ if (result.unread.length > 0) {
 - **Replies** (`include.replies`): the agent's last text for the prompt's turn. For Claude Code this is the last assistant message with text before the next prompt, with split records joined. For Codex it is `task_complete.last_agent_message`, falling back to the last agent message.
 - **Signals** (`include.signals`), in log order, each with the ordinal of the prompt it followed (`afterOrdinal`, -1 before the first):
   - `interrupt`: Claude `[Request interrupted by user…]`, or Codex `turn_aborted`.
-  - `toolRejected`: Claude only. Carries the rejection reason the person typed, in full. A rejection without a reason and the interrupt Claude Code writes after it count as one signal.
-  - `toolError`: a failed tool call, with the tool name and the error text cut to 1024 characters (`textTruncated`).
+  - `toolRejected`: a tool call the person declined. For Claude Code it carries the rejection reason the person typed, in full unless `signalLimits.maxBytes` caps it; a rejection without a reason and the interrupt Claude Code writes after it count as one signal. Since 0.31.0 Codex reports a declined command (`tool: 'exec_command'`, with `command`) or patch (`tool: 'apply_patch'`).
+  - `toolError`: a failed tool call, with the tool name and the error text cut to `signalLimits.textChars` characters (default `SIGNAL_TEXT_CHARS`, 1024; `textTruncated`). Since 0.31.0 a failed command's text keeps the start of the command and the end of its output (`$ <command>\n<output>`), and the signal also carries `command` (`commandTruncated`), `output` (`outputTruncated`), `exitCode` and `toolUseId`. `signalLimits` also sets `commandChars`, `outputChars` and an optional UTF-8 `maxBytes` cap.
   - Signals that name a tool also carry `toolCategory` (`shell`, `file_read`, `file_edit`, `search`, `web`, `subagent`, `planning`, `mcp`, or `other`, from `classifyTool()`) and, for MCP calls, `mcpServer`. Claude Code names MCP tools `mcp__<server>__<tool>`; Codex names the bare tool and records the server separately, so `mcpServer` is the only way to tell a Codex MCP tool from a built-in one. `classifyTool(name, { mcpServer })` is exported from the root, `/browser`, and `/node`. Since 0.30.0 Codex's bare `wait` (a code-mode cell wait; the subagent wait is `wait_agent`) is `other`, and `interrupt_agent` is `subagent`.
   - `compaction`, `apiError` (including Codex usage-limit errors), and `rollback` (Codex `thread_rolled_back`).
 - **Scope fails closed.** Sessions with no prompt inside the roots are omitted. Replies and signals that follow an out-of-scope prompt are dropped.
@@ -688,7 +688,12 @@ worktrees (`resolveWorkspaceRoots()`, also on `sidekick-shared/node`). Each
 root is listed, and a session file found under several overlapping roots
 is read and counted once. The result's `roots` names what was listed, and
 every event carries the `filePath` of its session. When no root resolves,
-no session is read.
+no session is read. Since 0.31.0 a session counts only when the working
+directory it recorded resolves to a root or inside one (`scope: 'contained'`,
+the default with `workspacePaths`; Claude Code subagent transcripts follow
+their parent). Sessions with no recorded cwd or one outside the roots are
+left out and counted in `stats.sessionsOutOfScope`; pass `scope: 'listed'`
+for the earlier matching. The legacy `workspacePath` keeps `listed`.
 
 #### Attribute usage to prompts and subagents
 
@@ -697,7 +702,7 @@ Since 0.29.0 each event says which prompt it answered and who made the call:
 - **`promptOrdinal`** is the ordinal of the last human prompt at or before the call. These are the same ordinals `collectPromptHistory()` returns with default bounds, so usage joins with prompt entries on `(provider, sessionId, ordinal)`. It is `null` before the first prompt, and for a Codex fork or subagent, which has no prompts of its own. It is absent for OpenCode, which has no prompt history.
 - **`tokens.reasoningTokens`** is set when the provider reported reasoning. It is informational: cost is unchanged because it is already priced from the billable output. Codex counts reasoning inside `outputTokens`; OpenCode reports it separately.
 - **`requestId`** is the provider's message id (Claude Code, OpenCode). Codex records none.
-- **`subagent: { agentId, parentSessionId }`** marks calls made by Claude Code subagent transcripts and by Codex spawned subagents or forks.
+- **`subagent: { agentId, parentSessionId, rootSessionId?, kind? }`** marks calls made by Claude Code subagent transcripts and by Codex spawned subagents or forks (`kind: 'subagent' | 'fork'`). Since 0.31.0 subagent calls also carry **`parentPromptOrdinal`**: the root session's prompt in effect when the subagent started (absent for forks).
 
 ```typescript
 import { bucketUsage } from 'sidekick-shared/browser';
@@ -714,8 +719,14 @@ const rows = bucketUsage(events, {
 // Cost per prompt:
 const perPrompt = new Map<string, number>();
 for (const event of events) {
-  if (event.promptOrdinal == null || event.costUsd == null) continue;
-  const key = `${event.provider}:${event.sessionId}:${event.promptOrdinal}`;
+  // A subagent's calls count toward the root prompt that started it.
+  const root = event.subagent?.rootSessionId ?? event.sessionId;
+  const ordinal =
+    root === event.sessionId
+      ? (event.parentPromptOrdinal ?? event.promptOrdinal)
+      : event.parentPromptOrdinal;
+  if (ordinal == null || event.costUsd == null) continue;
+  const key = `${event.provider}:${root}:${ordinal}`;
   perPrompt.set(key, (perPrompt.get(key) ?? 0) + event.costUsd);
 }
 ```
@@ -1358,16 +1369,18 @@ const codex = resolveActiveCodexAccount();
 ### Track cost provenance for honest UI rollups
 
 ```typescript
-import { calculateCostWithProvenance, mergeCostSources, formatCost } from 'sidekick-shared';
+import { priceProviderUsage, mergeCostSources, formatCost } from 'sidekick-shared';
 
-const a = calculateCostWithProvenance({
-  usage: { inputTokens: 1_000_000, outputTokens: 500_000, cacheReadTokens: 0, cacheWriteTokens: 0 },
-  modelId: 'claude-sonnet-4-20250514',
+const a = priceProviderUsage({
+  provider: 'anthropic',
+  usage: { input_tokens: 1_000_000, output_tokens: 500_000 },
+  model: 'claude-sonnet-4-20250514',
   reportedCostUsd: 1.23, // provider-reported when available — wins over local estimate
 });
-const b = calculateCostWithProvenance({
-  usage: { inputTokens: 200_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-  modelId: 'unknown-model', // no pricing → { source: 'unpriced' }
+const b = priceProviderUsage({
+  provider: 'anthropic',
+  usage: { input_tokens: 200_000, output_tokens: 0 },
+  model: 'unknown-model', // no pricing → { source: 'unpriced' }
 });
 
 const total = (a.costUsd ?? 0) + (b.costUsd ?? 0);

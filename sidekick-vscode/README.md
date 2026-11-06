@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.31.0: live billing block, Codex retry, smaller extension** — the dashboard billing block keeps up with a session that is still being written. Codex flex- and policy-capacity failures offer **Retry**, and Codex's approval-denial limit explains itself without one. The extension bundle is about 145 KB smaller.
 - **0.30.3: usage credits balance vs spend limit** — the dashboard's quota card used to show `Extra usage: $0.00 of $40.00 used`, where $40 is the monthly spend limit, not your balance. It now shows `Usage credits: $100.00 available` (the prepaid balance) and `Spend limit: $0.00 of $40.00 used this month` as separate notes.
 - **0.30.1: update notifications** — the extension tells you when a newer version is published. It asks the Marketplace in VS Code and Open VSX in Cursor, VSCodium and other editors, 30 seconds after startup and then twice a day. The notification offers **Update**, **Release Notes**, and **Skip This Version**. **Sidekick: Check for Updates** checks on demand, and `sidekick.updateCheck.enabled` turns the automatic check off. The `sidekick` CLI now announces its own updates after one-shot commands.
 - **0.30.0: Codex subagents in the Subagents view, and agents that never report**
@@ -148,7 +149,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 - **Conversation Viewer** — full session transcript that interleaves assistant reasoning, tool calls, and narration in provider-normalized arrival order (a compact Process + Answer shape) for Claude, Codex, and OpenCode; tool calls render as concise rows with expandable outputs, with search across the conversation
 - **[Tool Inspector](https://cesarandreslopez.github.io/sidekick-agent-hub/features/tool-inspector/)** — per-tool rendering (diffs for Edit, commands for Bash, etc.) with paired tool outputs (file content, stdout, search results), plus the raw tool name and MCP server
 - **[Subagents Tree](https://cesarandreslopez.github.io/sidekick-agent-hub/features/session-monitor/#subagent-tree)** — one row per subagent spawn, from Claude Code (the `Agent` tool, formerly `Task`) or Codex (`spawn_agent`, labelled by nickname or task name), with nested parent/child relationships; background agents show as running until they finish, fail, or are stopped, an agent that ended cleanly without reporting shows "finished (no report)", and one in a session idle for more than 6 hours shows "ended"; each row shows the subagent's cache-inclusive token total and opens its transcript or Codex rollout on click. Codex subagents also appear in the dashboard and mind map
-- **Plans Board** — agent plans discovered for the project, surfaced as a dedicated sidebar view
+- **Plans** — agent plans discovered for the project, surfaced as a dedicated sidebar view
 - **Latest Files Touched** — sidebar tree of files the current session has read or modified
 - **Cross-Session Search** — search across all sessions
 - **Notification Triggers** — alerts for credential access, sensitive-path writes, destructive commands, repeated tool errors, cycling without progress, compaction, token thresholds, and quota thresholds (once per reset window)

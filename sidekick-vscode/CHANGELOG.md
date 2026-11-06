@@ -5,6 +5,19 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-11-06
+
+### Fixed
+
+- The dashboard billing block no longer goes stale while an active session keeps writing; it could miss usage appended since the session's directory last changed.
+- Codex flex-capacity and policy-capacity failures now offer **Retry**, and hitting Codex's approval-denial limit shows the review-policy message without Retry.
+
+### Changed
+
+- The Codex inference client reads `codex exec` output through the shared headless parser; behaviour is unchanged.
+- Codex turn-lifecycle events are treated as bookkeeping: they do not change message counts, the timeline or the conversation view.
+- The extension bundle is about 145 KB smaller: the shared schemas import Zod as a namespace, so its locales are no longer bundled (about 205 KB), partly offset by this release's additions.
+
 ## [0.30.3] - 2026-11-05
 
 ### Fixed

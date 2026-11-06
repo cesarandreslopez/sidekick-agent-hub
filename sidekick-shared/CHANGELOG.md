@@ -5,6 +5,62 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-11-06
+
+### Fixed
+
+- **Stale usage on reused providers.** `listSessionPreviewsAsync()` and usage collection reused cached file sizes and times whenever a session's directory was unchanged, and appending to a file does not change its directory. A host that keeps its providers, as the VS Code and CLI billing blocks do, missed usage from a session that was still being written. Listings now re-stat every file (`ListSessionFilesOptions.revalidateAll`); only the directory read is saved.
+- **Workspace-scoped usage counted other projects.** Codex sessions started in a parent folder matched a nested repository, and Claude Code project folders whose names only looked alike (`<project>-other`, any folder ending in `-<name>`) were counted. `collectUsageEvents({ workspacePaths })` now keeps only sessions whose recorded working directory resolves to a root or inside one, as prompt history already did. Use `scope: 'listed'` for the previous matching.
+- **Worktrees of bare and `--separate-git-dir` repositories.** Workspace-root expansion, and with it prompt history, tool-call origins and multi-root usage, found no worktrees in these layouts. See `resolveGitWorktrees()` below.
+- **Codex cache writes counted twice.** Codex counts cache writes inside `input_tokens`. Under `semantics: 'openai'`, `normalizeProviderUsage()` subtracted only cache reads and then added `cacheWriteTokens` back, and prompt-history usage for Codex reported both. Both now report disjoint buckets. A cache write with no positive write rate is priced at the input rate, so costs do not change.
+- **Failed Codex commands lost their output.** The signal text `$ <command>\n<output>` was cut from the front to 1024 characters, so a long command (a here-doc, a multi-line script) left no output. Signals now keep the start of the command and the end of the output. Commands run without a shell wrapper are reported whole instead of as their last argument, and a command or patch the user declined is `toolRejected`, not `toolError`.
+- **Codex sessions read as active after a turn ended.** The session activity detector never saw a Codex turn end; it now ends the turn on Codex `task_complete` and `turn_aborted`.
+- **Model ordering.** `compareModelIds()` / `sortModelIds()` read `5.10` as `5.1` and `claude-opus-4-10` as `4.1`, ranked every Codex model alike, and let provider bands overlap (`gpt-5` sorted before `claude-haiku-4-5`). Versions now compare segment by segment, each provider has its own band (Anthropic, then OpenAI with Codex models first, then Google), and Codex models sort by version. `ModelDisplayInfo.rank` values change; only their order is meaningful.
+- **Codex error kinds.** `flexUnavailable` and `policyCapacityUnavailable` diagnose as a retryable overload, and `tooManyDenials` (the approval-denial limit) as an execution-policy denial that is not retryable.
+
+### Added
+
+- **Explicit agent homes.** `homes: { claudeHomes, codexHomes, env, includeProfileHomes }` on `createSessionProviders()`, the Claude Code and Codex provider constructors, `collectPromptHistory()`, `collectSessionPromptHistory()`, `findToolCallOrigins()`, `collectUsageEvents()` and `listAgentSessions()`. An explicit list wins (`[]` turns that provider off), then `CLAUDE_CONFIG_DIR` / `CODEX_HOME`, then the user's home. A blank variable is still treated as unset, and a relative one is ignored and reported. `resolveAgentHomes()`, `resolveMonitoredHomes()`, and `getCodexMonitoringHomes({ includeProfileHomes: false })`, which leaves out Sidekick account-profile homes.
+- **`resolveGitWorktrees(dir)`** reads a checkout's worktrees from git's own files (`.git` file, `commondir`, `worktrees/*/gitdir`) without running git. It handles bare repositories, worktrees of a bare repository, `--separate-git-dir` checkouts and relative worktree paths, skips worktrees whose directory is gone, and never expands a submodule to its parent.
+- **`sidekick-shared/agentPaths`**, a dependency-free entry (five modules, Node built-ins only, about 6 KB minified) for small bundles such as hooks: home resolution from an injectable env, Claude Code project-directory encoding, `classifyAgentTranscriptPath()` (is this file a Claude Code or Codex transcript under a known home?), subagent transcript paths, and `readAgentVersion()`, which reads the agent's CLI version from the start and end of a transcript.
+- Claude Code subagent paths: `getClaudeSubagentsDir()`, `getClaudeSubagentTranscriptPath()`, `parseClaudeSubagentFileName()`, `isClaudeAgentId()`.
+- **Usage scope and filtering:** `scope: 'contained' | 'listed'` and `excludeSynthetic` on `collectUsageEvents()`; `workspacePaths`, `includeWorktrees` and `scope` on `listSessionPreviewsAsync()`; `pathWithinRoots()`.
+- **Bounded, resumable usage collection.** `collectUsageEvents({ bounds: { maxSessions, maxTotalBytes, maxEvents, deadlineMs }, cursor })` returns `cursor`, `hasMore`, `boundsHit`, `changed` and `pricingChanged`. With a cursor, only sessions whose usage changed come back, each whole. `parseUsageEventsCursor()`, and `sessionKey` on usage events and sessions.
+- **`listAgentSessions()`** lists Claude Code and Codex sessions once for several collectors (the new `listing` option on prompt history, session prompt history, tool-call origins, usage and previews) and reuses directory caches across passes through `previous`.
+- **Subagent attribution.** Subagent usage events and tool-call origins carry `parentPromptOrdinal`, the prompt of the top-level session that was in effect when the subagent started, so per-prompt cost can include subagent spend (background agents that outlive their prompt, nested Codex subagents). `subagent` gains `rootSessionId` and `kind`. The usage cache stays at v3; entries without the new fields are re-read once.
+- **`createSessionProvidersFrom(factories)`** with `claudeCodeProviderFactory`, `codexProviderFactory` and `openCodeProviderFactory`, so a bundle includes only the providers it constructs. `createSessionProviders()` behaves as before.
+- **Prompt-ordinal contract.** `PROMPT_ORDINAL_SCHEME_VERSION` (1) names the rules prompt history, session prompt history, usage events' `promptOrdinal` and tool-call origins share. Results carry `ordinalScheme` (`promptOrdinalScheme` on usage), the prompt-history cursor records it, and golden Claude Code and Codex fixtures pin the rules. Ordinals are unchanged.
+- **Structured tool-error signals.** Prompt-history signals for failed tool calls carry `command`, `output`, `exitCode` and `toolUseId`, with `commandTruncated` / `outputTruncated`. `collectSessionPromptHistory({ signalLimits })` sets character budgets and an optional UTF-8 byte cap that never splits a character. `SIGNAL_TEXT_CHARS`, `SIGNAL_COMMAND_CHARS`, `SIGNAL_OUTPUT_CHARS`.
+- **Codex inherited history.** `codexInheritedHistoryBoundary()`, `isCodexInheritedRecord()`, `CodexRolloutParser.getInheritedHistoryBoundary()` and, on Node, `readCodexInheritedHistoryBoundary()` report whether a Codex fork or subagent rollout's inherited history has a provable end (`proven`, `unproven`, `none`, `pending`), the evidence, the first own ordinal and optionally the byte offset of the first own record. `getInheritedHistoryEnd()` is now documented.
+- **JSONL tail gaps.** `createJsonlTail()` reports skipped oversized and malformed lines and every discontinuity (truncation, rewrite, replacement, rejected checkpoint) with byte offsets through `onGap` and `read().gaps`, in order with the events. Each `read()` result carries the `checkpoint` for exactly the events it returned.
+- `CodexRolloutParser.getPendingStats()` also reports `trackedCallIds` and `sessionMetaBytes`, and `sessionMeta: 'identity'` keeps only identity fields of `session_meta` in memory and in exported state.
+- **`sidekick-shared/headless`**: pure, incremental parsers for `claude -p --output-format stream-json` and `codex exec --json` output (`createClaudeStreamJsonParser()`, `createCodexExecJsonParser()`, `parseClaudeStreamMessage()`, `parseCodexExecEvent()`), normalized to session, text, tool, usage, result, error, compaction, hook and status events. Usage goes through `normalizeProviderUsage()`; Codex `turn.completed` usage is labelled as the thread's running total.
+- **Turn state.** `classifyTurnState()` and `createTurnStateTracker()` classify a Claude Code or Codex session as `working`, `waiting`, `idle` or `ended` from its latest events, with `since` and a reason. The Codex parser's `includeTurnLifecycle` option emits turn starts, completions and aborts as `system` events (`turnLifecycleFromEvent()`, `isTurnLifecycleSystemEvent()`); the Codex provider turns it on, and transcripts, session context and aggregator counts skip them.
+- **`priceProviderUsage({ provider, usage, model })`** prices a raw Anthropic, OpenAI (Responses or Chat Completions) or Codex usage object in one call, with that provider's cache and reasoning rules, and returns the cost, cost source, pricing provenance, catalog match and normalized usage. `normalizeRawProviderUsage()` and `RAW_USAGE_FORMATS` expose the normalization step. On the root, `/browser` and `/pricing`.
+- `boundedProviderFailureDiagnosisSchema` and `PROVIDER_FAILURE_DIAGNOSIS_BOUNDS` on `sidekick-shared/schemas`: length, array and range limits for diagnoses that cross a process boundary. Unknown Codex error kinds in evidence are dropped rather than rejected.
+- Single-module subpaths `sidekick-shared/providerIds` and `sidekick-shared/handoffUrl`.
+- Codex error kinds as of Codex `rust-v0.167.0`: `flexUnavailable`, `policyCapacityUnavailable`, `tooManyDenials`, `modelNotFound`, `invalidPrompt`, `bioPolicy`, `misalignmentPolicyViolation`. `decodeCodexErrorInfo()` decodes an unknown variant to `{ kind: 'other', rawKind }` instead of `undefined`.
+
+### Changed
+
+- **Smaller bundles.** The schema modules import Zod as a namespace (`import * as z from 'zod'`), which bundlers can tree-shake, so Zod's locales no longer ship: a `createSessionProviders()` bundle drops from 544 KB to about 330 KB minified (about 282 KB through `createSessionProvidersFrom()` with only the Claude Code and Codex factories), and a single schema import from 305 KB to about 74 KB. Bundle with `import`, not `require()`, so the `module` condition applies.
+- `isMovingModelAlias()` also matches ids ending in `-latest`, `:latest` or `@latest`. Pricing does not consult it, so priced ids such as `gpt-5.3-chat-latest` stay priced.
+- `providers` is optional in `collectUsageEvents()`; without it, Claude Code and Codex providers are built (and disposed) for the call.
+- An embedded ancestor `session_meta` marks inherited Codex history only at ordinal 1, as Codex writes it, and only when it names the fork's or spawn's ancestor.
+- Codex provider streams contain turn-lifecycle `system` events.
+- `findToolCallOrigins()` searches only `agent-*.jsonl` subagent transcripts, like the other readers.
+- Session previews with the same modification time sort by provider, then path.
+- The `/codex` entry loads three more modules (inherited-history boundary, Codex layout helpers, bounded concurrency).
+- Published with npm provenance: each version's attestation links the commit and workflow run that built it. Verify with `npm audit signatures`.
+
+### Deprecated
+
+- `resolveWorktreeMainRepo()` and `discoverWorktreeSiblings()`, in favour of `resolveGitWorktrees()`.
+
+### Removed
+
+- **Potentially breaking:** `calculateCost`, `calculateCostWithPricing`, `calculateCostWithProvenance`, `CostTokenUsage` and `CostProvenanceInput` are no longer exported from `sidekick-shared/pricing`. They stay, deprecated, on the root and `/browser`. They treat input as uncached and add reasoning on top of output, so OpenAI and Codex usage was charged twice for cached input and reasoning; use `priceProviderUsage()` or `calculateNormalizedUsageCost()`.
+
 ## [0.30.3] - 2026-11-05
 
 ### Fixed

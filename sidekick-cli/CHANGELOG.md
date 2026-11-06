@@ -5,6 +5,23 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-11-06
+
+### Fixed
+
+- `daily`, `weekly`, `monthly`, `sessions` and `blocks` with `--project` resolve the path (a relative path works) and count only sessions recorded inside it. Projects whose folder name matches or starts with the same name, and Codex sessions started in a parent folder, are no longer included.
+- The dashboard billing block keeps up with a session that is still being written; it could miss usage appended since the last directory change.
+- Failed Codex commands keep their output in `dump --prompts --signals`: a long command no longer pushes the output out of the 1024-character signal, a command run without a shell wrapper is shown whole, and a command you declined is listed as rejected, not failed.
+
+### Changed
+
+- `dump --prompts` per-prompt usage counts a subagent's calls toward the prompt that started it, including background agents that outlive that prompt, and counts a Codex subagent's calls toward its root session.
+- `dump --prompts --signals` shows the exit code of failed commands (`toolError (exec_command, exit 2)`).
+- The follow timeline shows short "Turn started", "Turn complete" and "Turn aborted" rows for Codex sessions.
+- The bundle is about 175 KB smaller: the shared schemas import Zod as a namespace, so its locales are no longer bundled (about 207 KB), partly offset by this release's additions.
+- Published with npm provenance; `repository.directory` points npm at `sidekick-cli`.
+- Model ids sort by numeric version (`5.10` above `5.9`), and Codex failures recognize the error kinds added through Codex `rust-v0.167.0` (see the shared library changelog).
+
 ## [0.30.3] - 2026-11-05
 
 ### Fixed

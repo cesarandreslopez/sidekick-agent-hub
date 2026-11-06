@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-11-06
+
+### Fixed
+
+- **Usage stays current while a session is written.** Hosts that reuse their session providers (the VS Code and CLI billing blocks) read cached file sizes whenever a session's directory was unchanged, and appending to a file does not change its directory. Listings now re-stat every file.
+- **Project-scoped usage counts only that project.** CLI `daily` / `weekly` / `monthly` / `sessions` / `blocks --project` and `sidekick-shared` `collectUsageEvents({ workspacePaths })` no longer count Codex sessions started in a parent folder or Claude Code project folders whose names only look alike.
+- **Worktrees of bare and `--separate-git-dir` repositories** are found, so prompt history, tool-call origins and multi-root usage cover them.
+- **Codex cache writes are no longer counted twice** in OpenAI-semantics usage normalization and prompt-history usage. Costs do not change.
+- **Failed Codex commands keep their output** in prompt-history signals and `dump --prompts`; commands run without a shell wrapper are reported whole, and declined commands count as rejected.
+- **Codex turns end in `sidekick-shared`'s session-activity detection** (observed-session collection) once a turn completes, instead of staying active until the five-minute staleness.
+- **Model ordering** compares versions numerically (`5.10` above `5.9`, `claude-opus-4-10` above `4-5`) and keeps provider groups apart.
+- **Codex error kinds** through Codex `rust-v0.167.0`: flex- and policy-capacity failures offer Retry; the approval-denial limit does not.
+
+### Added
+
+- `sidekick-shared`:
+  - explicit agent homes (`homes`, `resolveAgentHomes()`);
+  - `resolveGitWorktrees()`;
+  - the dependency-free `sidekick-shared/agentPaths` entry, which includes transcript classification and agent-version reading;
+  - Claude Code subagent path helpers;
+  - strict usage `scope` and `excludeSynthetic`;
+  - bounded, cursor-based `collectUsageEvents()`;
+  - `listAgentSessions()` and a shared `listing` option;
+  - `parentPromptOrdinal` on subagent usage and tool-call origins;
+  - `createSessionProvidersFrom()` with per-provider factories;
+  - `PROMPT_ORDINAL_SCHEME_VERSION`, with golden ordinal fixtures;
+  - structured tool-error signals (`command`, `output`, `exitCode`, `toolUseId`) and `signalLimits`;
+  - the Codex inherited-history boundary (`codexInheritedHistoryBoundary()`, `readCodexInheritedHistoryBoundary()`);
+  - JSONL tail gaps and per-read checkpoints;
+  - the `sidekick-shared/headless` parsers for `claude -p` stream-json and `codex exec --json`;
+  - `classifyTurnState()` and Codex turn-lifecycle events;
+  - `priceProviderUsage()`;
+  - `boundedProviderFailureDiagnosisSchema`;
+  - the single-module `sidekick-shared/providerIds` and `sidekick-shared/handoffUrl` entries.
+- CLI `dump --prompts`: exit codes for failed commands, and per-prompt usage that includes subagent spend.
+
+### Changed
+
+- **Smaller bundles.** The shared schemas import Zod as a namespace, so its locales no longer ship. Net of this release's additions, the CLI bundle is about 175 KB smaller and the VS Code extension bundle about 145 KB smaller, and a `createSessionProviders()` bundle drops from 544 KB to about 330 KB minified.
+- The VS Code Codex inference client parses `codex exec` output with the shared headless parser.
+- `isMovingModelAlias()` matches `-latest`, `:latest` and `@latest` ids.
+- **Provenance.** `sidekick-shared` and `sidekick-agent-hub` are published with npm provenance.
+
+### Removed
+
+- `sidekick-shared/pricing` no longer exports the deprecated `calculateCost*` helpers (still on the root and `/browser`). They double-count cached input and reasoning for OpenAI and Codex usage; use `priceProviderUsage()`.
+
 ## [0.30.3] - 2026-11-05
 
 ### Fixed
