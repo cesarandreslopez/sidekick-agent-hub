@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import type { TokenEstimate } from '../tokenEstimation';
 
 export const tokenEstimateSchema = z.object({

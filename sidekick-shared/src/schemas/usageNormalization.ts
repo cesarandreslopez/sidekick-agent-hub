@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import type { NormalizedUsage, NormalizedUsageCost } from '../usageNormalization';
 
 const normalizedUsageObjectSchema = z.object({

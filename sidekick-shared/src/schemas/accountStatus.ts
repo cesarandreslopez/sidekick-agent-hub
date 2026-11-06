@@ -9,7 +9,7 @@
  * @module schemas/accountStatus
  */
 
-import { z } from 'zod';
+import * as z from 'zod';
 import type { ActiveProviderAccountStatus, ActiveAccountStatus } from '../accountStatus';
 
 // ── ActiveProviderAccountStatus ──

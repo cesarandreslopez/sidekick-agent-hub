@@ -8,7 +8,7 @@
  * @module schemas/providerFailure
  */
 
-import { z } from 'zod';
+import * as z from 'zod';
 import { ACCOUNT_PROVIDER_IDS } from '../providerIds';
 import {
   CODEX_ERROR_INFO_KINDS,

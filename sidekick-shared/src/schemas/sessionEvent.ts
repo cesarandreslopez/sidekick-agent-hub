@@ -7,7 +7,7 @@
  * @module schemas/sessionEvent
  */
 
-import { z } from 'zod';
+import * as z from 'zod';
 import type {
   MessageUsage,
   SessionMessage,

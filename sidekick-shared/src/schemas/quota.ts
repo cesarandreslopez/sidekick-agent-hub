@@ -9,7 +9,7 @@
  * @module schemas/quota
  */
 
-import { z } from 'zod';
+import * as z from 'zod';
 import type {
   CodexResetCredit,
   CodexResetCreditsSnapshot,

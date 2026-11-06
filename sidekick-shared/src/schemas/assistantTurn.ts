@@ -5,7 +5,7 @@
  * process/answer shape used at UI and IPC boundaries.
  */
 
-import { z } from 'zod';
+import * as z from 'zod';
 import type {
   AssistantTurnEvent,
   AssistantTurnEventType,

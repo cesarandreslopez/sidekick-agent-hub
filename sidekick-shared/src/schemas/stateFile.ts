@@ -8,7 +8,7 @@
  * @module schemas/stateFile
  */
 
-import { z } from 'zod';
+import * as z from 'zod';
 import type {
   SidekickStateFile,
   StateFileAccount,

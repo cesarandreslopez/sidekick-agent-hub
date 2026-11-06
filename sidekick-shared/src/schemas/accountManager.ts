@@ -9,7 +9,7 @@
  * @module schemas/accountManager
  */
 
-import { z } from 'zod';
+import * as z from 'zod';
 import type { AccountEntry, AccountManagerResult } from '../accounts';
 import type {
   AccountIdentityMetadata,

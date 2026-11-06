@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { SESSION_PROVIDER_IDS } from '../providerIds';
 
 export const observationProvenanceV1Schema = z.enum(['reported', 'estimated', 'inferred']);

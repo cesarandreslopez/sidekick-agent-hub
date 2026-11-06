@@ -9,7 +9,7 @@
  * @module schemas/quotaHistory
  */
 
-import { z } from 'zod';
+import * as z from 'zod';
 import type {
   QuotaHistoryRuntimeProvider,
   QuotaHistorySample,
