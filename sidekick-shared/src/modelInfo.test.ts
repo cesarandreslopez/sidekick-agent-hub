@@ -10,6 +10,7 @@ import {
   shortModelName,
   sortModelIds,
   compareModelIds,
+  getModelDisplayInfo,
   formatCost,
   canonicalModelId,
   isMovingModelAlias,
@@ -706,6 +707,116 @@ describe('model display helpers', () => {
   });
 });
 
+describe('model ranking by version segment', () => {
+  it('compares minor versions as numbers, not decimals', () => {
+    expect(sortModelIds(['gpt-5.9', 'gpt-5.10', 'gpt-5.1'])).toEqual([
+      'gpt-5.10',
+      'gpt-5.9',
+      'gpt-5.1',
+    ]);
+    expect(sortModelIds(['gpt-5.10', 'gpt-6'])).toEqual(['gpt-6', 'gpt-5.10']);
+    expect(compareModelIds('gpt-5.10', 'gpt-5.9')).toBeLessThan(0);
+  });
+
+  it('orders Codex ids by version instead of alphabetically', () => {
+    expect(
+      sortModelIds([
+        'gpt-5-codex',
+        'gpt-5.1-codex',
+        'gpt-5.10-codex',
+        'gpt-5.2-codex',
+        'gpt-5.3-codex',
+        'gpt-6-codex',
+      ]),
+    ).toEqual([
+      'gpt-6-codex',
+      'gpt-5.10-codex',
+      'gpt-5.3-codex',
+      'gpt-5.2-codex',
+      'gpt-5.1-codex',
+      'gpt-5-codex',
+    ]);
+  });
+
+  it('never reads a Claude release date as a version', () => {
+    expect(
+      sortModelIds([
+        'claude-opus-4-20250514',
+        'claude-opus-4-1-20250805',
+        'claude-opus-4-10',
+        'claude-opus-4-5-20251101',
+      ]),
+    ).toEqual([
+      'claude-opus-4-10',
+      'claude-opus-4-5-20251101',
+      'claude-opus-4-1-20250805',
+      'claude-opus-4-20250514',
+    ]);
+    expect(sortModelIds(['gpt-6-sol-2026-09-29', 'gpt-6.1-sol'])).toEqual([
+      'gpt-6.1-sol',
+      'gpt-6-sol-2026-09-29',
+    ]);
+  });
+
+  it('keeps provider bands apart', () => {
+    // Haiku 4.5 used to land after GPT-5 because both bands shared one scale.
+    expect(sortModelIds(['gpt-5', 'claude-haiku-4-5'])).toEqual(['claude-haiku-4-5', 'gpt-5']);
+    expect(
+      sortModelIds([
+        'gemini-3-pro',
+        'some-local-model',
+        'o3',
+        'gpt-5',
+        'gpt-5.3-codex',
+        'claude-haiku-4-5',
+        'claude-sonnet-4-6',
+        'claude-opus-4-1',
+        'claude-fable-5',
+      ]),
+    ).toEqual([
+      'claude-fable-5',
+      'claude-opus-4-1',
+      'claude-sonnet-4-6',
+      'claude-haiku-4-5',
+      'gpt-5.3-codex',
+      'gpt-5',
+      'o3',
+      'gemini-3-pro',
+      'some-local-model',
+    ]);
+  });
+
+  it('orders the o-series and Gemini by version', () => {
+    expect(sortModelIds(['o3', 'o4-mini', 'o1'])).toEqual(['o4-mini', 'o3', 'o1']);
+    expect(sortModelIds(['gemini-2.5-pro', 'gemini-3-pro', 'gemini-2.0-flash'])).toEqual([
+      'gemini-3-pro',
+      'gemini-2.5-pro',
+      'gemini-2.0-flash',
+    ]);
+  });
+
+  it('orders a fourth version segment after the rank ties', () => {
+    expect(sortModelIds(['gpt-5.1.2.3', 'gpt-5.1.2.10'])).toEqual(['gpt-5.1.2.10', 'gpt-5.1.2.3']);
+  });
+
+  it('returns a finite integer rank for every id', () => {
+    for (const id of [
+      'claude-opus-4-10',
+      'claude-3-5-sonnet-20241022',
+      'gpt-99999.99999',
+      'gpt-5.3-codex',
+      'codex-mini-latest',
+      'o4-mini',
+      'gemini-2.5-pro',
+      'unknown-model',
+      '',
+    ]) {
+      const { rank } = getModelDisplayInfo(id);
+      expect(Number.isSafeInteger(rank), `${id}: ${rank}`).toBe(true);
+    }
+  });
+});
+
 describe('formatCost', () => {
   it('formats small costs with 4 decimal places', () => {
     expect(formatCost(0.001234)).toBe('$0.0012');
@@ -927,10 +1038,10 @@ describe('GPT tier variants', () => {
       'gpt-6-sol',
       'gpt-6-sol-2026-09-29',
     ]);
-    // Codex ids share one rank across versions; variants only reorder within a version.
+    // Codex ids order by version first; variants only reorder within a version.
     expect(sortModelIds(['gpt-6-sol-codex', 'gpt-6.1-luna-codex'])).toEqual([
-      'gpt-6-sol-codex',
       'gpt-6.1-luna-codex',
+      'gpt-6-sol-codex',
     ]);
     expect(sortModelIds(['gpt-6-luna-codex', 'gpt-6-sol-codex'])).toEqual([
       'gpt-6-sol-codex',

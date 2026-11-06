@@ -1571,40 +1571,76 @@ export function shortModelName(modelId: string): string {
   return modelId;
 }
 
-const CLAUDE_FAMILY_RANK: Record<string, number> = {
+// Display groups, in menu order. Each group owns a disjoint band of ranks, so
+// a provider's versions never interleave with another provider's.
+const CLAUDE_FAMILY_GROUP: Record<string, number> = {
   fable: 0,
   opus: 1,
   sonnet: 2,
   haiku: 3,
 };
+const OTHER_ANTHROPIC_GROUP = 4;
+const CODEX_GROUP = 5;
+const GPT_GROUP = 6;
+const O_SERIES_GROUP = 7;
+const GEMINI_GROUP = 8;
+const UNKNOWN_GROUP = 9;
+const GROUP_SPAN = 1_000_000_000;
+const MAX_VERSION_VALUE = GROUP_SPAN - 1;
 
-function versionRank(version: string | null): number {
-  if (!version) return Number.MAX_SAFE_INTEGER;
-  const numeric = Number(version.replace('-', '.').match(/[0-9]+(?:\.[0-9]+)?/)?.[0]);
-  if (!Number.isFinite(numeric)) return Number.MAX_SAFE_INTEGER;
-  return -numeric;
+/**
+ * The numeric segments of a parsed version: its leading `\d+(\.\d+)*`, split
+ * on dots (`5.10-codex` → [5, 10], `4-mini` → [4]). Anything after the first
+ * non-digit, such as a `-2026-09-29` release date, is never read.
+ */
+function versionSegments(version: string | null): number[] {
+  const match = version ? /^[0-9]+(?:\.[0-9]+)*/.exec(version) : null;
+  return match ? match[0].split('.').map(Number) : [];
+}
+
+/** The first three segments as one number, each clamped to 0–999 (5.10 > 5.9). */
+function versionValue(segments: readonly number[]): number {
+  let value = 0;
+  for (let index = 0; index < 3; index++) {
+    const segment = segments[index] ?? 0;
+    value = value * 1_000 + Math.min(999, Math.max(0, Number.isFinite(segment) ? segment : 0));
+  }
+  return value;
+}
+
+/** Compare segment lists numerically, missing segments read as 0; newest first. */
+function compareSegments(left: readonly number[], right: readonly number[]): number {
+  for (let index = 0; index < Math.max(left.length, right.length); index++) {
+    const difference = (right[index] ?? 0) - (left[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+function displayGroup(parsed: ParsedModelId | null, normalized: string): number {
+  if (parsed?.provider === 'anthropic') {
+    return CLAUDE_FAMILY_GROUP[parsed.family] ?? OTHER_ANTHROPIC_GROUP;
+  }
+  if (normalized.includes('codex')) return CODEX_GROUP;
+  if (parsed?.provider === 'openai') return parsed.family === 'gpt' ? GPT_GROUP : O_SERIES_GROUP;
+  if (parsed?.provider === 'google') return GEMINI_GROUP;
+  return UNKNOWN_GROUP;
 }
 
 /**
  * Returns stable display metadata and a rank suitable for provider model menus.
+ *
+ * Lower ranks sort first. Groups, in order: Fable, Opus, Sonnet, Haiku, other
+ * Claude, Codex, GPT, o-series, Gemini, unknown; within a group, newer
+ * versions first, comparing version segments numerically (`opus-4-10` above
+ * `opus-4-5`, `gpt-5.10` above `gpt-5.9`). Every rank is a finite integer.
  */
 export function getModelDisplayInfo(modelId: string): ModelDisplayInfo {
   const parsed = parseModelId(modelId);
   const normalized = canonicalModelId(modelId);
-
-  let rank = 1_000;
-  if (parsed?.provider === 'anthropic') {
-    rank = (CLAUDE_FAMILY_RANK[parsed.family] ?? 9) * 100 + versionRank(parsed.version);
-  } else if (normalized.includes('codex')) {
-    rank = 200;
-  } else if (parsed?.provider === 'openai') {
-    rank =
-      parsed.family === 'gpt'
-        ? 300 + versionRank(parsed.version)
-        : 400 + versionRank(parsed.version);
-  } else if (parsed?.provider === 'google') {
-    rank = 500 + versionRank(parsed.version);
-  }
+  const rank =
+    displayGroup(parsed, normalized) * GROUP_SPAN +
+    (MAX_VERSION_VALUE - versionValue(versionSegments(parsed?.version ?? null)));
 
   return {
     modelId,
@@ -1625,7 +1661,9 @@ function compareTierVariants(a: string, b: string): number {
   const right = parseModelId(b);
   if (!left?.variant || !right?.variant) return 0;
   if (left.provider !== right.provider || left.family !== right.family) return 0;
-  if (versionRank(left.version) !== versionRank(right.version)) return 0;
+  if (compareSegments(versionSegments(left.version), versionSegments(right.version)) !== 0) {
+    return 0;
+  }
   return (
     (GPT_TIER_VARIANT_RANK[left.variant] ?? Number.MAX_SAFE_INTEGER) -
     (GPT_TIER_VARIANT_RANK[right.variant] ?? Number.MAX_SAFE_INTEGER)
@@ -1640,6 +1678,12 @@ export function compareModelIds(a: string, b: string): number {
   const left = getModelDisplayInfo(a);
   const right = getModelDisplayInfo(b);
   if (left.rank !== right.rank) return left.rank - right.rank;
+  // The rank reads three segments; a fourth (`1.2.3.4`) still orders here.
+  const segmentOrder = compareSegments(
+    versionSegments(left.version),
+    versionSegments(right.version),
+  );
+  if (segmentOrder !== 0) return segmentOrder;
   const variantOrder = compareTierVariants(a, b);
   if (variantOrder !== 0) return variantOrder;
   return a.localeCompare(b);
