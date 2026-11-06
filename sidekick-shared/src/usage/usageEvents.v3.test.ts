@@ -35,7 +35,15 @@ vi.mock('../providers/codexDatabase', async () => {
 });
 
 import { getModelPricing } from '../modelInfo';
-import { CHILD_ID, PARENT_ID, childRollout } from '../testing/codexSubagentFixtures';
+import {
+  CHILD_ID,
+  GRANDCHILD_ID,
+  PARENT_ID,
+  at,
+  childRollout,
+  grandchildRollout,
+  parentRollout,
+} from '../testing/codexSubagentFixtures';
 import { collectPromptHistory, type PromptHistoryEntry } from '../promptHistory';
 import { ClaudeCodeProvider } from '../providers/claudeCode';
 import { CodexProvider } from '../providers/codex';
@@ -290,8 +298,17 @@ describe('subagent attribution', () => {
 
     expect(miss.events.map((event) => [event.requestId, event.subagent])).toEqual([
       ['msg_main', undefined],
-      ['msg_sub', { agentId: 'a0a27a478cf393505', parentSessionId: 'parent-session' }],
+      [
+        'msg_sub',
+        {
+          agentId: 'a0a27a478cf393505',
+          parentSessionId: 'parent-session',
+          rootSessionId: 'parent-session',
+          kind: 'subagent',
+        },
+      ],
     ]);
+    expect(miss.events[1].parentPromptOrdinal).toBe(0);
     expect(miss.events.every((event) => event.sessionId === 'parent-session')).toBe(true);
     expect(miss.events[0]).not.toHaveProperty('subagent');
   });
@@ -337,11 +354,18 @@ describe('subagent attribution', () => {
     expect(bySession.get(spawnedId)?.subagent).toEqual({
       agentId: spawnedId,
       parentSessionId: parentId,
+      rootSessionId: parentId,
+      kind: 'subagent',
     });
+    // It started (session_meta timestamp) before the parent's first prompt.
+    expect(bySession.get(spawnedId)?.parentPromptOrdinal).toBeNull();
     expect(bySession.get(forkId)?.subagent).toEqual({
       agentId: forkId,
       parentSessionId: parentId,
+      rootSessionId: parentId,
+      kind: 'fork',
     });
+    expect(bySession.get(forkId)).not.toHaveProperty('parentPromptOrdinal');
     // Subagent and fork rollouts carry no human prompts of their own.
     expect(bySession.get(parentId)?.promptOrdinal).toBe(0);
     expect(bySession.get(spawnedId)?.promptOrdinal).toBeNull();
@@ -353,7 +377,14 @@ describe('subagent attribution', () => {
     const first = await collectUsageEvents({ providers: [codex()] });
     // 300 + 200 of its own; the 5000 in the parent history the fork embeds is not counted.
     expect(first.events.map((event) => event.tokens.inputTokens)).toEqual([300, 200]);
-    expect(first.events[0].subagent).toEqual({ agentId: CHILD_ID, parentSessionId: PARENT_ID });
+    expect(first.events[0].subagent).toEqual({
+      agentId: CHILD_ID,
+      parentSessionId: PARENT_ID,
+      rootSessionId: PARENT_ID,
+      kind: 'subagent',
+    });
+    // The root's rollout is not there.
+    expect(first.events[0].parentPromptOrdinal).toBeNull();
   });
 });
 
@@ -513,5 +544,151 @@ describe('prompt ordinals', () => {
     const second = await collectUsageEvents({ providers: [provider] });
     expect(second.cacheMisses).toBe(1);
     expect(second.events.map((event) => event.promptOrdinal)).toEqual([0, 1]);
+  });
+});
+
+describe('parent prompt of subagent calls', () => {
+  function withoutRecordedRoot(rows: Row[]): Row[] {
+    return rows.map((row, index) => {
+      if (index !== 0) return row;
+      const { session_id: _root, ...payload } = row.payload as Record<string, unknown>;
+      return { ...row, payload };
+    });
+  }
+
+  function writeFamily(options: { parentCwd?: string; recordedRoot?: boolean } = {}) {
+    const recorded = options.recordedRoot !== false;
+    const parent = parentRollout({ cwd: options.parentCwd ?? repo });
+    // A second prompt after the child started: the child's calls follow it.
+    parent.push({
+      timestamp: at(41, 0),
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'Also check the docs.' }],
+      },
+    });
+    const child = childRollout({ cwd: repo });
+    const grandchild = grandchildRollout({ cwd: repo });
+    return {
+      parent: codexRollout(PARENT_ID, parent),
+      child: codexRollout(CHILD_ID, recorded ? child : withoutRecordedRoot(child)),
+      grandchild: codexRollout(
+        GRANDCHILD_ID,
+        recorded ? grandchild : withoutRecordedRoot(grandchild),
+      ),
+    };
+  }
+
+  function bySession(events: UsageEventRecord[]): Map<string, UsageEventRecord> {
+    return new Map(events.map((event) => [event.sessionId, event]));
+  }
+
+  it('gives a background Claude agent the prompt it started under', async () => {
+    const main = claudeFile(repo, 'background');
+    writeJsonl(main, [
+      claudeUser('start a background agent', 1),
+      claudeAssistant('msg_main', 2),
+      claudeUser('meanwhile, another thing', 5),
+      claudeAssistant('msg_main_2', 6),
+    ]);
+    const subDir = path.join(path.dirname(main), 'background', 'subagents');
+    writeJsonl(path.join(subDir, 'agent-abc123.jsonl'), [
+      claudeUser('agent task', 3, { isSidechain: true }),
+      claudeAssistant('msg_agent_late', 7, { isSidechain: true }),
+    ]);
+    const provider = claude();
+    const miss = await collectUsageEvents({ providers: [provider] });
+    const hit = await collectUsageEvents({ providers: [provider] });
+    expect(hit.cacheHits).toBe(1);
+    expect(hit.events).toEqual(miss.events);
+    const agent = miss.events.find((event) => event.requestId === 'msg_agent_late')!;
+    // Its call came after prompt 1, but prompt 0 started it.
+    expect(agent).toMatchObject({ promptOrdinal: 1, parentPromptOrdinal: 0 });
+    const main0 = miss.events.find((event) => event.requestId === 'msg_main')!;
+    expect(main0).not.toHaveProperty('parentPromptOrdinal');
+  });
+
+  it('follows Codex grandchildren to the root, recorded or by their parent chain', async () => {
+    for (const recordedRoot of [true, false]) {
+      fs.rmSync(path.join(tmpDir, '.codex'), { recursive: true, force: true });
+      writeFamily({ recordedRoot });
+      const result = await collectUsageEvents({ providers: [codex()], noCache: true });
+      const sessions = bySession(result.events);
+      expect(sessions.get(PARENT_ID)).not.toHaveProperty('subagent');
+      for (const id of [CHILD_ID, GRANDCHILD_ID]) {
+        expect(sessions.get(id), `${id} recorded=${recordedRoot}`).toMatchObject({
+          subagent: { rootSessionId: PARENT_ID, kind: 'subagent' },
+          // Both started after prompt 0 and before prompt 1.
+          parentPromptOrdinal: 0,
+          promptOrdinal: null,
+        });
+      }
+      expect(sessions.get(GRANDCHILD_ID)?.subagent?.parentSessionId).toBe(CHILD_ID);
+    }
+  });
+
+  it('finds a root the since window left out of the listing', async () => {
+    const family = writeFamily();
+    const old = new Date('2026-10-01T00:00:00Z');
+    fs.utimesSync(family.parent, old, old);
+    const result = await collectUsageEvents({
+      providers: [codex()],
+      since: '2026-10-31T00:00:00Z',
+      noCache: true,
+    });
+    expect(result.sessions.map((session) => session.sessionId)).not.toContain(PARENT_ID);
+    expect(bySession(result.events).get(CHILD_ID)?.parentPromptOrdinal).toBe(0);
+  });
+
+  it('gives null for a root outside the scope', async () => {
+    const elsewhere = path.join(tmpDir, 'elsewhere');
+    fs.mkdirSync(elsewhere, { recursive: true });
+    writeFamily({ parentCwd: elsewhere });
+    const result = await collectUsageEvents({
+      providers: [codex()],
+      workspacePaths: [repo],
+      noCache: true,
+    });
+    const child = bySession(result.events).get(CHILD_ID);
+    expect(child?.subagent?.rootSessionId).toBe(PARENT_ID);
+    expect(child?.parentPromptOrdinal).toBeNull();
+  });
+
+  it('reads an entry written before parent prompts were recorded once', async () => {
+    const main = claudeFile(repo, 'legacy');
+    writeJsonl(main, [claudeUser('delegate', 1), claudeAssistant('msg_main', 2)]);
+    writeJsonl(path.join(path.dirname(main), 'legacy', 'subagents', 'agent-old1.jsonl'), [
+      claudeUser('agent task', 3, { isSidechain: true }),
+      claudeAssistant('msg_agent', 4, { isSidechain: true }),
+    ]);
+    writeFamily();
+    const providersNow = [claude(), codex()];
+    await collectUsageEvents({ providers: providersNow });
+    // Strip what an older writer of the same cache version never wrote.
+    for (const name of cacheFiles()) {
+      const file = path.join(getUsageCacheDir(), name);
+      const entry = JSON.parse(fs.readFileSync(file, 'utf8'));
+      delete entry.pm;
+      delete entry.as;
+      if (entry.subagent)
+        entry.subagent = {
+          agentId: entry.subagent.agentId,
+          parentSessionId: entry.subagent.parentSessionId,
+        };
+      fs.writeFileSync(file, JSON.stringify(entry));
+    }
+    const reread = await collectUsageEvents({ providers: providersNow });
+    // The Claude session with a subagent and the two Codex children; the
+    // Codex root needs nothing it lacks.
+    expect(reread.cacheMisses).toBe(3);
+    expect(reread.cacheHits).toBe(1);
+    const again = await collectUsageEvents({ providers: providersNow });
+    expect(again.cacheMisses).toBe(0);
+    expect(again.events).toEqual(reread.events);
+    expect(again.events.find((event) => event.requestId === 'msg_agent')?.parentPromptOrdinal).toBe(
+      0,
+    );
   });
 });

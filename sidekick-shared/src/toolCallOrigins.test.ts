@@ -160,6 +160,45 @@ describe('findToolCallOrigins', () => {
     });
   });
 
+  it('gives subagent calls the prompt their subagent started under', async () => {
+    const file = claudeFile(repo, 'claude-bg');
+    writeJsonl(file, [
+      claudeUser('start a background agent', 1),
+      claudeAssistant('m1', 2),
+      claudeUser('meanwhile', 4),
+    ]);
+    const transcript = path.join(path.dirname(file), 'claude-bg', 'subagents', 'agent-bg1.jsonl');
+    writeJsonl(transcript, [
+      claudeUser('agent task', 3, { isSidechain: true }),
+      claudeToolUse('s1', 'toolu_late', 5),
+    ]);
+
+    const parentFile = codexFile();
+    const parentId = /-([0-9a-f-]{36})\.jsonl$/.exec(parentFile)![1];
+    writeJsonl(parentFile, [
+      codexMeta(repo),
+      codexUser(['spawn a helper'], 1),
+      codexUser(['and another'], 20),
+    ]);
+    const childFile = codexFile();
+    writeJsonl(childFile, [
+      codexMeta(
+        repo,
+        { subagent: { thread_spawn: { parent_thread_id: parentId } } },
+        { timestamp: ts(10) },
+      ),
+      codexCall('call_late', 25),
+    ]);
+
+    const origins = await findToolCallOrigins({
+      ids: ['toolu_late', 'call_late', 'toolu_missing'],
+      workspacePaths: [repo],
+    });
+    // Each call came after the second prompt; the first one started its agent.
+    expect(origins.get('toolu_late')).toMatchObject({ afterOrdinal: 1, parentPromptOrdinal: 0 });
+    expect(origins.get('call_late')).toMatchObject({ afterOrdinal: 1, parentPromptOrdinal: 0 });
+  });
+
   it('ignores sessions outside the workspace scope', async () => {
     const other = path.join(tmpDir, 'work', 'other');
     fs.mkdirSync(path.join(other, '.git'), { recursive: true });

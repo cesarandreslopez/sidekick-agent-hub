@@ -36,10 +36,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getClaudeSubagentsDir, parseClaudeSubagentFileName } from '../claudePaths';
-import { codexRolloutOrigin } from '../parsers/codexRolloutOrigin';
 import { getConfigDir } from '../paths';
 import { readPromptOrdinalMarks, type PromptOrdinalMark } from '../promptHistory';
-import { readFirstLineAsync } from '../providers/codexRollouts';
 import type {
   ProviderId,
   SessionProviderBase,
@@ -48,6 +46,14 @@ import type {
 import { listSessionPreviewsAsync } from '../sessionPreviews';
 import type { SessionPreview, SessionScopeMode } from '../sessionPreviews';
 import { SYNTHETIC_MODEL } from './claudeUsageDedupe';
+import {
+  ordinalAtOrBefore,
+  readCodexRolloutHead,
+  readFirstRecordTimestamp,
+  resolveCodexRoot,
+  type CodexRolloutHead,
+} from './subagentLineage';
+import { pathWithinRoots } from '../workspaceRoots';
 import { getPricingCatalogInfo } from '../modelInfo';
 import { computeSessionKey } from '../sessionKey';
 import { assertListingAlone, isSessionListing, type SessionListing } from '../sessionListing';
@@ -121,8 +127,28 @@ export interface UsageEventRecord {
    * Set when a subagent made the call. Claude Code: the agent id from its
    * transcript name (`agent-<id>.jsonl`), parent = this session. Codex: the
    * forked or spawned rollout's own session id and the session it came from.
+   * `rootSessionId` is the session at the top of the chain when known (a
+   * Claude Code subagent's root is its session; a Codex one's is
+   * `session_meta.session_id`, else the end of its parent chain). `kind` is
+   * `subagent` for an agent-spawned one and `fork` for a person's fork.
    */
-  subagent?: { agentId: string; parentSessionId: string };
+  subagent?: {
+    agentId: string;
+    parentSessionId: string;
+    rootSessionId?: string;
+    kind?: 'subagent' | 'fork';
+  };
+  /**
+   * Subagent calls only: the ordinal of the root session's prompt in effect
+   * when the subagent started (its transcript's first record for Claude
+   * Code, `session_meta.payload.timestamp` for Codex), so a background agent
+   * that keeps working after the next prompt still counts toward the prompt
+   * that started it (`promptOrdinal` follows the call's own time). `null`
+   * when the root was not found, is out of scope, or no prompt precedes the
+   * start. Absent for human forks, OpenCode, and calls that are not a
+   * subagent's.
+   */
+  parentPromptOrdinal?: number | null;
 }
 
 /** One session that contributed events. */
@@ -315,6 +341,18 @@ interface CachedUsageEvent {
   sa?: string;
 }
 
+/** A Codex session that is a subagent or fork, as cached. */
+interface CachedSessionSubagent {
+  agentId: string;
+  parentSessionId: string;
+  /** Start (`session_meta.payload.timestamp`, ms); null when unrecorded. */
+  s?: number | null;
+  /** Kind; absent only in entries written before parent prompts were recorded. */
+  k?: 'subagent' | 'fork';
+  /** `session_meta.session_id` when it names another session (the root). */
+  r?: string;
+}
+
 interface UsageCacheFile {
   version: number;
   provider: ProviderId;
@@ -323,7 +361,11 @@ interface UsageCacheFile {
   project: string | null;
   events: CachedUsageEvent[];
   /** The whole session is a subagent or fork (Codex): applies to events without `sa`. */
-  subagent?: { agentId: string; parentSessionId: string };
+  subagent?: CachedSessionSubagent;
+  /** Prompt marks of the main transcript as `[ordinal, timestampMs]`. */
+  pm?: Array<[number, number]>;
+  /** Claude Code: start (first record, ms) of each subagent transcript, by agent id. */
+  as?: Record<string, number | null>;
 }
 
 export function getUsageCacheDir(): string {
@@ -439,7 +481,6 @@ function priceCachedEvent(
   sessionId: string,
   project: string | null,
   sessionFile: string,
-  sessionSubagent: UsageCacheFile['subagent'],
 ): UsageEventRecord {
   const reasoningTokens = typeof cached.rt === 'number' && cached.rt > 0 ? cached.rt : 0;
   const usage: NormalizedUsage = {
@@ -460,10 +501,6 @@ function priceCachedEvent(
     usage,
     modelId: cached.m === 'unknown' ? undefined : cached.m,
   });
-  const subagent =
-    typeof cached.sa === 'string' && cached.sa
-      ? { agentId: cached.sa, parentSessionId: sessionId }
-      : sessionSubagent;
   return {
     timestamp: cached.t,
     provider,
@@ -485,7 +522,6 @@ function priceCachedEvent(
       ? { promptOrdinal: cached.po }
       : {}),
     ...(typeof cached.rid === 'string' ? { requestId: cached.rid } : {}),
-    ...(subagent ? { subagent: { ...subagent } } : {}),
   };
 }
 
@@ -624,35 +660,85 @@ function assignPromptOrdinals(
 async function addPromptOrdinals(
   preview: SessionPreview,
   events: CachedUsageEvent[],
-): Promise<boolean> {
-  if (preview.provider !== 'claude-code' && preview.provider !== 'codex') return true;
+): Promise<{ ok: boolean; marks?: PromptOrdinalMark[] }> {
+  if (preview.provider !== 'claude-code' && preview.provider !== 'codex') return { ok: true };
   let marks: PromptOrdinalMark[];
   try {
     marks = await readPromptOrdinalMarks(preview.provider, preview.sessionId, preview.filePath);
   } catch {
-    return false;
+    return { ok: false };
   }
   assignPromptOrdinals(events, marks);
+  return { ok: true, marks };
+}
+
+function packMarks(marks: readonly PromptOrdinalMark[]): Array<[number, number]> {
+  return marks.map((mark) => [mark.ordinal, mark.timestampMs]);
+}
+
+function unpackMarks(value: unknown): PromptOrdinalMark[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const marks: PromptOrdinalMark[] = [];
+  for (const item of value) {
+    if (!Array.isArray(item) || typeof item[0] !== 'number' || typeof item[1] !== 'number') {
+      return undefined;
+    }
+    marks.push({ ordinal: item[0], timestampMs: item[1] });
+  }
+  return marks;
+}
+
+function validAgentStarts(value: unknown): Record<string, number | null> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const starts: Record<string, number | null> = {};
+  for (const [agentId, start] of Object.entries(value as Record<string, unknown>)) {
+    if (start !== null && (typeof start !== 'number' || !Number.isFinite(start))) return undefined;
+    starts[agentId] = start;
+  }
+  return starts;
+}
+
+/**
+ * An entry written before parent prompts were recorded lacks what this
+ * version needs to attribute subagent calls; it is read again (once: the
+ * new entry has the fields).
+ */
+function cacheEntryComplete(entry: UsageCacheFile): boolean {
+  if (
+    entry.provider === 'claude-code' &&
+    entry.events.some((event) => typeof event.sa === 'string')
+  ) {
+    return validAgentStarts(entry.as) !== undefined && unpackMarks(entry.pm) !== undefined;
+  }
+  if (entry.provider === 'codex' && entry.subagent) {
+    return entry.subagent.k === 'subagent' || entry.subagent.k === 'fork';
+  }
   return true;
+}
+
+/** Start of each Claude Code subagent transcript: its first record's time. */
+async function claudeAgentStarts(
+  subagents: readonly SubagentFile[],
+): Promise<Record<string, number | null>> {
+  const starts: Record<string, number | null> = {};
+  for (const file of subagents) starts[file.agentId] = await readFirstRecordTimestamp(file.path);
+  return starts;
 }
 
 /** Parent of a Codex rollout that is a fork or a spawned subagent, from its first line only. */
 async function codexSessionSubagent(
   preview: SessionPreview,
-): Promise<UsageCacheFile['subagent'] | undefined> {
+): Promise<CachedSessionSubagent | undefined> {
   if (preview.provider !== 'codex') return undefined;
-  const { line } = await readFirstLineAsync(preview.filePath);
-  if (!line) return undefined;
-  let first: unknown;
-  try {
-    first = JSON.parse(line);
-  } catch {
-    return undefined;
-  }
-  const origin = codexRolloutOrigin(first);
-  if (!origin.parentId || (!origin.isSubagent && !origin.forkedFromId)) return undefined;
-  if (origin.parentId === preview.sessionId) return undefined;
-  return { agentId: preview.sessionId, parentSessionId: origin.parentId };
+  const head = await readCodexRolloutHead(preview.sessionId, preview.filePath);
+  if (!head?.parentId || !head.kind) return undefined;
+  return {
+    agentId: preview.sessionId,
+    parentSessionId: head.parentId,
+    s: head.startMs,
+    k: head.kind,
+    ...(head.recordedRootId ? { r: head.recordedRootId } : {}),
+  };
 }
 
 function yieldToEventLoop(): Promise<void> {
@@ -777,7 +863,11 @@ interface OrderedPreview {
 interface LoadedSession extends OrderedPreview {
   provider: SessionProviderBase;
   cachedEvents: CachedUsageEvent[];
-  sessionSubagent: UsageCacheFile['subagent'];
+  sessionSubagent: CachedSessionSubagent | undefined;
+  /** Prompt marks of the main transcript, when known. */
+  marks?: PromptOrdinalMark[];
+  /** Claude Code: start of each subagent transcript. */
+  agentStarts?: Record<string, number | null>;
   project: string | null;
   fingerprint: string;
   fromCache: boolean;
@@ -879,14 +969,23 @@ async function collectWithProviders(
     const filePath = cacheFilePath(cacheDir, preview.provider, preview.sessionId);
 
     let cachedEvents: CachedUsageEvent[] | null = null;
-    let sessionSubagent: UsageCacheFile['subagent'];
+    let sessionSubagent: CachedSessionSubagent | undefined;
+    let marks: PromptOrdinalMark[] | undefined;
+    let agentStarts: Record<string, number | null> | undefined;
     let project = preview.workspacePath;
     let fromCache = false;
     if (useCache) {
       const cached = readCache(filePath);
-      if (cached && cached.fingerprint === fingerprint && cached.sessionId === preview.sessionId) {
+      if (
+        cached &&
+        cached.fingerprint === fingerprint &&
+        cached.sessionId === preview.sessionId &&
+        cacheEntryComplete(cached)
+      ) {
         cachedEvents = cached.events;
         sessionSubagent = validSubagent(cached.subagent);
+        marks = unpackMarks(cached.pm);
+        agentStarts = validAgentStarts(cached.as);
         project = project ?? cached.project;
         fromCache = true;
         cacheHits += 1;
@@ -922,9 +1021,11 @@ async function collectWithProviders(
         continue;
       }
       // Ordinals and origin are best-effort: a failure costs only the cache write.
-      const ordinalsRead = await addPromptOrdinals(preview, cachedEvents);
+      const ordinals = await addPromptOrdinals(preview, cachedEvents);
+      marks = ordinals.marks;
       sessionSubagent = await codexSessionSubagent(preview).catch(() => undefined);
-      if (useCache && ordinalsRead) {
+      if (subagentFiles.length > 0) agentStarts = await claudeAgentStarts(subagentFiles);
+      if (useCache && ordinals.ok) {
         const record: UsageCacheFile = {
           version: USAGE_CACHE_VERSION,
           provider: preview.provider,
@@ -933,6 +1034,8 @@ async function collectWithProviders(
           project,
           events: cachedEvents,
           ...(sessionSubagent ? { subagent: sessionSubagent } : {}),
+          ...(marks ? { pm: packMarks(marks) } : {}),
+          ...(agentStarts ? { as: agentStarts } : {}),
         };
         try {
           await atomicWriteJson(filePath, record);
@@ -949,6 +1052,8 @@ async function collectWithProviders(
       provider,
       cachedEvents,
       sessionSubagent,
+      ...(marks ? { marks } : {}),
+      ...(agentStarts ? { agentStarts } : {}),
       project,
       fingerprint,
       fromCache,
@@ -970,11 +1075,14 @@ async function collectWithProviders(
 
   if (wroteCache) pruneUsageCache(MAX_USAGE_CACHE_FILES, cacheDir);
 
+  const lineage = await codexLineage(loaded, listed.previews, listed.roots, providerById);
+
   const events: UsageEventRecord[] = [];
   const sessions: UsageSessionRecord[] = [];
   const changed: UsageSessionRef[] = [];
   for (const session of [...loaded].sort((left, right) => left.index - right.index)) {
     const { preview, key } = session;
+    const codex = lineage.get(session);
     let first: number | null = null;
     let last: number | null = null;
     let count = 0;
@@ -992,9 +1100,9 @@ async function collectWithProviders(
           preview.sessionId,
           session.project,
           preview.filePath,
-          session.sessionSubagent,
         ),
         sessionKey: key,
+        ...eventSubagent(session, cached, codex),
       });
       first = first === null ? cached.t : Math.min(first, cached.t);
       last = last === null ? cached.t : Math.max(last, cached.t);
@@ -1076,10 +1184,166 @@ export function parseUsageEventsCursor(value: unknown): UsageEventsCursor | unde
   return parsed;
 }
 
-function validSubagent(value: unknown): UsageCacheFile['subagent'] {
+/** What a Codex subagent or fork's events carry: its root and parent prompt. */
+interface CodexLineage {
+  rootSessionId?: string;
+  /** Subagents only; null when the root or its prompts are unknown. */
+  parentPromptOrdinal?: number | null;
+}
+
+/**
+ * Root and parent prompt of every Codex subagent or fork that was loaded.
+ * Roots are looked up among the loaded and listed sessions first, then by
+ * id through the Codex provider; a root found that way must be inside the
+ * call's roots when the call was scoped.
+ */
+async function codexLineage(
+  loaded: readonly LoadedSession[],
+  previews: readonly SessionPreview[],
+  roots: readonly string[] | undefined,
+  providerById: ReadonlyMap<ProviderId, SessionProviderBase>,
+): Promise<Map<LoadedSession, CodexLineage>> {
+  const result = new Map<LoadedSession, CodexLineage>();
+  const children = loaded.filter(
+    (session) => session.preview.provider === 'codex' && session.sessionSubagent,
+  );
+  if (children.length === 0) return result;
+
+  const loadedById = new Map<string, LoadedSession>();
+  for (const session of loaded) {
+    if (session.preview.provider === 'codex') loadedById.set(session.preview.sessionId, session);
+  }
+  const listedById = new Map<string, SessionPreview>();
+  for (const preview of previews) {
+    if (preview.provider === 'codex') listedById.set(preview.sessionId, preview);
+  }
+  const codexProvider = providerById.get('codex');
+  const heads = new Map<string, Promise<{ head: CodexRolloutHead; filePath: string } | null>>();
+  const realpaths = new Map<string, string | null>();
+
+  const locate = (sessionId: string) => {
+    let found = heads.get(sessionId);
+    if (!found) {
+      found = (async () => {
+        const known = loadedById.get(sessionId);
+        if (known) {
+          const sub = known.sessionSubagent;
+          return {
+            filePath: known.preview.filePath,
+            head: {
+              sessionId,
+              ...(sub?.k ? { parentId: sub.parentSessionId, kind: sub.k } : {}),
+              ...(sub?.r ? { recordedRootId: sub.r } : {}),
+              startMs: sub?.s ?? null,
+              cwd: known.project,
+            },
+          };
+        }
+        const listed = listedById.get(sessionId);
+        let filePath = listed?.filePath ?? null;
+        if (!filePath) {
+          try {
+            filePath = codexProvider?.findSessionById?.('', sessionId) ?? null;
+          } catch {
+            filePath = null;
+          }
+        }
+        if (!filePath) return null;
+        const head = await readCodexRolloutHead(sessionId, filePath);
+        if (!head) return null;
+        // A root found outside the listing must still be in scope.
+        if (!listed && roots && !pathWithinRoots(head.cwd, roots, realpaths)) return null;
+        return { head, filePath };
+      })();
+      heads.set(sessionId, found);
+    }
+    return found;
+  };
+
+  const marksCache = new Map<string, Promise<PromptOrdinalMark[] | null>>();
+  const marksOf = (sessionId: string, filePath: string) => {
+    let marks = marksCache.get(sessionId);
+    if (!marks) {
+      const known = loadedById.get(sessionId)?.marks;
+      marks = known
+        ? Promise.resolve(known)
+        : readPromptOrdinalMarks('codex', sessionId, filePath).catch(() => null);
+      marksCache.set(sessionId, marks);
+    }
+    return marks;
+  };
+
+  for (const child of children) {
+    const sub = child.sessionSubagent!;
+    const head: CodexRolloutHead = {
+      sessionId: child.preview.sessionId,
+      parentId: sub.parentSessionId,
+      ...(sub.k ? { kind: sub.k } : {}),
+      ...(sub.r ? { recordedRootId: sub.r } : {}),
+      startMs: sub.s ?? null,
+      cwd: child.project,
+    };
+    const resolved = await resolveCodexRoot(head, async (id) => (await locate(id))?.head ?? null);
+    const lineage: CodexLineage = {
+      ...(resolved.rootSessionId ? { rootSessionId: resolved.rootSessionId } : {}),
+    };
+    if (sub.k === 'subagent') {
+      let ordinal: number | null = null;
+      if (resolved.rootSessionId && resolved.root) {
+        const located = await locate(resolved.rootSessionId);
+        const marks = located ? await marksOf(resolved.rootSessionId, located.filePath) : null;
+        ordinal = marks ? ordinalAtOrBefore(marks, sub.s) : null;
+      }
+      lineage.parentPromptOrdinal = ordinal;
+    }
+    result.set(child, lineage);
+  }
+  return result;
+}
+
+/** The subagent tag (and parent prompt) of one event. */
+function eventSubagent(
+  session: LoadedSession,
+  cached: CachedUsageEvent,
+  codex: CodexLineage | undefined,
+): Pick<UsageEventRecord, 'subagent' | 'parentPromptOrdinal'> {
+  const sessionId = session.preview.sessionId;
+  if (typeof cached.sa === 'string' && cached.sa) {
+    const start = session.agentStarts?.[cached.sa];
+    return {
+      subagent: {
+        agentId: cached.sa,
+        parentSessionId: sessionId,
+        rootSessionId: sessionId,
+        kind: 'subagent',
+      },
+      ...(session.marks ? { parentPromptOrdinal: ordinalAtOrBefore(session.marks, start) } : {}),
+    };
+  }
+  const sub = session.sessionSubagent;
+  if (!sub) return {};
+  return {
+    subagent: {
+      agentId: sub.agentId,
+      parentSessionId: sub.parentSessionId,
+      ...(codex?.rootSessionId ? { rootSessionId: codex.rootSessionId } : {}),
+      ...(sub.k ? { kind: sub.k } : {}),
+    },
+    ...(codex && codex.parentPromptOrdinal !== undefined
+      ? { parentPromptOrdinal: codex.parentPromptOrdinal }
+      : {}),
+  };
+}
+
+function validSubagent(value: unknown): CachedSessionSubagent | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
-  const { agentId, parentSessionId } = value as Record<string, unknown>;
-  return typeof agentId === 'string' && typeof parentSessionId === 'string'
-    ? { agentId, parentSessionId }
-    : undefined;
+  const { agentId, parentSessionId, s, k, r } = value as Record<string, unknown>;
+  if (typeof agentId !== 'string' || typeof parentSessionId !== 'string') return undefined;
+  return {
+    agentId,
+    parentSessionId,
+    ...(s === null || (typeof s === 'number' && Number.isFinite(s)) ? { s } : {}),
+    ...(k === 'subagent' || k === 'fork' ? { k } : {}),
+    ...(typeof r === 'string' && r ? { r } : {}),
+  };
 }
