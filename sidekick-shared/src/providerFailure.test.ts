@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  CODEX_ERROR_INFO_KINDS,
   decodeCodexErrorInfo,
   diagnoseProviderFailure,
   type ProviderAuthenticationEvidence,
@@ -718,6 +719,26 @@ describe('diagnoseProviderFailure with Codex codexErrorInfo', () => {
     ['usage_limit_exceeded', 'oauth', 'rate_limited', 'retry_later', false, undefined],
     ['rateLimitExceeded', 'oauth', 'rate_limited', 'retry_later', true, undefined],
     ['serverOverloaded', 'api-key', 'overloaded', 'retry_later', true, undefined],
+    ['flexUnavailable', 'oauth', 'overloaded', 'retry_later', true, undefined],
+    ['flex_unavailable', 'api-key', 'overloaded', 'retry_later', true, undefined],
+    ['policyCapacityUnavailable', 'oauth', 'overloaded', 'retry_later', true, undefined],
+    ['policy_capacity_unavailable', 'oauth', 'overloaded', 'retry_later', true, undefined],
+    [
+      'tooManyDenials',
+      'oauth',
+      'execution_policy_denied',
+      'review_execution_policy',
+      false,
+      undefined,
+    ],
+    [
+      'too_many_denials',
+      'api-key',
+      'execution_policy_denied',
+      'review_execution_policy',
+      false,
+      undefined,
+    ],
     ['internalServerError', 'oauth', 'service_unavailable', 'retry_later', true, undefined],
     ['unauthorized', 'oauth', 'oauth_reauthentication_required', 'sign_in', false, undefined],
     ['unauthorized', 'api-key', 'api_credentials_rejected', 'update_credentials', false, undefined],
@@ -875,6 +896,14 @@ describe('diagnoseProviderFailure with Codex codexErrorInfo', () => {
     'sandboxError',
     'sessionBudgetExceeded',
     'threadRollbackFailed',
+    'modelNotFound',
+    'model_not_found',
+    'invalidPrompt',
+    'invalid_prompt',
+    'bioPolicy',
+    'bio_policy',
+    'misalignmentPolicyViolation',
+    'misalignment_policy_violation',
     'other',
     { activeTurnNotSteerable: { turnKind: 'review' } },
     'notAVariant',
@@ -913,11 +942,49 @@ describe('diagnoseProviderFailure with Codex codexErrorInfo', () => {
 });
 
 describe('decodeCodexErrorInfo', () => {
+  // Codex rust-v0.167.0: codex-rs/protocol/src/protocol.rs `CodexErrorInfo`.
+  it('tracks the upstream variant list in upstream order', () => {
+    expect(CODEX_ERROR_INFO_KINDS).toEqual([
+      'contextWindowExceeded',
+      'sessionBudgetExceeded',
+      'usageLimitExceeded',
+      'rateLimitExceeded',
+      'flexUnavailable',
+      'serverOverloaded',
+      'modelNotFound',
+      'policyCapacityUnavailable',
+      'cyberPolicy',
+      'bioPolicy',
+      'misalignmentPolicyViolation',
+      'tooManyDenials',
+      'httpConnectionFailed',
+      'responseStreamConnectionFailed',
+      'internalServerError',
+      'unauthorized',
+      'badRequest',
+      'invalidPrompt',
+      'threadRollbackFailed',
+      'sandboxError',
+      'responseStreamDisconnected',
+      'responseTooManyFailedAttempts',
+      'activeTurnNotSteerable',
+      'other',
+    ]);
+  });
+
   it.each([
     ['serverOverloaded', { kind: 'serverOverloaded' }],
     ['server_overloaded', { kind: 'serverOverloaded' }],
     ['usage_limit_exceeded', { kind: 'usageLimitExceeded' }],
+    ['flexUnavailable', { kind: 'flexUnavailable' }],
+    ['policy_capacity_unavailable', { kind: 'policyCapacityUnavailable' }],
+    ['tooManyDenials', { kind: 'tooManyDenials' }],
+    ['model_not_found', { kind: 'modelNotFound' }],
+    ['invalidPrompt', { kind: 'invalidPrompt' }],
+    ['bio_policy', { kind: 'bioPolicy' }],
+    ['misalignmentPolicyViolation', { kind: 'misalignmentPolicyViolation' }],
     ['other', { kind: 'other' }],
+    [{ other: {} }, { kind: 'other' }],
     [
       { httpConnectionFailed: { httpStatusCode: 503 } },
       { kind: 'httpConnectionFailed', httpStatusCode: 503 },
@@ -934,15 +1001,32 @@ describe('decodeCodexErrorInfo', () => {
   });
 
   it.each([
+    ['nope', { kind: 'other', rawKind: 'nope' }],
+    ['futureVariant', { kind: 'other', rawKind: 'futureVariant' }],
+    ['future_variant', { kind: 'other', rawKind: 'future_variant' }],
+    [{ nope: {} }, { kind: 'other', rawKind: 'nope' }],
+    // An unknown variant's payload is discarded, as Codex does.
+    [{ futureVariant: { httpStatusCode: 503 } }, { kind: 'other', rawKind: 'futureVariant' }],
+    ['x'.repeat(64), { kind: 'other', rawKind: 'x'.repeat(64) }],
+  ] as const)('decodes the unknown variant %j as other', (value, expected) => {
+    expect(decodeCodexErrorInfo(value)).toEqual(expected);
+  });
+
+  it.each([
     null,
     undefined,
     '',
-    'nope',
     42,
     [],
     ['serverOverloaded'],
-    { nope: {} },
     'x'.repeat(65),
+    'has spaces',
+    '1leadingDigit',
+    'kebab-case',
+    {},
+    { '': {} },
+    { first: {}, second: {} },
+    { ['x'.repeat(65)]: {} },
   ])('ignores %j', (value) => {
     expect(decodeCodexErrorInfo(value)).toBeUndefined();
   });

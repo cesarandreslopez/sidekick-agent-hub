@@ -32,6 +32,26 @@ describe('showProviderFailure', () => {
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
+  it('offers Retry when Codex flex capacity is unavailable', async () => {
+    showErrorMessage.mockResolvedValue('Retry');
+    const retry = vi.fn();
+
+    await showProviderFailure('Explain failed: flex', codexError('flexUnavailable'), retry);
+
+    expect(showErrorMessage).toHaveBeenCalledWith('Explain failed: flex', 'Retry');
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not offer Retry after Codex hit its approval-denial limit', async () => {
+    const retry = vi.fn();
+
+    await showProviderFailure('Failed: denied', codexError('tooManyDenials'), retry);
+    await showProviderFailure('Failed: denied', codexError('too_many_denials'), retry);
+
+    expect(showErrorMessage.mock.calls).toEqual([['Failed: denied'], ['Failed: denied']]);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
   it('appends the provider wait hint', async () => {
     const cause = codexError('usageLimitExceeded', { headers: { 'retry-after': '30' } });
 

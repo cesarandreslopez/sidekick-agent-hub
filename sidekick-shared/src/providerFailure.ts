@@ -73,21 +73,30 @@ export const PROVIDER_FAILURE_EVIDENCE_SOURCES = [
 /**
  * The variants Codex reports in `codexErrorInfo` on `error` and failed-turn
  * payloads (app-server camelCase spelling; the snake_case spelling Codex
- * writes to rollout files is accepted too). `rateLimitExceeded` is an older
- * spelling some Codex builds emitted.
+ * writes to rollout files is accepted too), in upstream order as of Codex
+ * `rust-v0.167.0`. `bioPolicy` and `invalidPrompt` exist only in the core
+ * protocol (rollouts, `exec --json`); the app-server reports them as `other`.
+ * A variant newer than this list decodes as `other` with its `rawKind`.
  */
 export const CODEX_ERROR_INFO_KINDS = [
   'contextWindowExceeded',
   'sessionBudgetExceeded',
   'usageLimitExceeded',
   'rateLimitExceeded',
+  'flexUnavailable',
   'serverOverloaded',
+  'modelNotFound',
+  'policyCapacityUnavailable',
   'cyberPolicy',
+  'bioPolicy',
+  'misalignmentPolicyViolation',
+  'tooManyDenials',
   'httpConnectionFailed',
   'responseStreamConnectionFailed',
   'internalServerError',
   'unauthorized',
   'badRequest',
+  'invalidPrompt',
   'threadRollbackFailed',
   'sandboxError',
   'responseStreamDisconnected',
@@ -102,6 +111,12 @@ export interface CodexErrorInfoSummary {
   kind: CodexErrorInfoKind;
   /** Present when a transport variant carried a valid `httpStatusCode`. */
   httpStatusCode?: number;
+  /**
+   * The variant name exactly as received, set only when `kind` is `'other'`
+   * because the variant is newer than `CODEX_ERROR_INFO_KINDS` (Codex itself
+   * decodes unknown variants as `Other`). Never set for a literal `"other"`.
+   */
+  rawKind?: string;
 }
 
 export interface ProviderFailureEvidence {
@@ -185,16 +200,22 @@ const CODEX_ERROR_INFO_BY_KEY = new Map<string, CodexErrorInfoKind>(
   CODEX_ERROR_INFO_KINDS.map((kind) => [compactKey(kind), kind]),
 );
 
+/** Shape of a variant name Codex could add later: an identifier, camel or snake case. */
+const CODEX_VARIANT_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+
 /**
  * Decode one Codex `codexErrorInfo` value: a string variant
  * (`"serverOverloaded"`, `"usage_limit_exceeded"`) or an object variant
  * (`{ "httpConnectionFailed": { "httpStatusCode": 503 } }`, snake_case keys
- * accepted). Returns `undefined` for anything else, including `null`.
+ * accepted). Like Codex, an unknown variant name (a string, or the only key
+ * of an object) decodes as `{ kind: 'other', rawKind }`; its payload is
+ * discarded. Returns `undefined` for anything else, including `null`.
  */
 export function decodeCodexErrorInfo(value: unknown): CodexErrorInfoSummary | undefined {
   if (typeof value === 'string') {
     const kind = value.length <= 64 ? CODEX_ERROR_INFO_BY_KEY.get(compactKey(value)) : undefined;
-    return kind ? { kind } : undefined;
+    if (kind) return { kind };
+    return CODEX_VARIANT_NAME.test(value) ? { kind: 'other', rawKind: value } : undefined;
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   let keys: string[];
@@ -211,6 +232,9 @@ export function decodeCodexErrorInfo(value: unknown): CodexErrorInfoSummary | un
       read(payload, 'httpStatusCode') ?? read(payload, 'http_status_code'),
     );
     return status === undefined ? { kind } : { kind, httpStatusCode: status };
+  }
+  if (keys.length === 1 && CODEX_VARIANT_NAME.test(keys[0])) {
+    return { kind: 'other', rawKind: keys[0] };
   }
   return undefined;
 }
@@ -306,7 +330,11 @@ function classifyStatus(
   return undefined;
 }
 
-/** Variants with no matching failure code (bad request, policy, budget, other) stay unclassified. */
+/**
+ * Variants with no matching failure code (bad request, invalid prompt, model
+ * not found, content policy, budget, other) stay unclassified and fall
+ * through to the code, status and message rules.
+ */
 function classifyCodexErrorInfo(
   info: CodexErrorInfoSummary,
   kind: ProviderCredentialKind,
@@ -316,7 +344,13 @@ function classifyCodexErrorInfo(
     case 'rateLimitExceeded':
       return 'rate_limited';
     case 'serverOverloaded':
+    // Flex-tier or policy-restricted capacity is temporarily unavailable.
+    case 'flexUnavailable':
+    case 'policyCapacityUnavailable':
       return 'overloaded';
+    // The session hit Codex's limit on denied approvals.
+    case 'tooManyDenials':
+      return 'execution_policy_denied';
     case 'internalServerError':
       return 'service_unavailable';
     case 'unauthorized':
