@@ -161,6 +161,28 @@ export function extractNormalizedUsage(event: SessionEvent): NormalizedUsage | n
   });
 }
 
+/**
+ * USD for disjoint usage at `pricing`'s rates, or null when the result is not
+ * a finite nonnegative number.
+ *
+ * OpenAI-style providers fold cache writes into input and the catalogs carry
+ * no separate write rate for them (0), so under `openai-inclusive-cache`
+ * semantics a write with no positive write rate is billed as ordinary input.
+ */
+function usageCostAtRates(usage: NormalizedUsage, pricing: ModelPricing): number | null {
+  const cacheWriteRate =
+    usage.provenance?.semantics === 'openai-inclusive-cache' &&
+    !(pricing.cacheWriteCostPerMillion > 0)
+      ? pricing.inputCostPerMillion
+      : pricing.cacheWriteCostPerMillion;
+  const costUsd =
+    (usage.uncachedInputTokens / 1_000_000) * pricing.inputCostPerMillion +
+    (usage.cacheReadTokens / 1_000_000) * pricing.cacheReadCostPerMillion +
+    (usage.cacheWriteTokens / 1_000_000) * cacheWriteRate +
+    (usage.billableOutputTokens / 1_000_000) * pricing.outputCostPerMillion;
+  return Number.isFinite(costUsd) && costUsd >= 0 ? costUsd : null;
+}
+
 /** Price normalized, disjoint usage without double-counting reasoning tokens. */
 export function calculateNormalizedUsageCost(input: NormalizedUsageCostInput): NormalizedUsageCost {
   const { usage } = input;
@@ -173,12 +195,8 @@ export function calculateNormalizedUsageCost(input: NormalizedUsageCostInput): N
   const pricing = explicit ? input.pricing : modelId ? getModelPricing(modelId) : null;
   if (!pricing) return { costUsd: null, source: 'unpriced', modelId, usage };
 
-  const costUsd =
-    (usage.uncachedInputTokens / 1_000_000) * pricing.inputCostPerMillion +
-    (usage.cacheReadTokens / 1_000_000) * pricing.cacheReadCostPerMillion +
-    (usage.cacheWriteTokens / 1_000_000) * pricing.cacheWriteCostPerMillion +
-    (usage.billableOutputTokens / 1_000_000) * pricing.outputCostPerMillion;
-  if (!Number.isFinite(costUsd) || costUsd < 0) {
+  const costUsd = usageCostAtRates(usage, pricing);
+  if (costUsd === null) {
     return { costUsd: null, source: 'unpriced', modelId, usage };
   }
   return {

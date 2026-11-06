@@ -66,6 +66,32 @@ describe('normalizeProviderUsage', () => {
     );
   });
 
+  it('bills OpenAI cache writes as input when the model publishes no write rate', () => {
+    const usage = normalizeProviderUsage({
+      semantics: 'openai',
+      inputTokens: 1000,
+      cacheReadTokens: 300,
+      cacheWriteTokens: 100,
+      outputTokens: 200,
+    });
+    const noWriteRate = { ...pricing, cacheWriteCostPerMillion: 0 };
+    // The same cost as when the writes were left inside uncached input.
+    expect(calculateNormalizedUsageCost({ usage, pricing: noWriteRate }).costUsd).toBeCloseTo(
+      (700 * 10 + 300 * 1 + 200 * 20) / 1_000_000,
+    );
+    // Additive Anthropic writes keep their own (here zero) rate.
+    const anthropic = normalizeProviderUsage({
+      semantics: 'anthropic',
+      inputTokens: 600,
+      cacheReadTokens: 300,
+      cacheWriteTokens: 100,
+      outputTokens: 200,
+    });
+    expect(
+      calculateNormalizedUsageCost({ usage: anthropic, pricing: noWriteRate }).costUsd,
+    ).toBeCloseTo((600 * 10 + 300 * 1 + 200 * 20) / 1_000_000);
+  });
+
   it('clamps OpenAI uncached input when cache reads and writes exceed input', () => {
     const result = normalizeProviderUsage({
       semantics: 'openai',
