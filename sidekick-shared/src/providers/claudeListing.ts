@@ -98,6 +98,11 @@ export interface ListClaudeSessionFilesOptions extends ListSessionFilesOptions {
    * live home's). Files are deduplicated by path across them.
    */
   projectsDirs?: readonly string[];
+  /**
+   * Which project directories to list, by name; replaces the
+   * `workspacePath` filter (so one walk can serve several roots).
+   */
+  directoryFilter?: (directoryName: string) => boolean;
 }
 
 /**
@@ -134,7 +139,7 @@ export async function listClaudeSessionFilesAsync(
   }
   const since =
     options.since !== undefined && Number.isFinite(options.since) ? options.since : null;
-  const matchesWorkspace = workspaceDirectoryFilter(workspacePath);
+  const matchesWorkspace = options.directoryFilter ?? workspaceDirectoryFilter(workspacePath);
 
   const candidates: Array<{ directory: string; stat: fs.Stats }> = [];
   let sinceYield = 0;

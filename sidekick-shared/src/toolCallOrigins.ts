@@ -25,9 +25,12 @@ import * as readline from 'readline';
 import { Readable } from 'stream';
 import { isCompressedRolloutPath, readRolloutBufferAsync } from './providers/compressedRollouts';
 import type { SessionHomesOptions } from './agentHomes';
+import type { SessionListing } from './sessionListing';
 import {
   candidateListingDirs,
   listCandidates,
+  listingCandidates,
+  listingOption,
   readPromptOrdinalMarks,
   resolveRoots,
   type Candidate,
@@ -42,8 +45,8 @@ import { pathWithinRoots } from './workspaceRoots';
 export interface FindToolCallOriginsOptions {
   /** Tool-call ids to locate: Claude `tool_use` ids, Codex `call_id`s or completed-item ids. */
   ids: Iterable<string>;
-  /** Workspace roots that scope the search (as for `collectPromptHistory`). */
-  workspacePaths: string[];
+  /** Workspace roots that scope the search (as for `collectPromptHistory`). Required unless `listing` is given. */
+  workspacePaths?: string[];
   /** Also search the roots' git worktree siblings. Default true. */
   includeWorktrees?: boolean;
   /** Only session files modified at or after this instant. */
@@ -59,6 +62,13 @@ export interface FindToolCallOriginsOptions {
   includeCompressedRollouts?: boolean;
   /** Claude Code and Codex homes to read, as for `collectPromptHistory()`. */
   homes?: SessionHomesOptions;
+  /**
+   * A listing from `listAgentSessions()` to use instead of listing again:
+   * its roots, homes, worktree expansion and compressed-rollout choice
+   * apply, so passing `workspacePaths`, `includeWorktrees`, `homes` or
+   * `includeCompressedRollouts` with it is a `TypeError`.
+   */
+  listing?: SessionListing;
 }
 
 export interface ToolCallOrigin {
@@ -117,21 +127,22 @@ export async function findToolCallOrigins(
   const found = new Map<string, ToolCallOrigin>();
   if (wanted.size === 0) return found;
   throwIfAborted(options.signal);
-  const listingDirs = candidateListingDirs(options.homes);
+  const listing = listingOption('findToolCallOrigins', options);
+  const listingDirs = listing ? undefined : candidateListingDirs(options.homes);
 
   const realpaths = new Map<string, string | null>();
-  const { roots, listingRoots } = resolveRoots(
-    options.workspacePaths,
-    options.includeWorktrees !== false,
-    realpaths,
-  );
+  const { roots, listingRoots } = listing
+    ? { roots: listing.roots, listingRoots: listing.listingRoots }
+    : resolveRoots(options.workspacePaths ?? [], options.includeWorktrees !== false, realpaths);
   if (roots.length === 0) return found;
   const providers = options.providers ?? ['claude-code', 'codex'];
   const sinceMs = options.since ? options.since.getTime() : null;
-  const candidates = await listCandidates(providers, listingRoots, sinceMs, {
-    includeCompressedRollouts: options.includeCompressedRollouts,
-    dirs: listingDirs,
-  });
+  const candidates = listing
+    ? listingCandidates(listing, providers, sinceMs)
+    : await listCandidates(providers, listingRoots, sinceMs, {
+        includeCompressedRollouts: options.includeCompressedRollouts,
+        dirs: listingDirs,
+      });
   const byProviderSession = new Map<string, Candidate>();
   for (const candidate of candidates) {
     byProviderSession.set(`${candidate.provider}:${candidate.sessionId}`, candidate);

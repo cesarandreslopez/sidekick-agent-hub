@@ -44,6 +44,8 @@ import type { SessionFileInfo } from './providers/types';
 import type { CanonicalTranscriptBlock, CanonicalTranscriptMessage } from './transcript';
 import { pathWithinRoots, resolveWorkspaceRoots } from './workspaceRoots';
 import { fileHeadOf, HEAD_BYTES, headMatches, type FileHead } from './fileHead';
+import { computeSessionKey } from './sessionKey';
+import { assertListingAlone, isSessionListing, type SessionListing } from './sessionListing';
 
 export type PromptHistoryProvider = HumanPromptProvider;
 
@@ -253,8 +255,8 @@ export interface PromptHistoryStats {
 }
 
 export interface CollectPromptHistoryOptions {
-  /** Absolute workspace roots; realpath-normalized internally. */
-  workspacePaths: string[];
+  /** Absolute workspace roots; realpath-normalized internally. Required unless `listing` is given. */
+  workspacePaths?: string[];
   /** Add git worktree siblings of each root. Default true. */
   includeWorktrees?: boolean;
   /** Default both. */
@@ -286,6 +288,13 @@ export interface CollectPromptHistoryOptions {
    * relative or blank explicit entry throws `RangeError`.
    */
   homes?: SessionHomesOptions;
+  /**
+   * A listing from `listAgentSessions()` to use instead of listing again:
+   * its roots, homes, worktree expansion and compressed-rollout choice
+   * apply, so passing `workspacePaths`, `includeWorktrees`, `homes` or
+   * `includeCompressedRollouts` with it is a `TypeError`.
+   */
+  listing?: SessionListing;
 }
 
 export interface PromptHistoryResult {
@@ -453,23 +462,24 @@ export async function collectPromptHistory(
     roots: scannedRoots,
   });
 
-  const listingDirs = candidateListingDirs(options.homes);
+  const listing = listingOption('collectPromptHistory', options);
+  const listingDirs = listing ? undefined : candidateListingDirs(options.homes);
   const realpaths = new Map<string, string | null>();
-  const { roots, listingRoots } = resolveRoots(
-    options.workspacePaths,
-    options.includeWorktrees !== false,
-    realpaths,
-  );
+  const { roots, listingRoots } = listing
+    ? { roots: listing.roots, listingRoots: listing.listingRoots }
+    : resolveRoots(options.workspacePaths ?? [], options.includeWorktrees !== false, realpaths);
   scannedRoots = roots;
   if (roots.length === 0) return finish();
 
   const sinceMs = options.since ? options.since.getTime() : null;
   const providers = options.providers ?? ALL_PROVIDERS;
   const candidates = rotate(
-    await listCandidates(providers, listingRoots, sinceMs, {
-      includeCompressedRollouts: options.includeCompressedRollouts,
-      dirs: listingDirs,
-    }),
+    listing
+      ? listingCandidates(listing, providers, sinceMs)
+      : await listCandidates(providers, listingRoots, sinceMs, {
+          includeCompressedRollouts: options.includeCompressedRollouts,
+          dirs: listingDirs,
+        }),
     previousNext,
   );
   const moved = movedSessionKeys(previous, candidates);
@@ -649,7 +659,7 @@ export async function readPromptOrdinalMarks(
     },
   };
   await scanFile(
-    { provider, sessionId, filePath, key: `${provider}:${sessionId}:${hashPath(filePath)}` },
+    { provider, sessionId, filePath, key: computeSessionKey(provider, sessionId, filePath) },
     stat,
     undefined,
     { bytes: unbounded, bound: 'maxFileBytes', forceProgress: true },
@@ -836,6 +846,60 @@ function scopedCwd(
   return pathWithinRoots(cwd, roots, realpaths);
 }
 
+/** Options a `listing` already decides. @internal */
+export const LISTING_FIXED_OPTIONS = [
+  'workspacePaths',
+  'includeWorktrees',
+  'homes',
+  'includeCompressedRollouts',
+] as const;
+
+/**
+ * The `listing` option of a prompt-family collector, checked: `TypeError`
+ * when options it fixes are passed too, or when neither it nor
+ * `workspacePaths` is given.
+ * @internal
+ */
+export function listingOption(
+  caller: string,
+  options: { listing?: SessionListing; workspacePaths?: string[] },
+): SessionListing | undefined {
+  if (options.listing !== undefined) {
+    if (!isSessionListing(options.listing)) {
+      throw new TypeError(`${caller}: \`listing\` must come from listAgentSessions().`);
+    }
+    assertListingAlone(caller, options as Record<string, unknown>, LISTING_FIXED_OPTIONS);
+    return options.listing;
+  }
+  if (!Array.isArray(options.workspacePaths)) {
+    throw new TypeError(`${caller}: pass \`workspacePaths\` or \`listing\`.`);
+  }
+  return undefined;
+}
+
+/** A listing's files as scan candidates, in `listCandidates()` order. @internal */
+export function listingCandidates(
+  listing: SessionListing,
+  providers: readonly PromptHistoryProvider[],
+  sinceMs: number | null,
+): Candidate[] {
+  const wanted = new Set(providers.filter((provider) => ALL_PROVIDERS.includes(provider)));
+  return listing.files
+    .filter((file) => wanted.has(file.provider) && (sinceMs === null || file.mtimeMs >= sinceMs))
+    .map((file) => ({
+      provider: file.provider,
+      sessionId: file.sessionId,
+      filePath: file.filePath,
+      key: file.sessionKey,
+    }))
+    .sort(
+      (left, right) =>
+        compareStrings(left.provider, right.provider) ||
+        compareStrings(left.sessionId, right.sessionId) ||
+        compareStrings(left.key, right.key),
+    );
+}
+
 /**
  * The directories a candidate listing walks for configured homes, or
  * undefined to follow this process's environment. Validates the homes
@@ -904,7 +968,7 @@ export async function listCandidates(
           provider,
           sessionId,
           filePath: file.path,
-          key: `${provider}:${sessionId}:${hashPath(file.path)}`,
+          key: computeSessionKey(provider, sessionId, file.path),
         });
       }
     }
@@ -951,10 +1015,6 @@ function movedSessionKeys(
     if (listedIds.has(id) && !moved.has(id)) moved.set(id, key);
   }
   return moved;
-}
-
-function hashPath(filePath: string): string {
-  return createHash('sha256').update(filePath).digest('hex').slice(0, 12);
 }
 
 async function readAt(handle: RolloutReadHandle, offset: number, length: number): Promise<Buffer> {

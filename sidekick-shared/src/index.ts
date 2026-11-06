@@ -1608,3 +1608,20 @@ export { extractRolloutSessionId, isCompressedRolloutFile, isRolloutFile } from 
 export { pathWithinRoots } from './workspaceRoots';
 export type { SessionPreviewListStats, SessionScopeMode } from './sessionPreviews';
 export type { CollectUsageEventsStats } from './usage/usageEvents';
+
+// One shared session listing; bounded, cursor-based usage collection
+export { listAgentSessions } from './sessionListing';
+export type {
+  ListAgentSessionsOptions,
+  SessionListing,
+  SessionListingFile,
+  SessionListingProvider,
+} from './sessionListing';
+export { computeSessionKey } from './sessionKey';
+export { parseUsageEventsCursor } from './usage/usageEvents';
+export type {
+  UsageEventsBound,
+  UsageEventsBounds,
+  UsageEventsCursor,
+  UsageSessionRef,
+} from './usage/usageEvents';

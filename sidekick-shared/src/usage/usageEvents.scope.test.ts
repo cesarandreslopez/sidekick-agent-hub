@@ -93,7 +93,7 @@ describe('collectUsageEvents scope', () => {
       'claude-code:in-repo.jsonl',
       expect.stringMatching(/^codex:rollout-.*-01-/),
     ]);
-    expect(contained.stats).toEqual({ sessionsOutOfScope: 2, syntheticEventsExcluded: 0 });
+    expect(contained.stats).toMatchObject({ sessionsOutOfScope: 2, syntheticEventsExcluded: 0 });
 
     const listed = await collectUsageEvents({
       providers,

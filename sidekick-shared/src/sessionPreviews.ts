@@ -23,6 +23,7 @@ import { readClaudeSessionCwdAsync } from './providers/claudeListing';
 import { readSessionCwdAsync } from './providers/codexRollouts';
 import { isCompressedRolloutPath, readRolloutHead } from './providers/compressedRollouts';
 import { pathWithinRoots, resolveWorkspaceRoots } from './workspaceRoots';
+import { assertListingAlone, isSessionListing, type SessionListing } from './sessionListing';
 import type {
   ProviderId,
   SessionFileInfo,
@@ -111,6 +112,14 @@ export interface ListSessionPreviewsAsyncOptions
    * one, at most 1 MiB in).
    */
   scope?: SessionScopeMode;
+  /**
+   * A listing from `listAgentSessions()` to preview instead of enumerating
+   * again: its files for the given providers (matched by id; a provider the
+   * listing does not cover contributes nothing) and its roots, `contained`
+   * by default. Passing `workspacePath`, `workspacePaths` or
+   * `includeWorktrees` with it is a `TypeError`.
+   */
+  listing?: SessionListing;
 }
 
 export interface SessionPreviewListStats {
@@ -282,6 +291,19 @@ export async function listSessionPreviewsAsync(
   const limit = Math.max(0, options.limit ?? DEFAULT_LIMIT);
   const sinceMs = resolveSinceMs(options.since);
   const stats: SessionPreviewListStats = { sessionsOutOfScope: 0 };
+  const listing = options.listing;
+  if (listing !== undefined) {
+    if (!isSessionListing(listing)) {
+      throw new TypeError(
+        'listSessionPreviewsAsync: `listing` must come from listAgentSessions().',
+      );
+    }
+    assertListingAlone('listSessionPreviewsAsync', options as Record<string, unknown>, [
+      'workspacePath',
+      'workspacePaths',
+      'includeWorktrees',
+    ]);
+  }
   const scope = previewScope(options);
   if (scope && scope.roots.length === 0) {
     return { previews: [], diagnostics: [], hasMore: false, roots: [], stats };
@@ -292,8 +314,28 @@ export async function listSessionPreviewsAsync(
     ? scope.listingRoots
     : [options.workspacePath];
 
+  if (listing) {
+    const byId = new Map(providers.map((provider) => [provider.id, provider]));
+    for (const file of listing.files) {
+      const provider = byId.get(file.provider);
+      if (!provider) continue;
+      if (sinceMs !== null && file.mtimeMs <= sinceMs) continue;
+      byPath.set(file.filePath, {
+        provider,
+        info: {
+          path: file.filePath,
+          mtime: new Date(file.mtimeMs),
+          sizeBytes: file.sizeBytes,
+          sessionId: file.sessionId,
+          ...(file.workspacePath ? { workspacePath: file.workspacePath } : {}),
+        },
+      });
+    }
+  }
+
   await Promise.all(
     providers.map(async (provider) => {
+      if (listing) return;
       for (const workspacePath of listingRoots) {
         let files: SessionFileInfo[] = [];
         try {
@@ -338,7 +380,14 @@ export async function listSessionPreviewsAsync(
     candidates = inScope;
   }
 
-  candidates.sort((left, right) => right.info.mtime.getTime() - left.info.mtime.getTime());
+  // Newest first; ties broken by provider and path so the order never
+  // depends on which provider's enumeration finished first.
+  candidates.sort(
+    (left, right) =>
+      right.info.mtime.getTime() - left.info.mtime.getTime() ||
+      compareText(left.provider.id, right.provider.id) ||
+      compareText(left.info.path, right.info.path),
+  );
   const selected = candidates.slice(0, limit);
   const labels = new Map<SessionProviderBase, Map<string, string | null>>();
   await Promise.all(
@@ -397,6 +446,13 @@ interface PreviewScope {
 
 /** Roots and scope mode of a listing, or undefined for an unscoped or legacy single-root one. */
 function previewScope(options: ListSessionPreviewsAsyncOptions): PreviewScope | undefined {
+  if (options.listing) {
+    return {
+      roots: options.listing.roots,
+      listingRoots: options.listing.listingRoots,
+      contained: (options.scope ?? 'contained') === 'contained',
+    };
+  }
   if (options.workspacePaths) {
     return {
       ...resolveWorkspaceRoots(options.workspacePaths, {
@@ -432,6 +488,10 @@ async function recordedCwd(
     // Unreadable: out of scope.
   }
   return null;
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function resolveSinceMs(since: Date | string | undefined): number | null {

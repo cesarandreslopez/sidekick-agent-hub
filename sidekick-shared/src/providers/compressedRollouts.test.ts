@@ -374,8 +374,9 @@ describe('compressed rollouts in usage and prompt history', () => {
     // Usage: same events and prompt ordinals; the cache keys on the compressed file.
     const miss = await collectUsageEvents({ providers: [provider] });
     const hit = await collectUsageEvents({ providers: [provider] });
+    // The file (and so its session key) differs; everything else matches.
     const shape = (events: typeof miss.events) =>
-      events.map(({ filePath: _file, ...event }) => event);
+      events.map(({ filePath: _file, sessionKey: _key, ...event }) => event);
     expect(shape(miss.events)).toEqual(shape(usageBefore.events));
     expect(miss.events.map((e) => e.promptOrdinal)).toEqual([0]);
     expect(miss.events[0].filePath).toBe(compressed);

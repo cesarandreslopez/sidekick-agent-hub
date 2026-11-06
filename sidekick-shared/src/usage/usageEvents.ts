@@ -48,6 +48,9 @@ import type {
 import { listSessionPreviewsAsync } from '../sessionPreviews';
 import type { SessionPreview, SessionScopeMode } from '../sessionPreviews';
 import { SYNTHETIC_MODEL } from './claudeUsageDedupe';
+import { getPricingCatalogInfo } from '../modelInfo';
+import { computeSessionKey } from '../sessionKey';
+import { assertListingAlone, isSessionListing, type SessionListing } from '../sessionListing';
 import type { TokenTotals } from '../types/historicalData';
 import { calculateNormalizedUsageCost, extractNormalizedUsage } from '../usageNormalization';
 import type { NormalizedUsage, PricingProvenance } from '../usageNormalization';
@@ -95,6 +98,8 @@ export interface UsageEventRecord {
   costProvenance: PricingProvenance;
   /** Session file the event came from; tells apart two files with one session id. */
   filePath?: string;
+  /** Key of that file, as prompt history and `listAgentSessions()` report it. */
+  sessionKey?: string;
   /**
    * Ordinal of the human prompt this call followed: the highest ordinal among
    * the session's prompts timestamped at or before the event, as
@@ -131,6 +136,8 @@ export interface UsageSessionRecord {
   lastTimestamp: number | null;
   eventCount: number;
   fromCache: boolean;
+  /** Key of the session file, as prompt history and `listAgentSessions()` report it. */
+  sessionKey?: string;
 }
 
 export interface CollectUsageEventsOptions {
@@ -180,6 +187,30 @@ export interface CollectUsageEventsOptions {
    * billed), counting them in `stats.syntheticEventsExcluded`. Default false.
    */
   excludeSynthetic?: boolean;
+  /**
+   * A listing from `listAgentSessions()` to read instead of listing again
+   * (its roots scope the call; `scope` still applies). Passing
+   * `workspacePath`, `workspacePaths`, `includeWorktrees` or `homes` with it
+   * is a `TypeError`. Without `providers`, Claude Code and Codex providers
+   * are built for the listing's homes.
+   */
+  listing?: SessionListing;
+  /**
+   * Per-call limits on the sessions read from disk (cache hits are free and
+   * never counted). A session is never split: the call stops before the
+   * session that would pass a bound, returns `hasMore: true`, and the
+   * returned `cursor` continues from there. The first read of a call always
+   * proceeds. Without `bounds` (and `cursor`) every session is read.
+   */
+  bounds?: UsageEventsBounds;
+  /**
+   * The `cursor` of an earlier result. Sessions whose fingerprint it already
+   * records are skipped (counted in `stats.sessionsSkippedUnchanged`);
+   * changed and new ones come back whole, listed in `changed`. When prices
+   * changed since (`pricingChanged`), every session comes back. Cannot be
+   * combined with `until` (`TypeError`).
+   */
+  cursor?: UsageEventsCursor;
   /** Preview-read concurrency (see `listSessionPreviewsAsync`). */
   concurrency?: number;
   /** Cache directory (default `<configDir>/usage-cache`). */
@@ -201,6 +232,44 @@ export interface CollectUsageEventsStats {
   sessionsOutOfScope: number;
   /** `<synthetic>` events left out by `excludeSynthetic`. */
   syntheticEventsExcluded: number;
+  /** Sessions skipped because the `cursor` already had them unchanged. */
+  sessionsSkippedUnchanged: number;
+}
+
+/** Per-call bounds on the sessions `collectUsageEvents` reads from disk. */
+export interface UsageEventsBounds {
+  /** Sessions read from disk (cache misses). */
+  maxSessions?: number;
+  /** Bytes of the session files (and Claude Code subagent transcripts) read from disk. */
+  maxTotalBytes?: number;
+  /** Events in the window from the sessions read from disk. */
+  maxEvents?: number;
+  /** Wall-clock budget, checked before each read from disk. */
+  deadlineMs?: number;
+}
+
+export type UsageEventsBound = 'maxSessions' | 'maxTotalBytes' | 'maxEvents' | 'deadline';
+
+/**
+ * Where an incremental collection stands: the fingerprint each session was
+ * delivered at, the session key the next call starts from, and the pricing
+ * digest the events were priced with. Plain JSON; store it as is.
+ */
+export interface UsageEventsCursor {
+  version: 1;
+  /** Session key → fingerprint delivered. */
+  sessions: Record<string, string>;
+  /** Session key the next call starts at, after a bound stopped this one. */
+  next?: string;
+  /** `getPricingCatalogInfo().digest` when the events were priced. */
+  pricing?: string;
+}
+
+/** A session a result returned because it was new or changed. */
+export interface UsageSessionRef {
+  provider: ProviderId;
+  sessionId: string;
+  sessionKey: string;
 }
 
 export interface CollectUsageEventsResult {
@@ -213,6 +282,16 @@ export interface CollectUsageEventsResult {
   /** Realpaths of the roots listed, after worktree expansion, when the call was scoped. */
   roots?: string[];
   stats: CollectUsageEventsStats;
+  /** Pass to the next call to receive only what changed (see `cursor`). */
+  cursor: UsageEventsCursor;
+  /** A bound stopped the call; call again with `cursor` to continue. */
+  hasMore: boolean;
+  /** The bounds that stopped this call. */
+  boundsHit: UsageEventsBound[];
+  /** Sessions returned whose fingerprint differed from the given cursor (all, without one). */
+  changed: UsageSessionRef[];
+  /** Prices changed since the given cursor, so every session was returned again. */
+  pricingChanged: boolean;
 }
 
 /** Compact on-disk event: raw counts only, priced when loaded. */
@@ -600,19 +679,57 @@ export async function collectUsageEvents(
   if (options.providers && options.homes) {
     throw new TypeError('collectUsageEvents: pass either `providers` or `homes`, not both.');
   }
-  const owned = options.providers ? [] : createUsageProviders(options.homes);
+  if (options.cursor !== undefined && options.until !== undefined) {
+    throw new TypeError(
+      'collectUsageEvents: `until` cannot be combined with `cursor` (a cursor records whole sessions).',
+    );
+  }
+  if (options.listing !== undefined) {
+    if (!isSessionListing(options.listing)) {
+      throw new TypeError('collectUsageEvents: `listing` must come from listAgentSessions().');
+    }
+    assertListingAlone('collectUsageEvents', options as unknown as Record<string, unknown>, [
+      'workspacePath',
+      'workspacePaths',
+      'includeWorktrees',
+      'homes',
+    ]);
+  }
+  const bounds = validBounds(options.bounds);
+  const owned = options.providers ? [] : createUsageProviders(options.homes, options.listing);
   try {
     return await collectWithProviders(
       { ...options, providers: options.providers ?? owned },
-      { sinceMs, untilMs, cacheDir, useCache, signal },
+      { sinceMs, untilMs, cacheDir, useCache, signal, bounds },
     );
   } finally {
     for (const provider of owned) provider.dispose?.();
   }
 }
 
-/** Claude Code and Codex providers for a call that passed homes (or nothing). */
-function createUsageProviders(homes: SessionHomesOptions | undefined): SessionProviderBase[] {
+/**
+ * Claude Code and Codex providers for a call that passed homes, a listing,
+ * or nothing.
+ */
+function createUsageProviders(
+  homes: SessionHomesOptions | undefined,
+  listing: SessionListing | undefined,
+): SessionProviderBase[] {
+  if (listing) {
+    const providers: SessionProviderBase[] = [];
+    if (listing.providers.includes('claude-code')) {
+      providers.push(new ClaudeCodeProvider({ homes: { claudeHomes: listing.homes.claude } }));
+    }
+    if (listing.providers.includes('codex')) {
+      providers.push(
+        new CodexProvider({
+          homes: { codexHomes: listing.homes.codex },
+          includeCompressedRollouts: listing.includeCompressedRollouts,
+        }),
+      );
+    }
+    return providers;
+  }
   // Validate before constructing anything (RangeError on a bad explicit home).
   if (homes) resolveAgentHomes(homes);
   const providers: SessionProviderBase[] = [];
@@ -625,25 +742,76 @@ function createUsageProviders(homes: SessionHomesOptions | undefined): SessionPr
   return providers;
 }
 
+function validBounds(bounds: UsageEventsBounds | undefined): UsageEventsBounds | undefined {
+  if (bounds === undefined) return undefined;
+  const checked: UsageEventsBounds = {};
+  for (const name of ['maxSessions', 'maxTotalBytes', 'maxEvents', 'deadlineMs'] as const) {
+    const value = bounds[name];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || Number.isNaN(value) || value < 0) {
+      throw new RangeError(`collectUsageEvents: \`bounds.${name}\` must be a number >= 0.`);
+    }
+    checked[name] = value;
+  }
+  return checked;
+}
+
 interface CollectContext {
   sinceMs: number | null;
   untilMs: number | null;
   cacheDir: string;
   useCache: boolean;
   signal: AbortSignal | undefined;
+  bounds: UsageEventsBounds | undefined;
+}
+
+/** A listed session in collection order. */
+interface OrderedPreview {
+  preview: SessionPreview;
+  key: string;
+  /** Position in the listing (newest first), the order `sessions` keeps. */
+  index: number;
+}
+
+/** One session read (or loaded from cache) in this call. */
+interface LoadedSession extends OrderedPreview {
+  provider: SessionProviderBase;
+  cachedEvents: CachedUsageEvent[];
+  sessionSubagent: UsageCacheFile['subagent'];
+  project: string | null;
+  fingerprint: string;
+  fromCache: boolean;
+  /** Read from disk in this call (a cache miss). */
+  missed: boolean;
+}
+
+function rotateOrdered(ordered: OrderedPreview[], next: string | undefined): OrderedPreview[] {
+  if (!next) return ordered;
+  const index = ordered.findIndex((item) => item.key >= next);
+  return index <= 0 ? ordered : [...ordered.slice(index), ...ordered.slice(0, index)];
 }
 
 async function collectWithProviders(
   options: CollectUsageEventsOptions & { providers: SessionProviderBase[] },
   context: CollectContext,
 ): Promise<CollectUsageEventsResult> {
-  const { sinceMs, untilMs, cacheDir, useCache, signal } = context;
+  const { sinceMs, untilMs, cacheDir, useCache, signal, bounds } = context;
+  const startedAt = Date.now();
   signal?.throwIfAborted();
+  const cursorIn =
+    options.cursor === undefined ? undefined : parseUsageEventsCursor(options.cursor);
+  const pricing = getPricingCatalogInfo().digest;
+  const pricingChanged = cursorIn?.pricing !== undefined && cursorIn.pricing !== pricing;
+
   const listed = await listSessionPreviewsAsync(options.providers, {
     since: options.since,
-    workspacePath: options.workspacePath,
-    workspacePaths: options.workspacePaths,
-    includeWorktrees: options.includeWorktrees,
+    ...(options.listing
+      ? { listing: options.listing }
+      : {
+          workspacePath: options.workspacePath,
+          workspacePaths: options.workspacePaths,
+          includeWorktrees: options.includeWorktrees,
+        }),
     scope: options.scope,
     limit: Number.MAX_SAFE_INTEGER,
     concurrency: options.concurrency,
@@ -652,23 +820,62 @@ async function collectWithProviders(
   const stats: CollectUsageEventsStats = {
     sessionsOutOfScope: listed.stats?.sessionsOutOfScope ?? 0,
     syntheticEventsExcluded: 0,
+    sessionsSkippedUnchanged: 0,
   };
   const diagnostics = [...listed.diagnostics];
   for (const diagnostic of listed.diagnostics) options.onDiagnostic?.(diagnostic);
   const providerById = new Map(options.providers.map((provider) => [provider.id, provider]));
 
-  const events: UsageEventRecord[] = [];
-  const sessions: UsageSessionRecord[] = [];
+  // Deterministic order (by session key), resumed where the cursor stopped.
+  const ordered = rotateOrdered(
+    listed.previews
+      .map((preview, index) => ({
+        preview,
+        key: computeSessionKey(preview.provider, preview.sessionId, preview.filePath),
+        index,
+      }))
+      .sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0)),
+    cursorIn?.next,
+  );
+
+  const cursorOut: UsageEventsCursor = { version: 1, sessions: {}, pricing };
+  const boundsHit = new Set<UsageEventsBound>();
+  const loaded: LoadedSession[] = [];
   let cacheHits = 0;
   let cacheMisses = 0;
+  let missBytes = 0;
+  let missEvents = 0;
   let wroteCache = false;
+  let stoppedAt: number | null = null;
 
-  for (const preview of listed.previews) {
+  const boundReached = (sessionBytes: number): UsageEventsBound | null => {
+    // The first miss of a call always proceeds, so every call makes progress.
+    if (!bounds || cacheMisses === 0) return null;
+    if (bounds.deadlineMs !== undefined && Date.now() - startedAt >= bounds.deadlineMs) {
+      return 'deadline';
+    }
+    if (bounds.maxSessions !== undefined && cacheMisses >= bounds.maxSessions) return 'maxSessions';
+    if (bounds.maxEvents !== undefined && missEvents >= bounds.maxEvents) return 'maxEvents';
+    if (bounds.maxTotalBytes !== undefined && missBytes + sessionBytes > bounds.maxTotalBytes) {
+      return 'maxTotalBytes';
+    }
+    return null;
+  };
+
+  for (let position = 0; position < ordered.length; position++) {
+    const item = ordered[position];
+    const { preview, key } = item;
     signal?.throwIfAborted();
     const provider = providerById.get(preview.provider);
     if (!provider) continue;
     const subagentFiles = claudeSubagentFiles(preview);
     const fingerprint = sessionFingerprint(preview, subagentFiles);
+    if (cursorIn && !pricingChanged && cursorIn.sessions[key] === fingerprint) {
+      // Delivered whole by an earlier call and unchanged since.
+      cursorOut.sessions[key] = fingerprint;
+      stats.sessionsSkippedUnchanged += 1;
+      continue;
+    }
     const filePath = cacheFilePath(cacheDir, preview.provider, preview.sessionId);
 
     let cachedEvents: CachedUsageEvent[] | null = null;
@@ -688,7 +895,16 @@ async function collectWithProviders(
     }
 
     if (!cachedEvents) {
+      const sessionBytes =
+        preview.sizeBytes + subagentFiles.reduce((sum, file) => sum + file.sizeBytes, 0);
+      const stop = boundReached(sessionBytes);
+      if (stop) {
+        boundsHit.add(stop);
+        stoppedAt = position;
+        break;
+      }
       cacheMisses += 1;
+      missBytes += sessionBytes;
       try {
         cachedEvents = readSessionUsage(provider, preview, subagentFiles);
       } catch (error) {
@@ -728,26 +944,58 @@ async function collectWithProviders(
       await yieldToEventLoop();
     }
 
+    const session: LoadedSession = {
+      ...item,
+      provider,
+      cachedEvents,
+      sessionSubagent,
+      project,
+      fingerprint,
+      fromCache,
+      missed: !fromCache,
+    };
+    loaded.push(session);
+    cursorOut.sessions[key] = fingerprint;
+    if (session.missed) missEvents += countWindowEvents(cachedEvents, sinceMs, untilMs);
+  }
+
+  if (stoppedAt !== null) {
+    // Sessions after the stop keep what an earlier call delivered.
+    for (const { key } of ordered.slice(stoppedAt)) {
+      const previous = cursorIn?.sessions[key];
+      if (previous !== undefined) cursorOut.sessions[key] = previous;
+    }
+    cursorOut.next = ordered[stoppedAt].key;
+  }
+
+  if (wroteCache) pruneUsageCache(MAX_USAGE_CACHE_FILES, cacheDir);
+
+  const events: UsageEventRecord[] = [];
+  const sessions: UsageSessionRecord[] = [];
+  const changed: UsageSessionRef[] = [];
+  for (const session of [...loaded].sort((left, right) => left.index - right.index)) {
+    const { preview, key } = session;
     let first: number | null = null;
     let last: number | null = null;
     let count = 0;
-    for (const cached of cachedEvents) {
+    for (const cached of session.cachedEvents) {
       if (sinceMs !== null && cached.t < sinceMs) continue;
       if (untilMs !== null && cached.t > untilMs) continue;
       if (options.excludeSynthetic && cached.m === SYNTHETIC_MODEL) {
         stats.syntheticEventsExcluded += 1;
         continue;
       }
-      events.push(
-        priceCachedEvent(
+      events.push({
+        ...priceCachedEvent(
           cached,
           preview.provider,
           preview.sessionId,
-          project,
+          session.project,
           preview.filePath,
-          sessionSubagent,
+          session.sessionSubagent,
         ),
-      );
+        sessionKey: key,
+      });
       first = first === null ? cached.t : Math.min(first, cached.t);
       last = last === null ? cached.t : Math.max(last, cached.t);
       count += 1;
@@ -756,16 +1004,18 @@ async function collectWithProviders(
       provider: preview.provider,
       sessionId: preview.sessionId,
       filePath: preview.filePath,
-      project,
-      fingerprint,
+      project: session.project,
+      fingerprint: session.fingerprint,
       firstTimestamp: first,
       lastTimestamp: last,
       eventCount: count,
-      fromCache,
+      fromCache: session.fromCache,
+      sessionKey: key,
     });
+    if (pricingChanged || cursorIn?.sessions[key] !== session.fingerprint) {
+      changed.push({ provider: preview.provider, sessionId: preview.sessionId, sessionKey: key });
+    }
   }
-
-  if (wroteCache) pruneUsageCache(MAX_USAGE_CACHE_FILES, cacheDir);
 
   events.sort((a, b) => a.timestamp - b.timestamp);
   return {
@@ -776,7 +1026,54 @@ async function collectWithProviders(
     cacheMisses,
     ...(listed.roots ? { roots: listed.roots } : {}),
     stats,
+    cursor: cursorOut,
+    hasMore: stoppedAt !== null,
+    boundsHit: [...boundsHit],
+    changed,
+    pricingChanged,
   };
+}
+
+function countWindowEvents(
+  events: readonly CachedUsageEvent[],
+  sinceMs: number | null,
+  untilMs: number | null,
+): number {
+  let count = 0;
+  for (const event of events) {
+    if (sinceMs !== null && event.t < sinceMs) continue;
+    if (untilMs !== null && event.t > untilMs) continue;
+    count += 1;
+  }
+  return count;
+}
+
+/**
+ * A usage cursor from storage or the wire, checked; undefined when it is not
+ * one this version wrote (callers then start over).
+ */
+export function parseUsageEventsCursor(value: unknown): UsageEventsCursor | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.version !== 1) return undefined;
+  const sessions = candidate.sessions;
+  if (typeof sessions !== 'object' || sessions === null || Array.isArray(sessions)) {
+    return undefined;
+  }
+  const parsed: UsageEventsCursor = { version: 1, sessions: {} };
+  for (const [key, fingerprint] of Object.entries(sessions as Record<string, unknown>)) {
+    if (typeof fingerprint !== 'string') return undefined;
+    parsed.sessions[key] = fingerprint;
+  }
+  if (candidate.next !== undefined) {
+    if (typeof candidate.next !== 'string') return undefined;
+    parsed.next = candidate.next;
+  }
+  if (candidate.pricing !== undefined) {
+    if (typeof candidate.pricing !== 'string') return undefined;
+    parsed.pricing = candidate.pricing;
+  }
+  return parsed;
 }
 
 function validSubagent(value: unknown): UsageCacheFile['subagent'] {
