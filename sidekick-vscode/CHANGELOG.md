@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Open Activity Map** opens it large in an editor tab with insights (each station's calls, busy time, errors, denials and context weight; retry streaks and edit ↔ test loops) and a replay bar: play and pause, 1×/10×/60×, a scrubber with prompt, fault, compaction and model-switch markers, and **Live**. With no live session, it offers a recent session to replay.
   - Hover a station for its numbers and top labels; click it to filter the feed and highlight it.
   - **Export Activity Map…** saves the map as SVG or the session's activity as JSON.
-  - Settings: `sidekick.activityMap.motion` (follows VS Code's reduce-motion setting by default), `layout`, `coreName`, `labels` (`descriptive` by default), `memory` and `stationOverrides`.
+  - Settings: `sidekick.activityMap.motion` (follows VS Code's reduce-motion setting by default), `layout`, `coreName`, `labels` (`names` by default; `descriptive` adds the agent's own short descriptions, also to exports), `memory` and `stationOverrides`.
 - The HTML session report includes the activity map, a station table and the detected patterns.
 - Claude Fable 5.2 and the Mythos models are labelled and priced; a literal `fable` model setting selects Claude Fable 5.2 on the Claude API.
 - Long prompts are priced at their long-context rates (GPT-5.4 and later above 272K tokens, Claude Haiku 5.5 above 100K), per request, in the dashboard's cost rows.

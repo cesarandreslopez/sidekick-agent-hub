@@ -59,14 +59,14 @@ Open **Activity Map** in the Agent Hub sidebar, next to the Mind Map. It follows
 
 Settings (`sidekick.activityMap.*`):
 
-| Setting            | Default       | Meaning                                                                                                   |
-| ------------------ | ------------- | --------------------------------------------------------------------------------------------------------- |
-| `motion`           | `auto`        | `auto` follows VS Code's reduce-motion setting and the OS; `full`, `reduced` (fades only) or `none`       |
-| `layout`           | `you-top`     | `you-top`, or `you-bottom` (the network and browser at the top)                                           |
-| `coreName`         | (provider)    | what the core says, up to ten characters                                                                  |
-| `labels`           | `descriptive` | `descriptive` shows the short description the agent wrote for a command; `names` shows names only; `none` |
-| `memory`           | —             | extra memory `paths`, `mcpServers` and `commands`                                                         |
-| `stationOverrides` | —             | map a tool name or `mcp__server__*` to a station                                                          |
+| Setting            | Default    | Meaning                                                                                                                                                              |
+| ------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `motion`           | `auto`     | `auto` follows VS Code's reduce-motion setting and the OS; `full`, `reduced` (fades only) or `none`                                                                  |
+| `layout`           | `you-top`  | `you-top`, or `you-bottom` (the network and browser at the top)                                                                                                      |
+| `coreName`         | (provider) | what the core says, up to ten characters                                                                                                                             |
+| `labels`           | `names`    | `names` shows names only; `descriptive` adds the short description the agent wrote for a command (also in exports and the HTML report); `none` uses fixed words only |
+| `memory`           | —          | extra memory `paths`, `mcpServers` and `commands`                                                                                                                    |
+| `stationOverrides` | —          | map a tool name or `mcp__server__*` to a station                                                                                                                     |
 
 Classification settings apply to new activity; reopen the session to reclassify what was already read.
 
@@ -121,7 +121,7 @@ Activity records hold names, never content:
 - a hook: its event and matcher, never its command, output or the context it added;
 - a subagent: its type.
 
-Control and bidirectional-text characters are removed from every label. The JSON export and the MCP tool use names-only labels.
+Control and bidirectional-text characters are removed from every label. Exports, the HTML report and the MCP tool use names-only labels unless you choose `descriptive` (VS Code setting or `--labels`).
 
 ## Accessibility
 

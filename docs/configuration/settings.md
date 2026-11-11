@@ -82,14 +82,14 @@ See [Model Resolution](model-resolution.md) for details on how tiers map to mode
 
 ## Activity Map
 
-| Setting                                 | Default       | Description                                                                                                                    |
-| --------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `sidekick.activityMap.motion`           | `auto`        | `auto` follows VS Code's reduce-motion setting and the OS; `full`, `reduced` (fades only) or `none`                            |
-| `sidekick.activityMap.layout`           | `you-top`     | `you-top`, or `you-bottom` to put the network and browser at the top                                                           |
-| `sidekick.activityMap.coreName`         | `""`          | What the centre says, up to ten characters; empty shows the agent's name                                                       |
-| `sidekick.activityMap.labels`           | `descriptive` | `descriptive` adds the short description the agent wrote for a command; `names` shows names only; `none` uses fixed words only |
-| `sidekick.activityMap.memory`           | `{}`          | Extra memory sources: `paths` (path fragments), `mcpServers`, `commands`                                                       |
-| `sidekick.activityMap.stationOverrides` | `{}`          | Map a tool name or `mcp__server__*` to a station (`files`, `network`, `memory`, …)                                             |
+| Setting                                 | Default   | Description                                                                                                                                                          |
+| --------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sidekick.activityMap.motion`           | `auto`    | `auto` follows VS Code's reduce-motion setting and the OS; `full`, `reduced` (fades only) or `none`                                                                  |
+| `sidekick.activityMap.layout`           | `you-top` | `you-top`, or `you-bottom` to put the network and browser at the top                                                                                                 |
+| `sidekick.activityMap.coreName`         | `""`      | What the centre says, up to ten characters; empty shows the agent's name                                                                                             |
+| `sidekick.activityMap.labels`           | `names`   | `names` shows names only; `descriptive` adds the short description the agent wrote for a command (also in exports and the HTML report); `none` uses fixed words only |
+| `sidekick.activityMap.memory`           | `{}`      | Extra memory sources: `paths` (path fragments), `mcpServers`, `commands`                                                                                             |
+| `sidekick.activityMap.stationOverrides` | `{}`      | Map a tool name or `mcp__server__*` to a station (`files`, `network`, `memory`, …)                                                                                   |
 
 Classification settings (`labels`, `memory`, `stationOverrides`) apply to activity read after the change. See [Activity Map](../features/activity-map.md).
 
