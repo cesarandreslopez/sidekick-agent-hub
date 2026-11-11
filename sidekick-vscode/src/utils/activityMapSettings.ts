@@ -37,7 +37,8 @@ export const DEFAULT_ACTIVITY_MAP_SETTINGS: ActivityMapSettings = {
   motion: 'auto',
   layout: 'you-top',
   coreName: '',
-  labels: 'descriptive',
+  // Exports and the HTML report carry the same labels: names only unless asked.
+  labels: 'names',
   memory: { paths: [], mcpServers: [], commands: [] },
   stationOverrides: {},
 };

@@ -10,6 +10,7 @@ import type {
   ActivityInsights,
   ActivityRecord,
   ActivitySnapshot,
+  ActivityState,
   ActivityTimeline,
   ProviderId,
 } from 'sidekick-shared';
@@ -69,6 +70,10 @@ export class LiveActivitySource implements ActivitySource {
     return this.store.baseSeq;
   }
 
+  base(): ActivityState {
+    return this.store.base();
+  }
+
   records(): readonly ActivityRecord[] {
     return this.store.records();
   }
@@ -124,6 +129,10 @@ export class ArchiveActivitySource implements ActivitySource {
 
   baseSeq(): number {
     return this.timeline.records()[0]?.seq ?? 0;
+  }
+
+  base(): ActivityState {
+    return this.timeline.base();
   }
 
   records(): readonly ActivityRecord[] {

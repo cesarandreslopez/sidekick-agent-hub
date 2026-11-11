@@ -54,6 +54,8 @@ export class ActivityMapPanel implements vscode.Disposable {
   private connection: ActivityMapConnection | undefined;
   private source: ActivitySource | undefined;
   private sourceKey: string | undefined;
+  /** The live source's title subscription; at most one, replaced with the source. */
+  private liveTitle: vscode.Disposable | undefined;
   private readonly panelDisposables: vscode.Disposable[] = [];
 
   constructor(
@@ -108,6 +110,8 @@ export class ActivityMapPanel implements vscode.Disposable {
 
   private show(source: ActivitySource, key: string, focus: ActivityMapFocus | undefined): void {
     this.connection?.dispose();
+    this.liveTitle?.dispose();
+    this.liveTitle = undefined;
     this.source = source;
     this.sourceKey = key;
     const title = `Activity Map — ${source.info()?.label ?? 'no session'}`;
@@ -146,19 +150,19 @@ export class ActivityMapPanel implements vscode.Disposable {
     });
     if (source.kind === 'live') {
       // The monitor may move to a newer session; keep the title in step.
-      this.panelDisposables.push(
-        this.getMonitor().onSessionStart(() => {
-          if (this.panel && this.source === source) {
-            this.panel.title = `Activity Map — ${source.info()?.label ?? 'no session'}`;
-          }
-        }),
-      );
+      this.liveTitle = this.getMonitor().onSessionStart(() => {
+        if (this.panel && this.source === source) {
+          this.panel.title = `Activity Map — ${source.info()?.label ?? 'no session'}`;
+        }
+      });
     }
   }
 
   private disposePanelState(): void {
     this.connection?.dispose();
     this.connection = undefined;
+    this.liveTitle?.dispose();
+    this.liveTitle = undefined;
     this.source?.dispose?.();
     this.source = undefined;
     this.sourceKey = undefined;
@@ -174,6 +178,9 @@ export class ActivityMapPanel implements vscode.Disposable {
       return await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: 'Replaying session activity…' },
         async () => {
+          // The replay below is synchronous and holds the extension host until
+          // it ends: yield once first so the notification can paint.
+          await new Promise((resolve) => setTimeout(resolve, 0));
           // A past session has no host measurements: context comes from its usage.
           const replay = replayActivity({
             provider,

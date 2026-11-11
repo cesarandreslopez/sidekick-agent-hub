@@ -1,12 +1,14 @@
 /**
- * The webview's copy of the activity log: records from `activity/init` and
- * `activity/append`, folded into a scrubbable timeline.
+ * The webview's copy of the activity log: records from `activity/init` (on
+ * top of the base state it carries) and `activity/append`, folded into a
+ * scrubbable timeline.
  *
  * @module webview/activityMap/model
  */
 
 import {
   createActivityTimeline,
+  restoreActivityState,
   snapshotActivity,
   summarizeActivity,
 } from 'sidekick-shared/activity';
@@ -54,7 +56,9 @@ export class ActivityTimelineModel {
 
   init(message: InitMessage): void {
     this.epoch = message.epoch;
-    this.timeline = createActivityTimeline(message.records);
+    // The host may have dropped old records: their effect arrives as the base.
+    const base = restoreActivityState(message.base);
+    this.timeline = createActivityTimeline(message.records, base ? { base } : undefined);
     this.nextSeq = message.nextSeq;
     this.live = message.live;
     this.source = message.source;

@@ -10,8 +10,8 @@
  *
  * The state is checkpointed with the monitor's snapshot so a resumed session
  * keeps its history. Once the timeline has dropped old records (past
- * `maxRecords`), its totals can no longer be rebuilt from the records alone,
- * so such a log refuses to restore and the monitor replays the file instead.
+ * `maxRecords`), their effect lives on in the timeline's base state, which
+ * is checkpointed with the records kept so the restored totals stay whole.
  *
  * Deliberately free of any `vscode` import so it unit-tests without a mock.
  *
@@ -21,6 +21,7 @@
 import {
   createActivityRecorder,
   createActivityTimeline,
+  restoreActivityState,
   snapshotActivity,
   summarizeActivity,
 } from 'sidekick-shared';
@@ -31,6 +32,7 @@ import type {
   ActivityRecorderOptions,
   ActivityRecorderState,
   ActivitySnapshot,
+  ActivityState,
   ActivityTimeline,
   ProviderId,
   SessionEvent,
@@ -45,9 +47,9 @@ export interface PersistedActivityState {
   version: 1;
   providerId: ProviderId;
   sessionId?: string;
-  /** False once records were dropped: the state cannot be rebuilt from them. */
-  complete: boolean;
   recorder: ActivityRecorderState;
+  /** The state before `records[0]`: what records dropped past the cap left behind. */
+  base: ActivityState;
   records: ActivityRecord[];
 }
 
@@ -82,7 +84,6 @@ export class ActivityStore {
   private readonly coalesceMs: number;
   private readonly maxWaitMs: number;
   private currentEpoch = 1;
-  private appended = 0;
   private replaying = 0;
   private dirtyDuringReplay = false;
   private readonly listeners = new Set<(event: ActivityAppendEvent) => void>();
@@ -167,7 +168,6 @@ export class ActivityStore {
     }
     this.recorder = createActivityRecorder(this.recorderOptions);
     this.timeline = this.newTimeline();
-    this.appended = 0;
     this.currentEpoch++;
     this.notify();
   }
@@ -193,6 +193,11 @@ export class ActivityStore {
     return this.timeline.records();
   }
 
+  /** A fresh copy of the state before the first record held (what dropped records left). */
+  base(): ActivityState {
+    return this.timeline.base();
+  }
+
   /** Records from `seq` on; null when `seq` was dropped already or lies ahead. */
   recordsFrom(seq: number): ActivityRecord[] | null {
     const held = this.timeline.records();
@@ -213,39 +218,40 @@ export class ActivityStore {
 
   /** The checkpointable state. */
   serialize(): PersistedActivityState {
-    const records = this.timeline.records();
     return {
       version: 1,
       providerId: this.recorderOptions.providerId,
       ...(this.recorderOptions.sessionId ? { sessionId: this.recorderOptions.sessionId } : {}),
-      complete: this.appended === records.length,
       recorder: this.recorder.export(),
-      records: records.slice(),
+      base: this.timeline.base(),
+      records: this.timeline.records().slice(),
     };
   }
 
   /**
    * Restores a checkpointed state. False (and nothing changed) when it is
-   * missing, malformed, incomplete, or from another provider or session.
+   * missing, malformed, or from another provider or session.
    */
   restore(value: unknown): boolean {
     if (!isPersistedActivityState(value)) return false;
-    if (!value.complete) return false;
     if (value.providerId !== this.recorderOptions.providerId) return false;
     if ((value.sessionId ?? undefined) !== (this.recorderOptions.sessionId ?? undefined)) {
       return false;
     }
+    const base = restoreActivityState(value.base);
+    if (!base) return false;
     const recorder = createActivityRecorder(this.recorderOptions);
     if (!recorder.import(value.recorder)) return false;
     const records = value.records;
-    // Records are numbered without gaps from 0; the recorder continues after them.
+    // Records are numbered without gaps (from 0, or from the first one kept
+    // after a trim); the recorder continues after them.
+    const first = records[0]?.seq ?? 0;
     for (let index = 0; index < records.length; index++) {
-      if (records[index].seq !== index) return false;
+      if (records[index].seq !== first + index) return false;
     }
-    if (recorder.nextSeq !== records.length) return false;
+    if (recorder.nextSeq !== first + records.length) return false;
     this.recorder = recorder;
-    this.timeline = this.newTimeline(records);
-    this.appended = records.length;
+    this.timeline = this.newTimeline(records, base);
     this.currentEpoch++;
     this.notify();
     return true;
@@ -268,14 +274,16 @@ export class ActivityStore {
     this.clearTimer();
   }
 
-  private newTimeline(records?: readonly ActivityRecord[]): ActivityTimeline {
-    return createActivityTimeline(records, { maxRecords: this.maxRecords });
+  private newTimeline(records?: readonly ActivityRecord[], base?: ActivityState): ActivityTimeline {
+    return createActivityTimeline(records, {
+      maxRecords: this.maxRecords,
+      ...(base ? { base } : {}),
+    });
   }
 
   private append(records: ActivityRecord[]): number {
     if (records.length === 0) return 0;
     this.timeline.append(records);
-    this.appended += records.length;
     this.notify();
     return records.length;
   }
@@ -323,9 +331,10 @@ function isPersistedActivityState(value: unknown): value is PersistedActivitySta
   return (
     state.version === 1 &&
     typeof state.providerId === 'string' &&
-    typeof state.complete === 'boolean' &&
     !!state.recorder &&
     typeof state.recorder === 'object' &&
+    !!state.base &&
+    typeof state.base === 'object' &&
     Array.isArray(state.records) &&
     state.records.every(
       (record) =>

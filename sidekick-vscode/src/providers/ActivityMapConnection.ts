@@ -13,6 +13,7 @@ import type {
   ActivityInsights,
   ActivityRecord,
   ActivitySnapshot,
+  ActivityState,
   ActivityStationId,
 } from 'sidekick-shared';
 import { ACTIVITY_MAP_PROTOCOL } from '../types/activityMap';
@@ -36,6 +37,8 @@ export interface ActivitySource {
   epoch(): number;
   nextSeq(): number;
   baseSeq(): number;
+  /** The state before the first record held (dropped records leave their effect here). */
+  base(): ActivityState;
   records(): readonly ActivityRecord[];
   /** Null when `seq` is no longer (or not yet) held. */
   recordsFrom(seq: number): ActivityRecord[] | null;
@@ -115,14 +118,8 @@ export class ActivityMapConnection implements Disposable {
   private receive(message: ActivityMapWebviewMessage): void {
     if (this.disposed || !message || typeof message !== 'object') return;
     switch (message.type) {
+      // A (re)started webview, or one out of step: always a full init.
       case 'activity/ready':
-        this.ready = true;
-        if (message.protocol !== ACTIVITY_MAP_PROTOCOL) {
-          this.sendInit();
-          return;
-        }
-        this.catchUp(message.have);
-        return;
       case 'activity/resync':
         this.ready = true;
         this.sendInit();
@@ -155,25 +152,6 @@ export class ActivityMapConnection implements Disposable {
     this.flush();
   }
 
-  /** A (re)started webview: send only what it lacks when it still holds this epoch. */
-  private catchUp(have: { epoch: number; nextSeq: number } | undefined): void {
-    if (!this.source.info()) {
-      this.sent = undefined;
-      this.post({ type: 'activity/empty', reason: 'noSession' });
-      return;
-    }
-    if (have && have.epoch === this.source.epoch() && !this.focus) {
-      const records = this.source.recordsFrom(have.nextSeq);
-      if (records) {
-        this.sent = { ...have };
-        this.sendAppend(records, have.nextSeq);
-        this.syncLive(true);
-        return;
-      }
-    }
-    this.sendInit();
-  }
-
   private flush(): void {
     this.dirty = false;
     const info = this.source.info();
@@ -195,7 +173,7 @@ export class ActivityMapConnection implements Disposable {
       return;
     }
     if (records.length > 0) this.sendAppend(records, this.sent.nextSeq);
-    this.syncLive(false);
+    this.syncLive();
   }
 
   private sendInit(): void {
@@ -219,6 +197,7 @@ export class ActivityMapConnection implements Disposable {
       epoch,
       baseSeq: this.source.baseSeq(),
       nextSeq,
+      base: this.source.base(),
       records,
       hostNow: this.now(),
       live,
@@ -242,9 +221,9 @@ export class ActivityMapConnection implements Disposable {
     this.sent = { epoch: this.sent.epoch, nextSeq: fromSeq + records.length };
   }
 
-  private syncLive(force: boolean): void {
+  private syncLive(): void {
     const live = this.source.isLive();
-    if (!force && live === this.lastLive) return;
+    if (live === this.lastLive) return;
     this.lastLive = live;
     this.post({ type: 'activity/state', live, hostNow: this.now() });
   }

@@ -1,4 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import {
+  createActivityState,
+  createActivityTimeline,
+  snapshotActivity,
+  summarizeActivity,
+} from 'sidekick-shared/activity';
 import type { ActivityRecord } from 'sidekick-shared/activity';
 import { ActivityTimelineModel } from './model';
 import { HostClock } from './clock';
@@ -44,6 +50,7 @@ const init = (list = records(), epoch = 1) => ({
   epoch,
   baseSeq: list[0]?.seq ?? 0,
   nextSeq: list.length > 0 ? list[list.length - 1].seq + 1 : 0,
+  base: createActivityState(),
   records: list,
   hostNow: T0 + 130_000,
   live: true,
@@ -103,6 +110,47 @@ describe('ActivityTimelineModel', () => {
     expect(density[0]).toBe(1);
     expect(model.nextRecordAfter(T0 + 2_000)).toBe(T0 + 120_000);
     expect(model.nextRecordAfter(T0 + 200_000)).toBeUndefined();
+  });
+
+  it('folds the records on the init base, and on an empty one when it is unusable', () => {
+    // A host timeline that dropped old records (the cap keeps two checkpoint intervals).
+    const host = createActivityTimeline([], { checkpointEvery: 16, maxRecords: 40 });
+    const list: ActivityRecord[] = [];
+    for (let i = 0; i < 100; i++) {
+      list.push(
+        {
+          seq: 2 * i,
+          at: T0 + i * 1_000,
+          kind: 'toolStart',
+          id: `c${i}`,
+          station: 'files',
+          label: `f${i}.ts`,
+          tool: 'Read',
+        },
+        {
+          seq: 2 * i + 1,
+          at: T0 + i * 1_000 + 10,
+          kind: 'toolEnd',
+          id: `c${i}`,
+          outcome: i % 7 === 0 ? 'error' : 'ok',
+        },
+      );
+    }
+    host.append(list);
+    const held = [...host.records()];
+    expect(held[0].seq).toBeGreaterThan(0);
+    const message = JSON.parse(JSON.stringify({ ...init(held), base: host.base() }));
+
+    const model = new ActivityTimelineModel();
+    model.init(message);
+    expect(model.snapshotAt()).toEqual(snapshotActivity(host.head()));
+    expect(model.insightsAt()).toEqual(summarizeActivity(host.head()));
+    expect(model.snapshotAt().stations.find((s) => s.id === 'files')?.count).toBe(100);
+
+    const fallback = new ActivityTimelineModel();
+    fallback.init({ ...message, base: { nope: true } });
+    const kept = held.filter((record) => record.kind === 'toolStart').length;
+    expect(fallback.snapshotAt().stations.find((s) => s.id === 'files')?.count).toBe(kept);
   });
 
   it('clears back to no session', () => {

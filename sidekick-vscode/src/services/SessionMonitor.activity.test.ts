@@ -60,6 +60,8 @@ vi.mock('./Logger', () => ({
 }));
 
 import { ClaudeCodeProvider, loadSnapshot, saveSnapshot, setConfigDir } from 'sidekick-shared';
+import { DEFAULT_ACTIVITY_MAP_SETTINGS, toRecorderOptions } from '../utils/activityMapSettings';
+import { ActivityStore } from './ActivityStore';
 import { SessionMonitor } from './SessionMonitor';
 
 interface MonitorInternals {
@@ -146,11 +148,20 @@ const SESSION =
   hook(3, 't2') +
   toolResult(6, 't2', 'FAIL', true);
 
-/** A monitor following `target` with a Claude reader that keeps activity signals. */
-function monitorOn(target: string, sessionId = 'session') {
+/**
+ * A monitor following `target` with a Claude reader that keeps activity
+ * signals; `maxRecords` swaps in an activity log with that cap.
+ */
+function monitorOn(target: string, sessionId = 'session', maxRecords?: number) {
   const provider = new ClaudeCodeProvider();
   const monitor = new SessionMonitor(provider as never);
   const internals = monitor as unknown as MonitorInternals;
+  if (maxRecords !== undefined) {
+    (monitor as unknown as { activity: ActivityStore }).activity = new ActivityStore({
+      recorder: toRecorderOptions(DEFAULT_ACTIVITY_MAP_SETTINGS, 'claude-code'),
+      maxRecords,
+    });
+  }
   internals.sessionId = sessionId;
   internals.sessionPath = target;
   internals.reader = provider.createReader(target, { includeActivitySignals: true });
@@ -253,7 +264,9 @@ describe('SessionMonitor activity log', () => {
     first.internals.persistSnapshot();
     const snapshot = loadSnapshot('session');
     expect(snapshot?.consumer.checkpointRevision).toBe(6);
-    expect((snapshot?.consumer.activity as { complete: boolean }).complete).toBe(true);
+    expect(snapshot?.consumer.activity).toMatchObject({
+      base: { kind: 'sidekick-activity-state' },
+    });
 
     const second = monitorOn(file);
     expect(second.internals.tryRestoreFromSnapshot(file)).toBe(true);
@@ -264,6 +277,36 @@ describe('SessionMonitor activity log', () => {
     expect(second.monitor.getActivityStore().records()).toEqual(
       first.monitor.getActivityStore().records(),
     );
+  });
+
+  it('resumes a log that dropped old records from its checkpoint', async () => {
+    let long = user(0, 'go');
+    for (let i = 0; i < 300; i++) {
+      long += toolUse(1 + i * 2, `r${i}`, 'Read', { file_path: `/repo/src/f${i}.ts` });
+      long += toolResult(2 + i * 2, `r${i}`, i % 11 === 0 ? 'boom' : 'ok', i % 11 === 0);
+    }
+    fs.writeFileSync(file, long);
+    // A tiny cap (the timeline keeps at least two checkpoint intervals, 512).
+    const first = monitorOn(file, 'session', 40);
+    await first.internals.readInitialContent();
+    const firstStore = first.monitor.getActivityStore();
+    expect(firstStore.baseSeq).toBeGreaterThan(0);
+    first.internals.persistSnapshot();
+    const saved = loadSnapshot('session');
+    expect(saved).not.toBeNull();
+
+    const second = monitorOn(file, 'session', 40);
+    expect(second.internals.tryRestoreFromSnapshot(file)).toBe(true);
+    // Resumed where the checkpoint left off, and the snapshot is still there.
+    expect(second.internals.reader?.getPosition()).toBe(saved!.readerPosition);
+    expect(loadSnapshot('session')).not.toBeNull();
+    await second.internals.readInitialContent();
+    const secondStore = second.monitor.getActivityStore();
+    expect(secondStore.snapshot()).toEqual(firstStore.snapshot());
+    expect(secondStore.insights()).toEqual(firstStore.insights());
+    expect(secondStore.records()).toEqual(firstStore.records());
+    expect(station(second.monitor, 'files')?.count).toBe(300);
+    expect(second.monitor.getStats().messageCount).toBe(first.monitor.getStats().messageCount);
   });
 
   it('rejects a revision-5 checkpoint, and one whose activity log cannot be restored', async () => {
@@ -282,14 +325,15 @@ describe('SessionMonitor activity log', () => {
       ...snapshot,
       consumer: {
         ...snapshot.consumer,
-        activity: { ...(snapshot.consumer.activity as object), complete: false },
+        activity: { ...(snapshot.consumer.activity as object), base: { kind: 'garbage' } },
       },
     });
-    const trimmed = monitorOn(file);
-    expect(trimmed.internals.tryRestoreFromSnapshot(file)).toBe(false);
+    const malformed = monitorOn(file);
+    expect(malformed.internals.tryRestoreFromSnapshot(file)).toBe(false);
+    expect(loadSnapshot('session')).toBeNull();
     // The reader starts over, so the replay that follows rebuilds everything.
-    expect(trimmed.internals.reader?.getPosition()).toBe(0);
-    await trimmed.internals.readInitialContent();
-    expect(station(trimmed.monitor, 'shell')?.count).toBe(1);
+    expect(malformed.internals.reader?.getPosition()).toBe(0);
+    await malformed.internals.readInitialContent();
+    expect(station(malformed.monitor, 'shell')?.count).toBe(1);
   });
 });

@@ -4,6 +4,7 @@
  * the map from an init, appends, resyncs on a gap, and filters by station.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createActivityState } from 'sidekick-shared/activity';
 import type { ActivityRecord } from 'sidekick-shared/activity';
 import { renderActivityMapHtml } from '../../providers/activityMapTemplate';
 import type { ActivityMapHostMessage, ActivityMapWebviewMessage } from '../../types/activityMap';
@@ -94,6 +95,7 @@ describe('activity map webview boot', () => {
       epoch: 1,
       baseSeq: 0,
       nextSeq: 6,
+      base: createActivityState(),
       records: records(),
       hostNow: T0 + 7_000,
       live: false,

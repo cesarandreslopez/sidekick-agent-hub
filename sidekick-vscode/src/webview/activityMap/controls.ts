@@ -79,10 +79,19 @@ export class ReplayControls {
     }
   }
 
-  /** Redraws the density strip and ticks when the data changed. */
-  updateStrip(key: string, density: readonly number[], markers: readonly ActivityMarker[]): void {
+  /**
+   * Redraws the density strip and ticks when the data changed; `density` and
+   * `markers` scan the whole log, so they run only for a new `key`.
+   */
+  updateStrip(
+    key: string,
+    getDensity: () => readonly number[],
+    getMarkers: () => readonly ActivityMarker[],
+  ): void {
     if (key === this.stripKey || !this.range) return;
     this.stripKey = key;
+    const density = getDensity();
+    const markers = getMarkers();
     const doc = this.strip.ownerDocument;
     const nodes: SVGElement[] = [];
     const max = Math.max(1, ...density);

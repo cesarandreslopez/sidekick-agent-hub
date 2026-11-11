@@ -574,8 +574,8 @@
               "File, host and program names only",
               "Station words only (no names at all)"
             ],
-            "default": "descriptive",
-            "description": "How much the Activity Map labels say. Labels never contain file contents, command lines, queries or prompts. Applies to events from now on."
+            "default": "names",
+            "description": "How much the Activity Map labels say. Labels never contain file contents, command lines, queries or prompts. The same labels go into exports (SVG, JSON) and the HTML report, so descriptive puts the agent's descriptions there too. Applies to events from now on."
           },
           "sidekick.activityMap.memory": {
             "type": "object",
