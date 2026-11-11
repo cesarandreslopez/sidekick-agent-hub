@@ -9,6 +9,7 @@ import {
   ModelPricingService,
   priceModelUsage,
   priceSessionModelUsage,
+  type ModelUsageEntry,
 } from './ModelPricingService';
 
 describe('ModelPricingService', () => {
@@ -400,7 +401,7 @@ describe('ModelPricingService', () => {
 });
 
 describe('long-context price tiers in session buckets', () => {
-  const entry = () => ({
+  const entry = (): ModelUsageEntry => ({
     calls: 0,
     tokens: 0,
     inputTokens: 0,
