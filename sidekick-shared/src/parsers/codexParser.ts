@@ -160,7 +160,12 @@ export function resolveCodexCallUsage(
     | null
     | undefined,
   previousTotal: CodexTokenUsage | null,
-): { usage: CodexTokenUsage | null; total: CodexTokenUsage | null } {
+): {
+  usage: CodexTokenUsage | null;
+  total: CodexTokenUsage | null;
+  /** `usage` is one model call's (`last_token_usage`), not a difference of running totals. */
+  single?: boolean;
+} {
   if (!info) return { usage: null, total: previousTotal };
   const last = info.last_token_usage ?? null;
   const total = info.total_token_usage ?? null;
@@ -171,10 +176,10 @@ export function resolveCodexCallUsage(
     );
     if (unchanged) return { usage: null, total };
     if (codexTotalOf(total) < codexTotalOf(previousTotal)) {
-      return { usage: last ?? total, total };
+      return last ? { usage: last, total, single: true } : { usage: total, total };
     }
   }
-  if (last) return { usage: last, total: total ?? previousTotal };
+  if (last) return { usage: last, total: total ?? previousTotal, single: true };
   if (!total) return { usage: null, total: previousTotal };
 
   const delta = {} as CodexTokenUsage;
@@ -1570,7 +1575,12 @@ export class CodexRolloutParser {
         // unchanged cumulative total on duplicate events; count each call once.
         const resolved = resolveCodexCallUsage(e.info, this.prevTotalUsage);
         this.prevTotalUsage = resolved.total;
-        return this.handleTokenCount(timestamp, resolved.usage, e.rate_limits);
+        return this.handleTokenCount(
+          timestamp,
+          resolved.usage,
+          e.rate_limits,
+          resolved.single === true,
+        );
       }
 
       // agent_message and user_message are suppressed — they duplicate
@@ -1901,6 +1911,7 @@ export class CodexRolloutParser {
     timestamp: string,
     usage: CodexTokenUsage | null,
     rateLimits?: CodexRateLimits | null,
+    singleRequest = false,
   ): SessionEvent[] {
     const normalizedRateLimits = normalizeRateLimits(rateLimits);
     if (!usage && !normalizedRateLimits) return [];
@@ -1915,9 +1926,10 @@ export class CodexRolloutParser {
           outputTokens: usage.output_tokens,
           cacheReadTokens: usage.cached_input_tokens,
           reasoningTokens: usage.reasoning_output_tokens,
-          // `last_token_usage` is one model call's, so its prompt selects
-          // the long-context tier.
-          singleRequest: true,
+          // Only `last_token_usage` is one model call's, so only its prompt
+          // selects the long-context tier; a difference of running totals
+          // can span several calls and stays at base rates.
+          singleRequest,
         })
       : undefined;
     const mappedUsage: MessageUsage | undefined = normalizedUsage

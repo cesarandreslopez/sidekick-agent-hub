@@ -349,7 +349,46 @@ describe('duplicate token_count events', () => {
         { last_token_usage: usage(10, 0, 5), total_token_usage: usage(10, 0, 5) },
         usage(5000, 0, 500),
       ),
-    ).toEqual({ usage: usage(10, 0, 5), total: usage(10, 0, 5) });
+    ).toEqual({ usage: usage(10, 0, 5), total: usage(10, 0, 5), single: true });
+  });
+
+  it('marks only last_token_usage as one call (fallbacks may span several)', () => {
+    // A difference of running totals: not one call.
+    expect(
+      resolveCodexCallUsage({ total_token_usage: usage(900, 0, 50) }, usage(100, 0, 10)).single,
+    ).toBeUndefined();
+    // The total dropped and no last_token_usage: the whole total, not one call.
+    expect(
+      resolveCodexCallUsage({ total_token_usage: usage(10, 0, 5) }, usage(5000, 0, 500)).single,
+    ).toBeUndefined();
+    expect(resolveCodexCallUsage({ last_token_usage: usage(10, 0, 5) }, null).single).toBe(true);
+  });
+
+  it('prices a summed token_count at base rates, even past the long-context threshold', () => {
+    const parser = new CodexRolloutParser();
+    parser.convertLine({
+      type: 'turn_context',
+      timestamp: '2026-11-11T10:00:00.000Z',
+      payload: { model: 'gpt-6.1-sol' },
+    } as never);
+    const tierOf = (info: Record<string, unknown>) => {
+      const events = parser.convertLine({
+        type: 'event_msg',
+        timestamp: '2026-11-11T10:00:01.000Z',
+        payload: { type: 'token_count', info },
+      } as never);
+      const usageEvent = events.find((event) => event.message?.normalizedUsage);
+      return usageEvent?.message?.normalizedUsage?.requestPromptTokens;
+    };
+    // Running totals only: 400K of input across calls.
+    expect(tierOf({ total_token_usage: usage(400_000, 0, 100) })).toBeUndefined();
+    // One call's usage names its prompt size.
+    expect(
+      tierOf({
+        last_token_usage: usage(300_000, 0, 100),
+        total_token_usage: usage(700_000, 0, 200),
+      }),
+    ).toBe(300_000);
   });
 
   it('resets its duplicate baseline with the parser', () => {

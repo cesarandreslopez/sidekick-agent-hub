@@ -422,13 +422,16 @@ export class JsonlSessionWatcher implements SessionWatcher {
   }
 
   /** One call's usage from a token_count `info`, skipping duplicate events. */
-  private codexCallUsage(info: Record<string, unknown> | undefined): CodexTokenUsage | null {
+  private codexCallUsage(info: Record<string, unknown> | undefined): {
+    usage: CodexTokenUsage | null;
+    single: boolean;
+  } {
     const resolved = resolveCodexCallUsage(
       info as Parameters<typeof resolveCodexCallUsage>[0],
       this.codexPrevTotal ?? null,
     );
     this.codexPrevTotal = resolved.total ?? undefined;
-    return resolved.usage;
+    return { usage: resolved.usage, single: resolved.single === true };
   }
 
   private normalizeCodexEvent(raw: Record<string, unknown>): FollowEvent[] {
@@ -521,7 +524,7 @@ export class JsonlSessionWatcher implements SessionWatcher {
       const evtType = payload?.type as string | undefined;
       if (evtType === 'token_count') {
         const info = payload?.info as Record<string, unknown> | undefined;
-        const usage = this.codexCallUsage(info);
+        const { usage, single } = this.codexCallUsage(info);
         const rl = payload?.rate_limits as Record<string, unknown> | undefined;
         const rateLimits = rl ? extractRateLimits(rl) : undefined;
         if (usage || rateLimits) {
@@ -542,6 +545,9 @@ export class JsonlSessionWatcher implements SessionWatcher {
             cacheTokens: usage?.cached_input_tokens
               ? { read: usage.cached_input_tokens, write: 0 }
               : undefined,
+            // One call's prompt (Codex input includes cached input) selects the
+            // long-context tier; a difference of running totals does not.
+            ...(usage && single ? { requestPromptTokens: usage.input_tokens || 0 } : {}),
             rateLimits,
             raw,
           });

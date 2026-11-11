@@ -705,9 +705,9 @@ export class EventAggregator {
         cacheWriteTokens: event.cacheTokens?.write,
         reasoningIncludedInOutput: false,
         reportedCostUsd: event.cost,
-        // One followed event's tokens are one request's; a correction names
-        // its whole call's prompt size explicitly.
-        singleRequest: true,
+        // A follow event names its request's prompt size when its tokens are
+        // one model call's (a correction names its whole call's); without
+        // it the tokens may merge calls and stay at base rates.
         ...(event.requestPromptTokens !== undefined
           ? { requestPromptTokens: event.requestPromptTokens }
           : {}),
