@@ -31,14 +31,29 @@
 import { resolveModelAlias } from './modelAliases';
 import { ownValue, setOwnValue } from './ownKey';
 
-/** Known model context window sizes (in tokens); current models verified 2026-09-05. */
+/** Known model context window sizes (in tokens); current models verified 2026-11-11. */
 const MODEL_CONTEXT_SIZES: Record<string, number> = {
-  // Published API limits verified 2026-10-30; GLM's API documents 1M even
+  // Published API limits verified 2026-11-11; GLM's API documents 1M even
   // though local weights may support more. Catalog/observed overrides win.
-  'gpt-6.1-sol': 1_050_000,
-  'openai/gpt-6.1-sol': 1_050_000,
-  'gpt-6.1-terra': 1_050_000,
-  'openai/gpt-6.1-terra': 1_050_000,
+  // GPT-5.6, GPT-6 and GPT-6.1 values are the maximum *input* (the 1.05M
+  // total window minus the 128K output cap), as the LiteLLM catalog's
+  // `max_input_tokens` reports them, so offline and online agree and a full
+  // gauge means a larger prompt would be rejected.
+  'gpt-6.1-sol': 922_000,
+  'openai/gpt-6.1-sol': 922_000,
+  'gpt-6.1-terra': 922_000,
+  'openai/gpt-6.1-terra': 922_000,
+  'gpt-6-cyber': 922_000,
+  'openai/gpt-6-cyber': 922_000,
+  'gpt-6-rosalind': 922_000,
+  'openai/gpt-6-rosalind': 922_000,
+  'gpt-6-astra-law': 922_000,
+  'openai/gpt-6-astra-law': 922_000,
+  'openai/gpt-6-astra': 922_000,
+  'openai/gpt-6-sol': 922_000,
+  'openai/gpt-6-luna': 922_000,
+  // Without its own key it would prefix-match `gpt-5.6` (922K).
+  'gpt-5.6-cyber': 272_000,
   'claude-sonnet-5-5': 1_000_000,
   'anthropic/claude-sonnet-5-5': 1_000_000,
   'claude-sonnet-5.5': 1_000_000,
@@ -65,7 +80,27 @@ const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'zai/glm-5.3-flash': 1_000_000,
   'glm-5.3-flashx': 1_000_000,
   'zai/glm-5.3-flashx': 1_000_000,
-  // Claude — native 1M context (Fable 5+, Opus 4.6+, Sonnet 4.6+)
+  // Claude — native 1M context (Fable 5+, Mythos, Opus 4.6+, Sonnet 4.6+).
+  // Dotted spellings need their own keys: `claude-opus-4.8` would otherwise
+  // prefix-match `claude-opus-4` (200K).
+  'claude-fable-5-2': 1_000_000,
+  'anthropic/claude-fable-5-2': 1_000_000,
+  'claude-fable-5.2': 1_000_000,
+  'anthropic/claude-fable-5.2': 1_000_000,
+  'claude-mythos-5-2': 1_000_000,
+  'anthropic/claude-mythos-5-2': 1_000_000,
+  'claude-mythos-5.2': 1_000_000,
+  'anthropic/claude-mythos-5.2': 1_000_000,
+  'claude-mythos-5-1': 1_000_000,
+  'claude-mythos-5.1': 1_000_000,
+  'claude-mythos-5': 1_000_000,
+  'claude-mythos-preview': 1_000_000,
+  'anthropic/claude-opus-5-5': 1_000_000,
+  'anthropic/claude-opus-5.5': 1_000_000,
+  'claude-opus-4.8': 1_000_000,
+  'claude-opus-4.7': 1_000_000,
+  'claude-opus-4.6': 1_000_000,
+  'claude-sonnet-4.6': 1_000_000,
   'claude-fable-5-1': 1_000_000,
   'claude-fable-5.1': 1_000_000,
   'claude-fable-5': 1_000_000,
@@ -94,16 +129,17 @@ const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'gpt-4.1': 1_048_576,
   // OpenAI GPT-5/6 series (keys sorted longest-first below; explicit entries
   // for every variant so prefix matching can't misclassify a new one).
-  // These are published model maxima. Codex reports a smaller *effective*
-  // window per account tier via token_count; that value wins through the
-  // observed-override layer.
-  'gpt-6-astra': 1_050_000,
-  'gpt-6-sol': 1_050_000,
-  'gpt-6-luna': 1_050_000,
-  'gpt-5.6-sol': 1_050_000,
-  'gpt-5.6-terra': 1_050_000,
-  'gpt-5.6-luna': 1_050_000,
-  'gpt-5.6': 1_050_000,
+  // These are published model maxima (maximum input for GPT-5.6 and GPT-6,
+  // see above; GPT-5.5 and GPT-5.4 publish 1.05M as their input limit).
+  // Codex reports a smaller *effective* window per account tier via
+  // token_count; that value wins through the observed-override layer.
+  'gpt-6-astra': 922_000,
+  'gpt-6-sol': 922_000,
+  'gpt-6-luna': 922_000,
+  'gpt-5.6-sol': 922_000,
+  'gpt-5.6-terra': 922_000,
+  'gpt-5.6-luna': 922_000,
+  'gpt-5.6': 922_000,
   'gpt-5.5': 1_050_000,
   'gpt-5.4-mini': 400_000,
   'gpt-5.4-nano': 400_000,

@@ -215,6 +215,8 @@ export function normalizeOpenCodeUsage(
     reasoningTokens: tokens.reasoning,
     reasoningIncludedInOutput: layout.reasoningInOutput,
     ...(extra.reportedCostUsd !== undefined ? { reportedCostUsd: extra.reportedCostUsd } : {}),
+    // A message's or step's tokens are one model call's.
+    singleRequest: true,
   });
 }
 

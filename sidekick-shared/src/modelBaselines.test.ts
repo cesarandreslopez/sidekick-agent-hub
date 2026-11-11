@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   resolveModelPricing,
+  resolvePricingTier,
   getModelInfo,
   _clearPricingOverrides,
   _setPricingOverrides,
@@ -20,10 +21,23 @@ import {
 import { exportResolvedModelCatalog, importResolvedModelCatalog } from './modelCatalog';
 import { hydratePricingCatalog } from './pricingCatalog';
 
-// Expected published API baselines as of 2026-10-30, including accepted aliases.
+// Expected published API baselines as of 2026-11-11, including accepted aliases.
+// GPT-5.6/6/6.1 windows are the maximum input (1.05M total minus 128K output).
 const cases: Array<[string, string, number, number, number, number, number]> = [
-  ['openai', 'gpt-6.1-sol', 2, 10, 2.5, 0.1, 1_050_000],
-  ['openai', 'gpt-6.1-terra', 1, 5, 1.25, 0.05, 1_050_000],
+  ['anthropic', 'claude-fable-5-2', 8, 40, 10, 0.2, 1_000_000],
+  ['anthropic', 'claude-fable-5.2', 8, 40, 10, 0.2, 1_000_000],
+  ['anthropic', 'claude-mythos-5-2', 8, 40, 10, 0.2, 1_000_000],
+  ['anthropic', 'claude-mythos-5.2', 8, 40, 10, 0.2, 1_000_000],
+  ['anthropic', 'claude-opus-5-5', 4, 20, 5, 0.2, 1_000_000],
+  ['anthropic', 'claude-opus-5.5', 4, 20, 5, 0.2, 1_000_000],
+  ['openai', 'gpt-6-astra', 10, 50, 12.5, 1, 922_000],
+  ['openai', 'gpt-6-sol', 2, 10, 2.5, 0.2, 922_000],
+  ['openai', 'gpt-6-luna', 0.1, 0.5, 0.125, 0.01, 922_000],
+  ['openai', 'gpt-6-cyber', 20, 100, 25, 2, 922_000],
+  ['openai', 'gpt-6-rosalind', 15, 75, 18.75, 1.5, 922_000],
+  ['openai', 'gpt-6-astra-law', 10, 50, 0, 1, 922_000],
+  ['openai', 'gpt-6.1-sol', 2, 10, 2.5, 0.1, 922_000],
+  ['openai', 'gpt-6.1-terra', 1, 5, 1.25, 0.05, 922_000],
   ['anthropic', 'claude-sonnet-5-5', 2, 10, 2.5, 0.1, 1_000_000],
   ['anthropic', 'claude-sonnet-5.5', 2, 10, 2.5, 0.1, 1_000_000],
   ['anthropic', 'claude-haiku-5-5', 0.1, 0.5, 0.125, 0.01, 1_000_000],
@@ -156,4 +170,106 @@ describe('current coding model offline baselines', () => {
       }
     },
   );
+});
+
+describe('older and inherited model rates (2026-11-11)', () => {
+  it('keeps the previous Fable and Mythos cache-read rates', () => {
+    for (const id of [
+      'claude-fable-5-1',
+      'claude-fable-5.1',
+      'claude-mythos-5-1',
+      'claude-mythos-5.1',
+    ]) {
+      expect(resolveModelPricing(id).pricing).toMatchObject({
+        inputCostPerMillion: 10,
+        outputCostPerMillion: 50,
+        cacheReadCostPerMillion: 0.25,
+      });
+    }
+    for (const id of ['claude-fable-5', 'claude-mythos-5', 'claude-mythos-preview']) {
+      expect(resolveModelPricing(id).pricing).toMatchObject({
+        inputCostPerMillion: 10,
+        cacheReadCostPerMillion: 1,
+      });
+      expect(resolveModelContextWindow(id).tierEffective).toBe(1_000_000);
+    }
+  });
+
+  it('prices Fable 5.2 on its own rates rather than the Fable 5 prefix', () => {
+    const fable52 = resolveModelPricing('claude-fable-5-2-20261101');
+    expect(fable52.provenance.matchedModelId).toBe('claude-fable-5-2');
+    expect(fable52.pricing?.cacheReadCostPerMillion).toBe(0.2);
+  });
+
+  it('locks in the Codex-era ids an older key already prices exactly', () => {
+    for (const id of ['gpt-5-codex', 'gpt-5.1', 'gpt-5.1-codex', 'gpt-5.1-codex-max']) {
+      expect(resolveModelPricing(id)).toMatchObject({
+        pricing: {
+          inputCostPerMillion: 1.25,
+          outputCostPerMillion: 10,
+          cacheReadCostPerMillion: 0.125,
+        },
+        provenance: { match: 'prefix', matchedModelId: 'gpt-5' },
+      });
+    }
+    expect(resolveModelPricing('gpt-5.2-codex')).toMatchObject({
+      pricing: { inputCostPerMillion: 1.75, outputCostPerMillion: 14 },
+      provenance: { match: 'prefix', matchedModelId: 'gpt-5.2' },
+    });
+  });
+
+  it('prices o4-mini and the cyber specialties exactly, not by a cheaper prefix', () => {
+    expect(resolveModelPricing('o4-mini')).toMatchObject({
+      pricing: {
+        inputCostPerMillion: 1.1,
+        outputCostPerMillion: 4.4,
+        cacheReadCostPerMillion: 0.275,
+      },
+      provenance: { match: 'exact' },
+    });
+    expect(resolveModelPricing('gpt-5.6-cyber').pricing?.inputCostPerMillion).toBe(12.5);
+    expect(resolveModelContextWindow('gpt-5.6-cyber').tierEffective).toBe(272_000);
+    expect(resolveModelPricing('gpt-5.5-cyber').pricing?.outputCostPerMillion).toBe(75);
+    expect(resolveModelPricing('gpt-6-astra-law').pricing?.tiers).toBeUndefined();
+  });
+
+  it('gives dotted Opus 4.x and Sonnet 4.6 ids their 1M window', () => {
+    for (const id of [
+      'claude-opus-4.8',
+      'claude-opus-4.7',
+      'claude-opus-4.6',
+      'claude-sonnet-4.6',
+    ]) {
+      expect(resolveModelContextWindow(id).tierEffective).toBe(1_000_000);
+    }
+  });
+});
+
+describe('long-context tier boundaries', () => {
+  it.each([
+    ['claude-haiku-5-5', 100_000, 0.1, 0.5],
+    ['anthropic/claude-haiku-5.5', 100_000, 0.1, 0.5],
+    ['gpt-6.1-sol', 272_000, 2, 4],
+    ['openai/gpt-6.1-sol', 272_000, 2, 4],
+    ['gpt-6-astra', 272_000, 10, 20],
+    ['openai/gpt-6-astra', 272_000, 10, 20],
+    ['gpt-5.6-sol', 272_000, 4, 8],
+    ['gpt-5.5', 272_000, 5, 10],
+  ])('%s switches to its tier strictly above %d prompt tokens', (id, threshold, base, tiered) => {
+    const pricing = resolveModelPricing(id).pricing;
+    expect(pricing?.inputCostPerMillion).toBe(base);
+    expect(resolvePricingTier(pricing, threshold)).toBeNull();
+    expect(resolvePricingTier(pricing, threshold + 1)?.inputCostPerMillion).toBe(tiered);
+    expect(resolvePricingTier(pricing, threshold + 1)?.aboveInputTokens).toBe(threshold);
+  });
+
+  it('round-trips tiers through a catalog export', () => {
+    const snapshot = JSON.parse(JSON.stringify(exportResolvedModelCatalog(['gpt-6-astra'])));
+    expect(snapshot.models['gpt-6-astra'].pricing.pricing.tiers).toHaveLength(1);
+    expect(importResolvedModelCatalog(snapshot).diagnostics).toEqual([]);
+    expect(resolveModelPricing('gpt-6-astra').pricing?.tiers?.[0]).toMatchObject({
+      aboveInputTokens: 272_000,
+      outputCostPerMillion: 75,
+    });
+  });
 });

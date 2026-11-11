@@ -1890,6 +1890,9 @@ export class CodexRolloutParser {
           outputTokens: usage.output_tokens,
           cacheReadTokens: usage.cached_input_tokens,
           reasoningTokens: usage.reasoning_output_tokens,
+          // `last_token_usage` is one model call's, so its prompt selects
+          // the long-context tier.
+          singleRequest: true,
         })
       : undefined;
     const mappedUsage: MessageUsage | undefined = normalizedUsage

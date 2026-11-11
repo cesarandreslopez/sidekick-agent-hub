@@ -453,3 +453,123 @@ describe('priceProviderUsage', () => {
     ).toMatchObject({ costUsd: null, provenance: 'unpriced' });
   });
 });
+
+describe('long-context tier pricing', () => {
+  const tiered = {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.1,
+    tiers: [
+      {
+        aboveInputTokens: 272_000,
+        inputCostPerMillion: 4,
+        outputCostPerMillion: 15,
+        cacheWriteCostPerMillion: 0,
+        cacheReadCostPerMillion: 0.2,
+      },
+    ],
+  };
+
+  it('records the request prompt size only for single requests', () => {
+    const counters = { inputTokens: 300_000, cacheReadTokens: 20_000, outputTokens: 1_000 };
+    expect(
+      normalizeProviderUsage({ semantics: 'anthropic', ...counters }).requestPromptTokens,
+    ).toBeUndefined();
+    expect(
+      normalizeProviderUsage({ semantics: 'anthropic', singleRequest: true, ...counters })
+        .requestPromptTokens,
+    ).toBe(320_000);
+    // An explicit size (a correction's whole call) wins over the counters.
+    expect(
+      normalizeProviderUsage({
+        semantics: 'anthropic',
+        singleRequest: true,
+        requestPromptTokens: 400_000,
+        ...counters,
+      }).requestPromptTokens,
+    ).toBe(400_000);
+  });
+
+  it('bills every category at the tier strictly above the threshold', () => {
+    const at = (prompt: number) =>
+      calculateNormalizedUsageCost({
+        usage: normalizeProviderUsage({
+          semantics: 'openai',
+          inputTokens: prompt,
+          cacheReadTokens: 100_000,
+          outputTokens: 1_000_000,
+          singleRequest: true,
+        }),
+        pricing: tiered,
+      });
+    const below = at(272_000);
+    expect(below.pricingTier).toBeUndefined();
+    expect(below.costUsd).toBeCloseTo(0.172 * 2 + 0.1 * 0.1 + 10, 9);
+    const above = at(272_001);
+    expect(above.pricingTier).toBe(272_000);
+    expect(above.costUsd).toBeCloseTo(0.172001 * 4 + 0.1 * 0.2 + 15, 9);
+  });
+
+  it('never tiers a total that merges several requests', () => {
+    const merged = normalizeProviderUsage({
+      semantics: 'sidekick',
+      reasoningIncludedInOutput: false,
+      inputTokens: 5_000_000,
+      outputTokens: 10,
+    });
+    const priced = calculateNormalizedUsageCost({ usage: merged, pricing: tiered });
+    expect(priced.pricingTier).toBeUndefined();
+    expect(priced.costUsd).toBeCloseTo(5 * 2 + 0.00001 * 10, 9);
+  });
+
+  it('bills an OpenAI cache write at the tier input rate when there is no write rate', () => {
+    const priced = calculateNormalizedUsageCost({
+      usage: normalizeProviderUsage({
+        semantics: 'openai',
+        inputTokens: 400_000,
+        cacheWriteTokens: 100_000,
+        singleRequest: true,
+      }),
+      pricing: tiered,
+    });
+    expect(priced.pricingTier).toBe(272_000);
+    expect(priced.costUsd).toBeCloseTo(0.3 * 4 + 0.1 * 4, 9);
+  });
+
+  it('defaults priceProviderUsage to single requests except for Codex', () => {
+    const big = { input_tokens: 300_000, output_tokens: 10 };
+    const anthropic = priceProviderUsage({ provider: 'anthropic', usage: big, pricing: tiered });
+    expect(anthropic.pricingTier).toBe(272_000);
+    expect(anthropic.normalized.requestPromptTokens).toBe(300_000);
+    const codex = priceProviderUsage({ provider: 'codex', usage: big, pricing: tiered });
+    expect(codex.pricingTier).toBeUndefined();
+    const lastCall = priceProviderUsage({
+      provider: 'codex',
+      usage: big,
+      pricing: tiered,
+      singleRequest: true,
+    });
+    expect(lastCall.pricingTier).toBe(272_000);
+  });
+
+  it('tiers model-catalog prices too (GPT-6.1 Sol above 272K)', () => {
+    const priced = priceProviderUsage({
+      provider: 'openai',
+      model: 'gpt-6.1-sol',
+      usage: { input_tokens: 300_000, output_tokens: 0 },
+    });
+    expect(priced.provenance).toBe('model-catalog');
+    expect(priced.pricingTier).toBe(272_000);
+    expect(priced.costUsd).toBeCloseTo(0.3 * 4, 9);
+  });
+
+  it('keeps the new fields through the zod schema', () => {
+    const usage = normalizeProviderUsage({
+      semantics: 'anthropic',
+      inputTokens: 10,
+      singleRequest: true,
+    });
+    expect(normalizedUsageSchema.parse(usage).requestPromptTokens).toBe(10);
+  });
+});

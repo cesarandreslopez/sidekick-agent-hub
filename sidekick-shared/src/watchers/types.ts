@@ -26,6 +26,12 @@ export interface FollowEvent {
    * split line reported more). Absent means a regular call.
    */
   usageKind?: 'call' | 'correction';
+  /**
+   * Prompt size of the request the tokens belong to (uncached input + cache
+   * reads + writes); for a correction, the whole call's. Selects a
+   * long-context price tier.
+   */
+  requestPromptTokens?: number;
   cost?: number;
   toolName?: string;
   toolInput?: string;

@@ -507,6 +507,9 @@ function priceCachedEvent(
     cacheInclusiveInputTokens: cached.i + cached.cr + cached.cw,
     billableOutputTokens: cached.bo,
     totalTokens: cached.tt,
+    // One cached event is one call (split lines already merged by message id),
+    // so its prompt selects the long-context tier.
+    requestPromptTokens: cached.i + cached.cr + cached.cw,
     ...(cached.rc !== undefined ? { reportedCostUsd: cached.rc } : {}),
     provenance: { semantics: 'sidekick-disjoint' },
   };

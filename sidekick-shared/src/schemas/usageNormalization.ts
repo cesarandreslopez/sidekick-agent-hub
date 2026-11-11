@@ -11,6 +11,7 @@ const normalizedUsageObjectSchema = z.object({
   cacheInclusiveInputTokens: z.number().finite().nonnegative(),
   billableOutputTokens: z.number().finite().nonnegative(),
   totalTokens: z.number().finite().nonnegative(),
+  requestPromptTokens: z.number().finite().nonnegative().optional(),
   model: z.string().optional(),
   reportedCostUsd: z.number().finite().nonnegative().optional(),
   provenance: z.object({
@@ -40,4 +41,5 @@ export const normalizedUsageCostSchema = z.object({
   source: z.enum(['provider-reported', 'explicit-pricing', 'model-catalog', 'unpriced']),
   modelId: z.string().optional(),
   usage: normalizedUsageSchema,
+  pricingTier: z.number().finite().positive().optional(),
 }) satisfies z.ZodType<NormalizedUsageCost>;
