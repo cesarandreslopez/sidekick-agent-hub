@@ -23,6 +23,7 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 - Uses `@anthropic-ai/claude-agent-sdk` via Claude Code CLI authentication
 - No API keys needed — authentication is handled by the CLI
 - Completions are covered by your existing Max plan
+- Each feature passes its effort to Claude Code (`low`, or `medium` for code review and transforms); see [Request Tuning](../configuration/model-resolution.md#request-tuning)
 
 ## Session Monitoring
 
