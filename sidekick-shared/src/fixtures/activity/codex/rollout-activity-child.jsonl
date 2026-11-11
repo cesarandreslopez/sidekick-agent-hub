@@ -1,0 +1,8 @@
+{"timestamp":"2026-11-01T10:00:16.500Z","type":"session_meta","payload":{"id":"01a1a000-0000-7000-8000-00000000a002","timestamp":"2026-11-01T10:00:16.500Z","cwd":"/work/demo","originator":"codex_cli_rs","cli_version":"0.167.0","source":{"subagent":{"thread_spawn":{"parent_thread_id":"01a1a000-0000-7000-8000-00000000a001","depth":1}}}}}
+{"timestamp":"2026-11-01T10:00:16.600Z","type":"turn_context","payload":{"cwd":"/work/demo","model":"gpt-6-luna"}}
+{"timestamp":"2026-11-01T10:00:17.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"child-turn-1"}}
+{"timestamp":"2026-11-01T10:00:18.000Z","type":"response_item","payload":{"type":"function_call","status":"completed","id":"fc_call_c1","name":"exec_command","arguments":"{\"cmd\": \"rg SKCANARY src\"}","call_id":"call_c1"}}
+{"timestamp":"2026-11-01T10:00:18.100Z","type":"event_msg","payload":{"type":"exec_command_end","call_id":"call_c1","exit_code":0,"duration_ms":120,"stdout":"SKCANARY","stderr":""}}
+{"timestamp":"2026-11-01T10:00:18.200Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_c1","output":"Process exited with code 0\nSKCANARY"}}
+{"timestamp":"2026-11-01T10:00:19.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":5000,"cached_input_tokens":2500,"output_tokens":100,"reasoning_output_tokens":20,"total_tokens":5100},"last_token_usage":{"input_tokens":5000,"cached_input_tokens":2500,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":5050},"model_context_window":400000}}}
+{"timestamp":"2026-11-01T10:00:23.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"child-turn-1"}}

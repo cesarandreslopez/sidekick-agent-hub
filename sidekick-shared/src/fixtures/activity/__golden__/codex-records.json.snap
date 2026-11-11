@@ -1,0 +1,296 @@
+[
+  {
+    "kind": "session",
+    "at": 1793527200000,
+    "providerId": "codex",
+    "sessionId": "rollout-activity-parent",
+    "seq": 0
+  },
+  {
+    "kind": "prompt",
+    "at": 1793527201200,
+    "seq": 1
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527202000,
+    "id": "call_1",
+    "station": "shell",
+    "label": "npm test",
+    "tool": "Bash",
+    "hint": "test",
+    "seq": 2
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527206000,
+    "id": "call_1",
+    "outcome": "error",
+    "durationMs": 3900,
+    "resultChars": 13,
+    "seq": 3
+  },
+  {
+    "kind": "step",
+    "at": 1793527206500,
+    "model": "gpt-6.1-sol",
+    "startedAt": 1793527206100,
+    "seq": 4
+  },
+  {
+    "kind": "context",
+    "at": 1793527206500,
+    "percent": 7.5,
+    "tokens": 30000,
+    "window": 400000,
+    "source": "usage",
+    "seq": 5
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527207000,
+    "id": "call_2",
+    "station": "files",
+    "label": "rm",
+    "tool": "Bash",
+    "hint": "edit",
+    "seq": 6
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527207500,
+    "id": "call_2",
+    "outcome": "denied",
+    "durationMs": 0,
+    "resultChars": 0,
+    "deniedBy": "user",
+    "seq": 7
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527208000,
+    "id": "call_3",
+    "station": "files",
+    "label": "src/a.ts +2",
+    "tool": "Edit",
+    "hint": "edit",
+    "fold": 3,
+    "seq": 8
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527208300,
+    "id": "call_3",
+    "outcome": "ok",
+    "durationMs": 200,
+    "resultChars": 85,
+    "seq": 9
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527209000,
+    "id": "call_4",
+    "station": "plan",
+    "label": "plan update",
+    "labelKey": "planUpdate",
+    "tool": "UpdatePlan",
+    "seq": 10
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527209100,
+    "id": "call_4",
+    "outcome": "ok",
+    "resultChars": 12,
+    "seq": 11
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527210000,
+    "id": "call_5",
+    "station": "network",
+    "label": "web search",
+    "labelKey": "webSearch",
+    "tool": "WebSearch",
+    "hint": "remote",
+    "seq": 12
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527211000,
+    "id": "call_5",
+    "outcome": "ok",
+    "resultChars": 16,
+    "seq": 13
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527212000,
+    "id": "call_6",
+    "station": "network",
+    "label": "docs: lookup",
+    "tool": "Lookup",
+    "seq": 14
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527212300,
+    "id": "call_6",
+    "outcome": "ok",
+    "durationMs": 300,
+    "resultChars": 12,
+    "seq": 15
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527213000,
+    "id": "call_7",
+    "station": "network",
+    "label": "cua repl: js",
+    "tool": "Js",
+    "seq": 16
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527213500,
+    "id": "call_7",
+    "outcome": "ok",
+    "resultChars": 8,
+    "seq": 17
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527214000,
+    "id": "call_8",
+    "station": "network",
+    "label": "web",
+    "tool": "Exec",
+    "seq": 18
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527215000,
+    "id": "call_8",
+    "outcome": "ok",
+    "resultChars": 8,
+    "seq": 19
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527216000,
+    "id": "call_9",
+    "station": "agents",
+    "label": "worker",
+    "tool": "Spawn_agent",
+    "spawn": true,
+    "seq": 20
+  },
+  {
+    "kind": "subagentStart",
+    "at": 1793527216000,
+    "agentId": "call_9",
+    "spawnId": "call_9",
+    "label": "worker",
+    "seq": 21
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527216300,
+    "id": "call_9",
+    "outcome": "ok",
+    "resultChars": 29,
+    "seq": 22
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527218000,
+    "agentId": "call_9",
+    "id": "call_c1",
+    "station": "files",
+    "label": "rg",
+    "tool": "Bash",
+    "hint": "search",
+    "seq": 23
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527218100,
+    "agentId": "call_9",
+    "id": "call_c1",
+    "outcome": "ok",
+    "durationMs": 120,
+    "resultChars": 8,
+    "seq": 24
+  },
+  {
+    "kind": "step",
+    "at": 1793527219000,
+    "agentId": "call_9",
+    "model": "gpt-6-luna",
+    "startedAt": 1793527218200,
+    "seq": 25
+  },
+  {
+    "kind": "subagentEnd",
+    "at": 1793527224000,
+    "agentId": "call_9",
+    "outcome": "ok",
+    "seq": 26
+  },
+  {
+    "kind": "step",
+    "at": 1793527225000,
+    "model": "gpt-6.1-sol",
+    "startedAt": 1793527216300,
+    "seq": 27
+  },
+  {
+    "kind": "context",
+    "at": 1793527225000,
+    "percent": 15,
+    "tokens": 60000,
+    "window": 400000,
+    "source": "usage",
+    "seq": 28
+  },
+  {
+    "kind": "compaction",
+    "at": 1793527226000,
+    "tokensBefore": 90000,
+    "tokensAfter": 12000,
+    "seq": 29
+  },
+  {
+    "kind": "turnEnd",
+    "at": 1793527227500,
+    "outcome": "done",
+    "seq": 30
+  },
+  {
+    "kind": "prompt",
+    "at": 1793527230100,
+    "seq": 31
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527231000,
+    "id": "call_10",
+    "station": "shell",
+    "label": "sleep",
+    "tool": "Bash",
+    "seq": 32
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527235000,
+    "id": "call_10",
+    "outcome": "cancelled",
+    "seq": 33
+  },
+  {
+    "kind": "turnEnd",
+    "at": 1793527235000,
+    "outcome": "aborted",
+    "seq": 34
+  }
+]

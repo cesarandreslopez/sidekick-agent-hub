@@ -1,0 +1,437 @@
+{
+  "schemaVersion": 1,
+  "providerId": "codex",
+  "sessionId": "rollout-activity-parent",
+  "span": {
+    "startAt": 1793527200000,
+    "endAt": 1793527235000,
+    "activeMs": 12100
+  },
+  "totals": {
+    "prompts": 2,
+    "turns": 2,
+    "steps": 3,
+    "calls": 11,
+    "errors": 1,
+    "denials": 1,
+    "cancelled": 1,
+    "asks": 0,
+    "resultChars": 191,
+    "hookRuns": 0,
+    "hookMs": 0,
+    "pushed": 0,
+    "compactions": 1,
+    "subagents": 1
+  },
+  "stations": [
+    {
+      "id": "you",
+      "calls": 0,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 0,
+      "callMs": 0,
+      "shareOfBusy": 0,
+      "resultChars": 0,
+      "estTokens": 0,
+      "topLabels": []
+    },
+    {
+      "id": "model",
+      "calls": 0,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 0,
+      "callMs": 0,
+      "shareOfBusy": 0,
+      "resultChars": 0,
+      "estTokens": 0,
+      "topLabels": []
+    },
+    {
+      "id": "memory",
+      "calls": 0,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 0,
+      "callMs": 0,
+      "shareOfBusy": 0,
+      "resultChars": 0,
+      "estTokens": 0,
+      "topLabels": []
+    },
+    {
+      "id": "files",
+      "calls": 3,
+      "errors": 0,
+      "denials": 1,
+      "cancelled": 0,
+      "busyMs": 900,
+      "callMs": 320,
+      "shareOfBusy": 0.0743801652892562,
+      "resultChars": 93,
+      "estTokens": 23,
+      "avgMs": 107,
+      "p95Ms": 255,
+      "topLabels": [
+        {
+          "label": "rg",
+          "count": 1
+        },
+        {
+          "label": "rm",
+          "count": 1
+        },
+        {
+          "label": "src/a.ts +2",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "shell",
+      "calls": 2,
+      "errors": 1,
+      "denials": 0,
+      "cancelled": 1,
+      "busyMs": 8000,
+      "callMs": 7900,
+      "shareOfBusy": 0.6611570247933884,
+      "resultChars": 13,
+      "estTokens": 3,
+      "avgMs": 3950,
+      "p95Ms": 4095,
+      "topLabels": [
+        {
+          "label": "npm test",
+          "count": 1
+        },
+        {
+          "label": "sleep",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "network",
+      "calls": 4,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 2800,
+      "callMs": 2800,
+      "shareOfBusy": 0.23140495867768596,
+      "resultChars": 44,
+      "estTokens": 11,
+      "avgMs": 700,
+      "p95Ms": 1023,
+      "topLabels": [
+        {
+          "label": "cua repl: js",
+          "count": 1
+        },
+        {
+          "label": "docs: lookup",
+          "count": 1
+        },
+        {
+          "label": "web",
+          "count": 1
+        },
+        {
+          "label": "web search",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "browser",
+      "calls": 0,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 0,
+      "callMs": 0,
+      "shareOfBusy": 0,
+      "resultChars": 0,
+      "estTokens": 0,
+      "topLabels": []
+    },
+    {
+      "id": "agents",
+      "calls": 1,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 300,
+      "callMs": 300,
+      "shareOfBusy": 0.024793388429752067,
+      "resultChars": 29,
+      "estTokens": 7,
+      "avgMs": 300,
+      "p95Ms": 511,
+      "topLabels": [
+        {
+          "label": "worker",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "skills",
+      "calls": 0,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 0,
+      "callMs": 0,
+      "shareOfBusy": 0,
+      "resultChars": 0,
+      "estTokens": 0,
+      "topLabels": []
+    },
+    {
+      "id": "hooks",
+      "calls": 0,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 0,
+      "callMs": 0,
+      "shareOfBusy": 0,
+      "resultChars": 0,
+      "estTokens": 0,
+      "topLabels": []
+    },
+    {
+      "id": "plan",
+      "calls": 1,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 100,
+      "callMs": 100,
+      "shareOfBusy": 0.008264462809917356,
+      "resultChars": 12,
+      "estTokens": 3,
+      "avgMs": 100,
+      "p95Ms": 127,
+      "topLabels": [
+        {
+          "label": "plan update",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "transitions": {
+    "stations": [
+      "you",
+      "model",
+      "memory",
+      "files",
+      "shell",
+      "network",
+      "browser",
+      "agents",
+      "skills",
+      "hooks",
+      "plan"
+    ],
+    "counts": [
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        3,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    ]
+  },
+  "patterns": [],
+  "models": [
+    {
+      "model": "gpt-6.1-sol",
+      "steps": 2,
+      "firstAt": 1793527206500,
+      "lastAt": 1793527225000
+    },
+    {
+      "model": "gpt-6-luna",
+      "steps": 1,
+      "firstAt": 1793527219000,
+      "lastAt": 1793527219000
+    }
+  ],
+  "slowest": [
+    {
+      "station": "shell",
+      "label": "sleep",
+      "durationMs": 4000,
+      "at": 1793527235000
+    },
+    {
+      "station": "shell",
+      "label": "npm test",
+      "durationMs": 3900,
+      "at": 1793527206000
+    },
+    {
+      "station": "network",
+      "label": "web search",
+      "durationMs": 1000,
+      "at": 1793527211000
+    },
+    {
+      "station": "network",
+      "label": "web",
+      "durationMs": 1000,
+      "at": 1793527215000
+    },
+    {
+      "station": "network",
+      "label": "cua repl: js",
+      "durationMs": 500,
+      "at": 1793527213500
+    }
+  ]
+}
