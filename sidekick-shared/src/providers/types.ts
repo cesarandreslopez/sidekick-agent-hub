@@ -262,6 +262,17 @@ export interface SessionReader {
   restoreResumeState?(state: unknown): boolean;
 }
 
+/** Options for {@link SessionProviderBase.createReader}. */
+export interface SessionReaderOptions {
+  /**
+   * Also emit the activity-signal `system` events the provider's log can
+   * carry: hook runs and pushed memory files (Claude Code; see
+   * `ExtractSessionEventsOptions.includeActivitySignals`). Providers without
+   * such records ignore it. Default false.
+   */
+  includeActivitySignals?: boolean;
+}
+
 /**
  * Expanded session provider interface (no VS Code dependencies).
  *
@@ -321,7 +332,7 @@ export interface SessionProviderBase {
   // --- Data reading ---
 
   /** Creates an incremental reader for a session file. */
-  createReader(sessionPath: string): SessionReader;
+  createReader(sessionPath: string, options?: SessionReaderOptions): SessionReader;
 
   // --- Subagent support ---
 

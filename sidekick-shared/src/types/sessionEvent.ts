@@ -73,6 +73,13 @@ export interface SessionMessage {
   stop_reason?: string;
 }
 
+/** How a tool call was allowed or refused (see {@link SessionEventBase.permissionDecision}). */
+export interface PermissionDecision {
+  decision: 'accept' | 'reject' | (string & {});
+  source?: string;
+  reasonType?: string;
+}
+
 /**
  * Canonical session event from JSONL/DB log files.
  *
@@ -120,7 +127,25 @@ export interface SessionEventBase {
   compaction?: {
     tokensBefore: number;
     tokensAfter: number;
+    /** What started the compaction, when the provider records it. */
+    trigger?: 'auto' | 'manual';
   };
+
+  /**
+   * The subagent that wrote this line, when the provider records it on each
+   * line (Claude Code subagent transcripts carry `agentId`). Absent for the
+   * main loop.
+   */
+  agentId?: string;
+
+  /**
+   * How a tool call was allowed or refused, when the provider records it on
+   * the result line. Claude Code writes `decision` (`accept`, `reject`) and
+   * `source` (`config`, `user_temporary`, `user_permanent`, `user_reject`, …);
+   * the Codex parser maps a declined command or patch to `{ decision:
+   * 'reject', source: 'user_reject' }`. Only these three fields are kept.
+   */
+  permissionDecision?: PermissionDecision;
 
   /** Provider-specific signals normalized for shared analytics. */
   providerMetadata?: {
@@ -129,6 +154,8 @@ export interface SessionEventBase {
     retryAttempts?: number[];
     finishReasons?: string[];
     providerError?: { type?: string; message?: string; code?: string | number };
+    /** The context window the provider reported for the current model (Codex token counts). */
+    contextWindowTokens?: number;
   };
 
   /** Optional on the base so consumers can inspect legacy enriched events. */

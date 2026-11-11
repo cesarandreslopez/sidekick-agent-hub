@@ -37,6 +37,19 @@ const COMMAND_ARGS = /<command-args>\s*([\s\S]*?)\s*<\/command-args>/;
 const CODEX_INJECTED_PREFIX =
   /^(?:# AGENTS\.md instructions\b|<(?:environment_context|user_instructions|recommended_plugins|turn_aborted|skill|subagent_notification|codex_internal_context|user_shell_command|permissions instructions|collaboration_mode)\b)/;
 
+/**
+ * Whether user-role text was written by the harness rather than typed:
+ * Claude Code's local-command output, task notifications, system reminders
+ * and continuation summaries; Codex's injected instructions and context
+ * blocks. Reads only the start of the text.
+ */
+export function isInjectedPromptText(text: string, provider: HumanPromptProvider): boolean {
+  const trimmed = text.trimStart().slice(0, 256);
+  return provider === 'claude-code'
+    ? CLAUDE_INJECTED_PREFIX.test(trimmed)
+    : CODEX_INJECTED_PREFIX.test(trimmed);
+}
+
 /** Codex wraps attached images as `<image name=…>` / `</image>` text blocks. */
 const CODEX_IMAGE_WRAPPER = /^<\/?image\b[^>]*>$/;
 

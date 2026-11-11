@@ -3,6 +3,7 @@
  */
 
 import type { ProviderId } from '../providers/types';
+import type { SessionEvent } from '../types/sessionEvent';
 
 export type FollowEventType =
   | 'user'
@@ -44,6 +45,13 @@ export interface FollowEvent {
 
 export interface SessionWatcherCallbacks {
   onEvent: (event: FollowEvent) => void;
+  /**
+   * Every canonical session event the watcher reads, before the follow
+   * events derived from it: during the replay of `start(true)` as well as
+   * live, and after `onReset` when the session is delivered again. Lets a
+   * host run its own projection (the activity map) on the same stream.
+   */
+  onSessionEvent?: (event: SessionEvent) => void;
   /** All events in this read have been delivered; the cursor can now be checkpointed. */
   onBatchComplete?: () => void;
   onError?: (error: Error) => void;

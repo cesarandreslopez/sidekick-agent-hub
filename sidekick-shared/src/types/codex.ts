@@ -240,6 +240,7 @@ export type CodexEvent =
   | CodexErrorEvent
   | CodexContextCompactedEvent
   | CodexPatchAppliedEvent
+  | CodexPatchApplyEndEvent
   | CodexItemCompletedEvent
   | CodexBackgroundEvent
   | CodexGenericEvent;
@@ -339,6 +340,8 @@ export interface CodexExecCommandEndEvent {
   type: 'exec_command_end';
   call_id: string;
   exit_code: number;
+  /** `declined` when the person refused to run the command. */
+  status?: string;
   stdout?: string;
   stderr?: string;
   duration_ms?: number;
@@ -371,6 +374,14 @@ export interface CodexContextCompactedEvent {
   summary?: string;
   tokens_before?: number;
   tokens_after?: number;
+}
+
+/** The end of an `apply_patch` call: declined by the person, failed, or applied. */
+export interface CodexPatchApplyEndEvent {
+  type: 'patch_apply_end';
+  call_id: string;
+  success?: boolean;
+  status?: string;
 }
 
 export interface CodexPatchAppliedEvent {

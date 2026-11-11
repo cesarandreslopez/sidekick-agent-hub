@@ -13,6 +13,8 @@ import { estimateTextTokens } from '../tokenEstimation';
 import { isTaskNotificationSystemEvent, isTaskStatusSystemEvent } from '../subagentSpawn';
 import { isSubagentActivitySystemEvent } from '../subagentActivity';
 import { isTurnLifecycleSystemEvent } from '../turnLifecycle';
+import { isHookActivitySystemEvent } from '../hookActivity';
+import { isMemoryAttachmentSystemEvent } from '../memoryAttachment';
 import type { ProviderId, SessionProviderBase } from '../providers/types';
 import type {
   CompactionEvent,
@@ -410,6 +412,7 @@ function extractSystemSource(event: SessionEvent, state: SourceExtractionState):
   if (isTaskNotificationSystemEvent(event) || isTaskStatusSystemEvent(event)) return;
   // So are subagent lifecycle records and turn boundaries (opt-in Codex parser events).
   if (isSubagentActivitySystemEvent(event) || isTurnLifecycleSystemEvent(event)) return;
+  if (isHookActivitySystemEvent(event) || isMemoryAttachmentSystemEvent(event)) return;
   const message = event.message;
   const text = extractText(message?.content);
   const label = message?.sourceLabel ?? message?.role ?? 'system';

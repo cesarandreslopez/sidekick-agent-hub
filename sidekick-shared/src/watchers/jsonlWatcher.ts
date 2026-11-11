@@ -7,11 +7,13 @@ import { createJsonlTail, type JsonlTail } from './jsonlTail';
 import type { RawSessionEvent } from '../parsers/jsonl';
 import type { ProviderId } from '../providers/types';
 import {
+  CodexRolloutParser,
   codexTokenUsageFrom,
   normalizeCodexToolName,
   resolveCodexCallUsage,
 } from '../parsers/codexParser';
-import type { CodexTokenUsage } from '../types/codex';
+import { extractSessionEvents } from '../schemas/sessionEvent';
+import type { CodexRolloutLine, CodexTokenUsage } from '../types/codex';
 import { formatToolSummary } from '../formatters/toolSummary';
 import { ClaudeUsageDeduper, normalizeClaudeUsage } from '../usage/claudeUsageDedupe';
 import type { SessionEvent } from '../types/sessionEvent';
@@ -38,6 +40,12 @@ export interface JsonlSessionWatcherOptions {
    * `false`.
    */
   includeTaskNotifications?: boolean;
+  /**
+   * With a `callbacks.onSessionEvent` handler, also hand it Claude Code's
+   * hook and memory attachments as activity-signal `system` events (see
+   * `ExtractSessionEventsOptions.includeActivitySignals`). Default `false`.
+   */
+  includeActivitySignals?: boolean;
 }
 
 // ── Normalizers ──
@@ -273,6 +281,14 @@ export class JsonlSessionWatcher implements SessionWatcher {
   private readonly claudeUsageDeduper = new ClaudeUsageDeduper();
   /** Last Codex cumulative usage seen; repeated `token_count` events carry the same value. */
   private codexPrevTotal: CodexTokenUsage | undefined;
+  /**
+   * Canonical events for `onSessionEvent` keep their own usage deduper (and,
+   * for Codex, their own parser), so the follow events' counting is
+   * untouched. Neither is part of the resume state: after a resume the first
+   * split line of a response may be counted again in the session events.
+   */
+  private readonly sessionEventDeduper = new ClaudeUsageDeduper();
+  private sessionEventCodexParser: CodexRolloutParser | undefined;
 
   constructor(
     private readonly providerId: ProviderId,
@@ -339,6 +355,7 @@ export class JsonlSessionWatcher implements SessionWatcher {
         this.codexInPlanMode = false;
         this.claudeUsageDeduper.reset();
         this.codexPrevTotal = undefined;
+        this.resetSessionEventState();
         this.callbacks.onReset?.();
       },
     });
@@ -350,9 +367,34 @@ export class JsonlSessionWatcher implements SessionWatcher {
     this.codexInPlanMode = false;
     this.claudeUsageDeduper.reset();
     this.codexPrevTotal = undefined;
+    this.resetSessionEventState();
+  }
+
+  private resetSessionEventState(): void {
+    this.sessionEventDeduper.reset();
+    this.sessionEventCodexParser?.reset();
+  }
+
+  /** The canonical events of one raw line, for `onSessionEvent`. */
+  private sessionEventsOf(raw: RawSessionEvent): SessionEvent[] {
+    if (this.providerId === 'codex') {
+      this.sessionEventCodexParser ??= new CodexRolloutParser({
+        includeTurnLifecycle: true,
+        includeSubagentActivity: true,
+      });
+      return this.sessionEventCodexParser.convertLine(raw as unknown as CodexRolloutLine);
+    }
+    return extractSessionEvents(raw, {
+      includeTaskNotifications: true,
+      includeActivitySignals: this.options.includeActivitySignals === true,
+    }).map((event) => this.sessionEventDeduper.apply(normalizeClaudeUsage(event)));
   }
 
   private handleRawEvent(event: RawSessionEvent): void {
+    const onSessionEvent = this.callbacks.onSessionEvent;
+    if (onSessionEvent) {
+      for (const sessionEvent of this.sessionEventsOf(event)) onSessionEvent(sessionEvent);
+    }
     // For codex, raw events don't match RawSessionEvent shape exactly, but
     // JsonlParser parses any JSON object. Cast to Record for codex normalizer.
     const followEvents =

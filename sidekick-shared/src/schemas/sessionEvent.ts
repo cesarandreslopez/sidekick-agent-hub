@@ -24,6 +24,16 @@ import {
   taskNotificationPromptFromAttachment,
   taskStatusFromAttachment,
 } from '../subagentSpawn';
+import {
+  HOOK_ACTIVITY_BLOCK_TYPE,
+  HOOK_ACTIVITY_ORIGIN_KIND,
+  hookActivityFromAttachment,
+} from '../hookActivity';
+import {
+  MEMORY_ATTACHMENT_BLOCK_TYPE,
+  MEMORY_ATTACHMENT_ORIGIN_KIND,
+  memoryAttachmentFromAttachment,
+} from '../memoryAttachment';
 
 // ── MessageUsage ──
 
@@ -68,6 +78,8 @@ export const permissionModeSchema = z.enum([
 
 // ── SessionEvent ──
 
+const compactionTriggerSchema = z.enum(['auto', 'manual']).optional().catch(undefined);
+
 const eventBaseShape = {
   timestamp: z.string(),
   entrypoint: z.string().optional(),
@@ -103,8 +115,21 @@ const eventBaseShape = {
     .object({
       tokensBefore: z.number().nonnegative(),
       tokensAfter: z.number().nonnegative(),
+      trigger: compactionTriggerSchema,
     })
     .optional(),
+  // A malformed agent id is dropped rather than rejecting the line.
+  agentId: z.string().min(1).max(128).optional().catch(undefined),
+  // Only decision, source and reasonType are kept; Claude Code's other
+  // fields (ruleSource, grantScope, reasonCode, …) are stripped.
+  permissionDecision: z
+    .object({
+      decision: z.string().min(1).max(32),
+      source: z.string().max(64).optional().catch(undefined),
+      reasonType: z.string().max(64).optional().catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
   providerMetadata: z
     .object({
       providerId: z.string().optional(),
@@ -118,6 +143,7 @@ const eventBaseShape = {
           code: z.union([z.string(), z.number()]).optional(),
         })
         .optional(),
+      contextWindowTokens: z.number().int().positive().optional().catch(undefined),
     })
     .optional(),
 } as const;
@@ -126,6 +152,7 @@ const compactionSchema = z
   .object({
     tokensBefore: z.number().finite().int().nonnegative(),
     tokensAfter: z.number().finite().int().nonnegative(),
+    trigger: compactionTriggerSchema,
   })
   .refine((value) => value.tokensAfter <= value.tokensBefore, {
     message: 'tokensAfter must not exceed tokensBefore',
@@ -237,6 +264,17 @@ export interface ExtractSessionEventsOptions {
    * their `subtype`.
    */
   includeTaskNotifications?: boolean;
+  /**
+   * Also turn Claude Code's hook attachments (`hook_success`,
+   * `hook_non_blocking_error`, `hook_additional_context`, …) into `system`
+   * events with `origin: { kind: 'hook' }` (read them with
+   * `hookActivityFromEvent`), and its `nested_memory` attachments into
+   * `system` events with `origin: { kind: 'memory-attachment' }` (read them
+   * with `memoryAttachmentFromEvent`). Both are content-free: a hook's
+   * command, output and added text, and a memory file's text, are never
+   * kept. Default `false`.
+   */
+  includeActivitySignals?: boolean;
 }
 
 /**
@@ -268,8 +306,41 @@ export function extractSessionEvents(
 
 type ProgressProvenance = Pick<
   SessionEventBase,
-  'entrypoint' | 'isMeta' | 'isSidechain' | 'cwd' | 'gitBranch'
+  'entrypoint' | 'isMeta' | 'isSidechain' | 'cwd' | 'gitBranch' | 'agentId'
 >;
+
+/**
+ * A Claude Code `compact_boundary` system line with its counts copied into
+ * `compaction`: `compactMetadata.preTokens` / `postTokens` (finite integers,
+ * post ≤ pre) and the `trigger`. The raw metadata is stripped by the schema;
+ * a boundary without both counts parses as before.
+ */
+function withCompactBoundaryCounts(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null) return raw;
+  const line = raw as Record<string, unknown>;
+  if (line.type !== 'system' || line.subtype !== 'compact_boundary' || line.compaction) {
+    return raw;
+  }
+  const metadata = line.compactMetadata;
+  if (typeof metadata !== 'object' || metadata === null) return raw;
+  const { preTokens, postTokens, trigger } = metadata as Record<string, unknown>;
+  if (
+    !Number.isInteger(preTokens) ||
+    !Number.isInteger(postTokens) ||
+    (postTokens as number) < 0 ||
+    (postTokens as number) > (preTokens as number)
+  ) {
+    return raw;
+  }
+  return {
+    ...line,
+    compaction: {
+      tokensBefore: preTokens,
+      tokensAfter: postTokens,
+      ...(trigger === 'auto' || trigger === 'manual' ? { trigger } : {}),
+    },
+  };
+}
 
 function extractSessionEventsWithProvenance(
   raw: unknown,
@@ -277,12 +348,17 @@ function extractSessionEventsWithProvenance(
   inherited: ProgressProvenance,
   options: ExtractSessionEventsOptions,
 ): SessionEvent[] {
-  const direct = sessionEventSchema.safeParse(raw);
+  const direct = sessionEventSchema.safeParse(withCompactBoundaryCounts(raw));
   if (direct.success) return [{ ...inherited, ...direct.data }];
 
   if (options.includeTaskNotifications) {
     const notification = taskNotificationAttachmentEvent(raw) ?? taskStatusAttachmentEvent(raw);
     if (notification) return [{ ...inherited, ...notification }];
+  }
+
+  if (options.includeActivitySignals) {
+    const signal = hookAttachmentEvent(raw) ?? memoryAttachmentEvent(raw);
+    if (signal) return [{ ...inherited, ...signal }];
   }
 
   if (depth >= MAX_PROGRESS_DEPTH) return [];
@@ -339,6 +415,53 @@ function taskStatusAttachmentEvent(raw: unknown): SessionEvent | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** Line fields every attachment-derived `system` event keeps. */
+const ATTACHMENT_PROVENANCE_KEYS = ['entrypoint', 'isSidechain', 'cwd', 'gitBranch', 'agentId'];
+
+/** The content-free `system` event for a hook attachment line, or `null`. */
+function hookAttachmentEvent(raw: unknown): SessionEvent | null {
+  const activity = hookActivityFromAttachment(raw);
+  if (!activity) return null;
+  const line = raw as Record<string, unknown>;
+  const candidate: Record<string, unknown> = {
+    type: 'system',
+    timestamp: line.timestamp,
+    origin: { kind: HOOK_ACTIVITY_ORIGIN_KIND },
+    message: {
+      role: 'system',
+      sourceLabel: 'hook',
+      content: [{ type: HOOK_ACTIVITY_BLOCK_TYPE, ...activity }],
+    },
+  };
+  for (const key of ATTACHMENT_PROVENANCE_KEYS) {
+    if (line[key] !== undefined) candidate[key] = line[key];
+  }
+  const parsed = systemSessionEventSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+}
+
+/** The content-free `system` event for a memory attachment line, or `null`. */
+function memoryAttachmentEvent(raw: unknown): SessionEvent | null {
+  const memory = memoryAttachmentFromAttachment(raw);
+  if (!memory) return null;
+  const line = raw as Record<string, unknown>;
+  const candidate: Record<string, unknown> = {
+    type: 'system',
+    timestamp: line.timestamp,
+    origin: { kind: MEMORY_ATTACHMENT_ORIGIN_KIND },
+    message: {
+      role: 'system',
+      sourceLabel: 'memory',
+      content: [{ type: MEMORY_ATTACHMENT_BLOCK_TYPE, ...memory }],
+    },
+  };
+  for (const key of ATTACHMENT_PROVENANCE_KEYS) {
+    if (line[key] !== undefined) candidate[key] = line[key];
+  }
+  const parsed = systemSessionEventSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+}
+
 function progressProvenance(raw: object): ProgressProvenance {
   const value = raw as Record<string, unknown>;
   const provenance: ProgressProvenance = {};
@@ -347,5 +470,6 @@ function progressProvenance(raw: object): ProgressProvenance {
   if (typeof value.isSidechain === 'boolean') provenance.isSidechain = value.isSidechain;
   if (typeof value.cwd === 'string') provenance.cwd = value.cwd;
   if (typeof value.gitBranch === 'string') provenance.gitBranch = value.gitBranch;
+  if (typeof value.agentId === 'string' && value.agentId) provenance.agentId = value.agentId;
   return provenance;
 }
