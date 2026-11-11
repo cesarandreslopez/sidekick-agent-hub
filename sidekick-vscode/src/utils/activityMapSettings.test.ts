@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_ACTIVITY_MAP_SETTINGS,
@@ -8,6 +10,25 @@ import {
 const getter = (values: Record<string, unknown>) => (key: string) => values[key];
 
 describe('activity map settings', () => {
+  it('defaults labels to names, and package.json declares the same defaults', () => {
+    // Exports and the HTML report carry the labels: descriptions only when asked for.
+    expect(DEFAULT_ACTIVITY_MAP_SETTINGS.labels).toBe('names');
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf-8'),
+    ) as {
+      contributes: { configuration: Array<{ properties?: Record<string, { default?: unknown }> }> };
+    };
+    const declared: Record<string, unknown> = {};
+    for (const section of manifest.contributes.configuration) {
+      for (const [key, value] of Object.entries(section.properties ?? {})) {
+        if (key.startsWith('sidekick.activityMap.')) {
+          declared[key.slice('sidekick.activityMap.'.length)] = value.default;
+        }
+      }
+    }
+    expect(declared).toEqual(DEFAULT_ACTIVITY_MAP_SETTINGS);
+  });
+
   it('falls back to the defaults for missing or invalid values', () => {
     expect(readActivityMapSettings(getter({}))).toEqual(DEFAULT_ACTIVITY_MAP_SETTINGS);
     expect(
@@ -29,7 +50,7 @@ describe('activity map settings', () => {
         motion: 'reduced',
         layout: 'you-bottom',
         coreName: '  SIDEKICK-AGENT  ',
-        labels: 'names',
+        labels: 'descriptive',
         memory: { paths: [' notes/ ', '', 3], mcpServers: ['brain'], commands: ['recall'] },
         stationOverrides: { 'mcp__github__*': 'network', Bash: 'shell', Foo: 'nowhere' },
       }),
@@ -38,7 +59,7 @@ describe('activity map settings', () => {
       motion: 'reduced',
       layout: 'you-bottom',
       coreName: 'SIDEKICK-A',
-      labels: 'names',
+      labels: 'descriptive',
       memory: { paths: ['notes/'], mcpServers: ['brain'], commands: ['recall'] },
       stationOverrides: { 'mcp__github__*': 'network', Bash: 'shell' },
     });
@@ -66,7 +87,7 @@ describe('activity map settings', () => {
     });
     expect(toRecorderOptions(DEFAULT_ACTIVITY_MAP_SETTINGS, 'claude-code')).toEqual({
       providerId: 'claude-code',
-      labels: 'descriptive',
+      labels: 'names',
       deriveContext: false,
     });
   });
