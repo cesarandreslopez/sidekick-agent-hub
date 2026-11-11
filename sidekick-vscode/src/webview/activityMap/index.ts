@@ -241,8 +241,8 @@ function main(): void {
       });
       controls.updateStrip(
         `${model.epoch}:${model.version}`,
-        model.density(DENSITY_BUCKETS),
-        model.markers(),
+        () => model.density(DENSITY_BUCKETS),
+        () => model.markers(),
       );
     }
   }
