@@ -14,6 +14,7 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => tmpDir };
 });
 
+import { getModelPricing } from '../modelInfo';
 import { ClaudeCodeProvider } from '../providers/claudeCode';
 import { encodeWorkspacePath } from '../parsers/sessionPathResolver';
 import {
@@ -100,7 +101,9 @@ describe('collectUsageEvents', () => {
         lastTimestamp: Date.parse('2026-09-04T12:30:05.000Z'),
       }),
     ]);
-    expect(fs.readdirSync(getUsageCacheDir())).toEqual(['claude-code--session-usage.v3.json']);
+    expect(fs.readdirSync(getUsageCacheDir())).toEqual([
+      `claude-code--session-usage.v${USAGE_CACHE_VERSION}.json`,
+    ]);
 
     const createReader = vi.spyOn(provider, 'createReader');
     const second = await collectUsageEvents({ providers: [provider] });
@@ -266,6 +269,46 @@ describe('collectUsageEvents', () => {
     expect(result.events[0].tokens.totalTokens).toBe(165);
   });
 
+  it("prices a split response by its whole call's prompt once a later line grows it", async () => {
+    const line = (usage: Record<string, number>) => ({
+      type: 'assistant',
+      timestamp: '2026-09-04T12:00:05.000Z',
+      message: {
+        id: 'msg-long',
+        role: 'assistant',
+        model: 'claude-haiku-5-5',
+        usage,
+        content: [{ type: 'text', text: 'ok' }],
+      },
+    });
+    // The first line's prompt is 90K, under the 100K tier; the last grows the
+    // same call to 110K, so the merged call bills at the tier's rates.
+    writeSession([
+      BASE_ROWS[0],
+      line({ input_tokens: 10_000, cache_read_input_tokens: 80_000, output_tokens: 5 }),
+      line({
+        input_tokens: 10_000,
+        cache_read_input_tokens: 80_000,
+        cache_creation_input_tokens: 20_000,
+        output_tokens: 50,
+      }),
+    ]);
+    const tier = getModelPricing('claude-haiku-5-5')!.tiers![0];
+    expect(tier.aboveInputTokens).toBe(100_000);
+    for (const noCache of [false, false, true]) {
+      const result = await collectUsageEvents({ providers: [provider], noCache });
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0].costUsd).toBeCloseTo(
+        (10_000 * tier.inputCostPerMillion +
+          80_000 * tier.cacheReadCostPerMillion +
+          20_000 * tier.cacheWriteCostPerMillion +
+          50 * tier.outputCostPerMillion) /
+          1_000_000,
+        12,
+      );
+    }
+  });
+
   it('adds Claude subagent transcripts to the parent session and fingerprints them', async () => {
     const sessionPath = writeSession(BASE_ROWS);
     const subDir = path.join(path.dirname(sessionPath), 'session-usage', 'subagents');
@@ -332,7 +375,10 @@ describe('collectUsageEvents', () => {
   it('re-reads cache files written by an older cache version', async () => {
     writeSession(BASE_ROWS);
     await collectUsageEvents({ providers: [provider] });
-    const cacheFile = path.join(getUsageCacheDir(), 'claude-code--session-usage.v3.json');
+    const cacheFile = path.join(
+      getUsageCacheDir(),
+      `claude-code--session-usage.v${USAGE_CACHE_VERSION}.json`,
+    );
     const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
     expect(cached.version).toBe(USAGE_CACHE_VERSION);
     fs.writeFileSync(cacheFile, JSON.stringify({ ...cached, version: 1 }));

@@ -24,7 +24,7 @@
  * the same scanner as `collectPromptHistory()`, so usage joins prompt history
  * on `(provider, sessionId, ordinal)`.
  *
- * Cache files are named per cache version (`<provider>--<session>.v3.json`)
+ * Cache files are named per cache version (`<provider>--<session>.v4.json`)
  * so readers of different versions sharing the directory never overwrite each
  * other's files; pruning ages out every version's files alike.
  *
@@ -72,9 +72,11 @@ import { createSessionProvidersFrom } from '../providers/sessionProviderRegistry
  * are re-read. v2: Claude split lines and duplicate Codex `token_count` events
  * are counted once, and Claude subagent transcripts are included. v3: events
  * keep reasoning tokens, prompt ordinal, message id, and subagent, and files
- * move to a versioned name (`<provider>--<session>.v3.json`).
+ * move to a versioned name (`<provider>--<session>.v3.json`). v4: events keep
+ * the prompt size (`rp`) only when they are one model call's, so a Codex
+ * difference of running totals no longer selects a long-context tier.
  */
-export const USAGE_CACHE_VERSION = 3;
+export const USAGE_CACHE_VERSION = 4;
 /**
  * Most-recently-used cache files kept on disk. Sized for a busy month of
  * sessions (files are a few KB each); a collection larger than this still
@@ -234,9 +236,9 @@ export interface CollectUsageEventsOptions {
   /**
    * The `cursor` of an earlier result. Sessions whose fingerprint it already
    * records are skipped (counted in `stats.sessionsSkippedUnchanged`);
-   * changed and new ones come back whole, listed in `changed`. When prices
-   * changed since (`pricingChanged`), every session comes back. Cannot be
-   * combined with `until` (`TypeError`).
+   * changed and new ones come back whole, listed in `changed`. When prices or
+   * the cache version changed since (`pricingChanged`), every session comes
+   * back. Cannot be combined with `until` (`TypeError`).
    */
   cursor?: UsageEventsCursor;
   /** Preview-read concurrency (see `listSessionPreviewsAsync`). */
@@ -291,6 +293,12 @@ export interface UsageEventsCursor {
   next?: string;
   /** `getPricingCatalogInfo().digest` when the events were priced. */
   pricing?: string;
+  /**
+   * `USAGE_CACHE_VERSION` the events were counted and priced under. A cursor
+   * with `pricing` but from another version (or without this field) gets
+   * every session again, with `pricingChanged`.
+   */
+  cacheVersion?: number;
 }
 
 /** A session a result returned because it was new or changed. */
@@ -323,7 +331,10 @@ export interface CollectUsageEventsResult {
   boundsHit?: UsageEventsBound[];
   /** Sessions returned whose fingerprint differed from the given cursor (all, without one). */
   changed?: UsageSessionRef[];
-  /** Prices changed since the given cursor, so every session was returned again. */
+  /**
+   * Prices, or the rules that count and price events, changed since the given
+   * cursor, so every session was returned again.
+   */
   pricingChanged?: boolean;
   /**
    * The scheme `promptOrdinal` and `parentPromptOrdinal` follow
@@ -352,6 +363,12 @@ interface CachedUsageEvent {
   rid?: string;
   /** Claude subagent agent id; the parent is the cache file's session. */
   sa?: string;
+  /**
+   * Prompt size of the one model call this event is, which selects a
+   * long-context tier. Absent when the event may span several calls (a Codex
+   * difference of running totals); those bill at base rates.
+   */
+  rp?: number;
 }
 
 /** A Codex session that is a subagent or fork, as cached. */
@@ -387,9 +404,10 @@ export function getUsageCacheDir(): string {
 
 /**
  * Cache file of one session. The name carries the cache version, so a reader
- * of another version sharing the directory (which rejects this version, and
- * versions before 3 use the unversioned `<provider>--<session>.json`) never
- * overwrites it, and this version never overwrites theirs.
+ * of another version sharing the directory (which rejects this version;
+ * versions before 3 use the unversioned `<provider>--<session>.json`, later
+ * ones `.v<N>.json`) never overwrites it, and this version never overwrites
+ * theirs.
  */
 function cacheFilePath(dir: string, provider: ProviderId, sessionId: string): string {
   const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, '_');
@@ -477,6 +495,10 @@ function cachedEventFromUsage(
   };
   if (usage.reportedCostUsd !== undefined) record.rc = usage.reportedCostUsd;
   if (usage.reasoningTokens > 0) record.rt = usage.reasoningTokens;
+  // Set only for one call's usage; a total merging calls leaves it unset.
+  if (usage.requestPromptTokens !== undefined && usage.requestPromptTokens > 0) {
+    record.rp = usage.requestPromptTokens;
+  }
   if (messageId && !messageId.startsWith('token-count-')) record.rid = messageId;
   if (agentId) record.sa = agentId;
   return record;
@@ -507,9 +529,11 @@ function priceCachedEvent(
     cacheInclusiveInputTokens: cached.i + cached.cr + cached.cw,
     billableOutputTokens: cached.bo,
     totalTokens: cached.tt,
-    // One cached event is one call (split lines already merged by message id),
-    // so its prompt selects the long-context tier.
-    requestPromptTokens: cached.i + cached.cr + cached.cw,
+    // Only one call's prompt (`rp`) selects a long-context tier; a cached
+    // event without it may merge calls and bills at base rates.
+    ...(typeof cached.rp === 'number' && Number.isFinite(cached.rp) && cached.rp > 0
+      ? { requestPromptTokens: cached.rp }
+      : {}),
     ...(cached.rc !== undefined ? { reportedCostUsd: cached.rc } : {}),
     provenance: { semantics: 'sidekick-disjoint' },
   };
@@ -612,6 +636,10 @@ function readTranscriptUsage(
       target.bo += usage.billableOutputTokens;
       target.tt += usage.totalTokens;
       if (usage.reasoningTokens > 0) target.rt = (target.rt ?? 0) + usage.reasoningTokens;
+      // The correction names its whole call's prompt, which the merged record now is.
+      if (usage.requestPromptTokens !== undefined && usage.requestPromptTokens > 0) {
+        target.rp = usage.requestPromptTokens;
+      }
       continue;
     }
     const timestamp = Date.parse(event.timestamp);
@@ -891,7 +919,10 @@ async function collectWithProviders(
   const cursorIn =
     options.cursor === undefined ? undefined : parseUsageEventsCursor(options.cursor);
   const pricing = getPricingCatalogInfo().digest;
-  const pricingChanged = cursorIn?.pricing !== undefined && cursorIn.pricing !== pricing;
+  // Events counted or priced under another cache version are stale too.
+  const pricingChanged =
+    cursorIn?.pricing !== undefined &&
+    (cursorIn.pricing !== pricing || cursorIn.cacheVersion !== USAGE_CACHE_VERSION);
 
   const listed = await listSessionPreviewsAsync(options.providers, {
     since: options.since,
@@ -928,7 +959,12 @@ async function collectWithProviders(
     cursorIn?.next,
   );
 
-  const cursorOut: UsageEventsCursor = { version: 1, sessions: {}, pricing };
+  const cursorOut: UsageEventsCursor = {
+    version: 1,
+    sessions: {},
+    pricing,
+    cacheVersion: USAGE_CACHE_VERSION,
+  };
   const boundsHit = new Set<UsageEventsBound>();
   const loaded: LoadedSession[] = [];
   let cacheHits = 0;
@@ -1184,6 +1220,10 @@ export function parseUsageEventsCursor(value: unknown): UsageEventsCursor | unde
   if (candidate.pricing !== undefined) {
     if (typeof candidate.pricing !== 'string') return undefined;
     parsed.pricing = candidate.pricing;
+  }
+  if (candidate.cacheVersion !== undefined) {
+    if (!Number.isInteger(candidate.cacheVersion)) return undefined;
+    parsed.cacheVersion = candidate.cacheVersion as number;
   }
   return parsed;
 }

@@ -1,7 +1,7 @@
 {
   "scheme": 1,
   "maxRecordBytes": 16777216,
-  "usageCacheVersion": 3,
+  "usageCacheVersion": 4,
   "files": {
     "claude-code/main.jsonl": {
       "provider": "claude-code",

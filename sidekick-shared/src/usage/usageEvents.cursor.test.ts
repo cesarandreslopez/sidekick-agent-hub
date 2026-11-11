@@ -14,6 +14,7 @@ import { ClaudeCodeProvider } from '../providers/claudeCode';
 import { computeSessionKey } from '../sessionKey';
 import { appendJsonl, createSessionLogFixtures, writeJsonl } from '../testing/sessionLogFixtures';
 import {
+  USAGE_CACHE_VERSION,
   collectUsageEvents,
   parseUsageEventsCursor,
   type CollectUsageEventsOptions,
@@ -114,6 +115,23 @@ describe('collectUsageEvents with a cursor', () => {
     expect(result.sessions.map((s) => s.sessionId)).toEqual(['a']);
   });
 
+  it('returns every session again once for a cursor of another cache version', async () => {
+    session('a');
+    session('b');
+    const first = await collect();
+    expect(first.cursor.cacheVersion).toBe(USAGE_CACHE_VERSION);
+    // What 0.32.0 stored: the same prices, no cache version.
+    const { cacheVersion: _cacheVersion, ...older } = JSON.parse(JSON.stringify(first.cursor));
+    const again = await collect({ cursor: older });
+    expect(again.pricingChanged).toBe(true);
+    expect(again.sessions.map((s) => s.sessionId).sort()).toEqual(['a', 'b']);
+    expect(again.changed).toHaveLength(2);
+
+    const quiet = await collect({ cursor: JSON.parse(JSON.stringify(again.cursor)) });
+    expect(quiet.pricingChanged).toBe(false);
+    expect(quiet.sessions).toEqual([]);
+  });
+
   it('refuses until together with a cursor', async () => {
     const first = await collect();
     await expect(collect({ cursor: first.cursor, until: new Date() })).rejects.toThrow(TypeError);
@@ -162,7 +180,7 @@ describe('collectUsageEvents with bounds', () => {
 
 describe('parseUsageEventsCursor', () => {
   it('round-trips a cursor and rejects anything else', () => {
-    const cursor = { version: 1, sessions: { k: 'f' }, next: 'k', pricing: 'p' };
+    const cursor = { version: 1, sessions: { k: 'f' }, next: 'k', pricing: 'p', cacheVersion: 4 };
     expect(parseUsageEventsCursor(JSON.parse(JSON.stringify(cursor)))).toEqual(cursor);
     for (const bad of [
       null,
@@ -172,6 +190,8 @@ describe('parseUsageEventsCursor', () => {
       { version: 1, sessions: [] },
       { version: 1, sessions: { k: 1 } },
       { version: 1, sessions: {}, next: 3 },
+      { version: 1, sessions: {}, cacheVersion: '4' },
+      { version: 1, sessions: {}, cacheVersion: 4.5 },
     ]) {
       expect(parseUsageEventsCursor(bad)).toBeUndefined();
     }

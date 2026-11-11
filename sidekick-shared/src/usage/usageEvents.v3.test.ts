@@ -99,11 +99,11 @@ function codexRollout(id: string, rows: Row[]): string {
   return file;
 }
 
-function codexTurn(second: number): Row {
+function codexTurn(second: number, model = CODEX_MODEL): Row {
   return {
     timestamp: ts(second),
     type: 'turn_context',
-    payload: { model: CODEX_MODEL, cwd: repo },
+    payload: { model, cwd: repo },
   };
 }
 
@@ -113,6 +113,15 @@ function codexCall(second: number, last: Record<string, number>, total: Record<s
     timestamp: ts(second),
     type: 'event_msg',
     payload: { type: 'token_count', info: { last_token_usage: last, total_token_usage: total } },
+  };
+}
+
+/** A token count that carries only the running total, as older Codex rollouts write. */
+function codexTotalOnly(second: number, total: Record<string, number>): Row {
+  return {
+    timestamp: ts(second),
+    type: 'event_msg',
+    payload: { type: 'token_count', info: { total_token_usage: total } },
   };
 }
 
@@ -154,22 +163,29 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe('usage cache v3 files', () => {
-  it('ignores a v2 file under the old name, writes v3 beside it, and leaves the old file alone', async () => {
+describe('usage cache files', () => {
+  it('ignores files of older versions, writes the current one beside them, and leaves them alone', async () => {
     writeJsonl(claudeFile(repo, 's1'), [claudeUser('hello', 1), claudeAssistant('msg_1', 2)]);
     const provider = claude();
     const first = await collectUsageEvents({ providers: [provider] });
-    expect(USAGE_CACHE_VERSION).toBe(3);
-    expect(cacheFiles()).toEqual(['claude-code--s1.v3.json']);
+    expect(USAGE_CACHE_VERSION).toBe(4);
+    expect(cacheFiles()).toEqual(['claude-code--s1.v4.json']);
 
-    // What 0.28 wrote: version 2, unversioned name, same fingerprint.
+    // What 0.28 wrote (version 2, unversioned name) and what 0.29 to 0.32.0
+    // wrote (version 3, `.v3.json`), both with the same fingerprint.
+    const v4Path = path.join(getUsageCacheDir(), 'claude-code--s1.v4.json');
     const v3Path = path.join(getUsageCacheDir(), 'claude-code--s1.v3.json');
     const v2Path = path.join(getUsageCacheDir(), 'claude-code--s1.json');
-    const v3 = JSON.parse(fs.readFileSync(v3Path, 'utf8'));
+    const v4 = JSON.parse(fs.readFileSync(v4Path, 'utf8'));
+    const v3Content = JSON.stringify({
+      ...v4,
+      version: 3,
+      events: v4.events.map(({ rp: _rp, ...event }: Record<string, unknown>) => event),
+    });
     const v2Content = JSON.stringify({
-      ...v3,
+      ...v4,
       version: 2,
-      events: v3.events.map(({ t, m, i, o, cw, cr, bo, tt }: Record<string, unknown>) => ({
+      events: v4.events.map(({ t, m, i, o, cw, cr, bo, tt }: Record<string, unknown>) => ({
         t,
         m,
         i,
@@ -180,43 +196,57 @@ describe('usage cache v3 files', () => {
         tt,
       })),
     });
-    fs.writeFileSync(v2Path, v2Content);
     const old = new Date(Date.UTC(2026, 0, 1));
-    fs.utimesSync(v2Path, old, old);
-    fs.unlinkSync(v3Path);
+    const olderFiles: Array<[string, string]> = [
+      [v2Path, v2Content],
+      [v3Path, v3Content],
+    ];
+    for (const [file, content] of olderFiles) {
+      fs.writeFileSync(file, content);
+      fs.utimesSync(file, old, old);
+    }
+    fs.unlinkSync(v4Path);
 
     const second = await collectUsageEvents({ providers: [provider] });
     expect(second.cacheMisses).toBe(1);
     expect(second.cacheHits).toBe(0);
     expect(second.events).toEqual(first.events);
-    expect(cacheFiles()).toEqual(['claude-code--s1.json', 'claude-code--s1.v3.json']);
-    expect(fs.readFileSync(v2Path, 'utf8')).toBe(v2Content);
-    expect(fs.statSync(v2Path).mtimeMs).toBe(old.getTime());
+    expect(cacheFiles()).toEqual([
+      'claude-code--s1.json',
+      'claude-code--s1.v3.json',
+      'claude-code--s1.v4.json',
+    ]);
+    for (const [file, content] of olderFiles) {
+      expect(fs.readFileSync(file, 'utf8')).toBe(content);
+      expect(fs.statSync(file).mtimeMs).toBe(old.getTime());
+    }
 
-    // A v2 file is never read, even when it is the only one; a v3 file is.
+    // Older files are never read, even when they are the only ones; the
+    // current version's file is.
     const third = await collectUsageEvents({ providers: [provider] });
     expect(third.cacheHits).toBe(1);
-    expect(fs.statSync(v2Path).mtimeMs).toBe(old.getTime());
+    for (const [file] of olderFiles) expect(fs.statSync(file).mtimeMs).toBe(old.getTime());
   });
 
-  it('rejects a v3-named file that does not carry version 3', async () => {
+  it('rejects a file under the current name that does not carry the current version', async () => {
     writeJsonl(claudeFile(repo, 's1'), [claudeUser('hello', 1), claudeAssistant('msg_1', 2)]);
     const provider = claude();
     await collectUsageEvents({ providers: [provider] });
-    const v3Path = path.join(getUsageCacheDir(), 'claude-code--s1.v3.json');
-    const cached = JSON.parse(fs.readFileSync(v3Path, 'utf8'));
-    fs.writeFileSync(v3Path, JSON.stringify({ ...cached, version: 2 }));
+    const current = path.join(getUsageCacheDir(), `claude-code--s1.v${USAGE_CACHE_VERSION}.json`);
+    const cached = JSON.parse(fs.readFileSync(current, 'utf8'));
+    fs.writeFileSync(current, JSON.stringify({ ...cached, version: 3 }));
     expect((await collectUsageEvents({ providers: [provider] })).cacheMisses).toBe(1);
   });
 
-  it('ages out unversioned files from older readers alongside v3 files', () => {
+  it('ages out unversioned and older-version files alongside current ones', () => {
     const dir = path.join(tmpDir, 'cache');
     fs.mkdirSync(dir, { recursive: true });
     const names = [
       'claude-code--a.json',
       'claude-code--b.v3.json',
-      'codex--c.json',
-      'codex--d.v3.json',
+      'codex--c.v3.json',
+      'codex--d.json',
+      'codex--e.v4.json',
     ];
     names.forEach((name, index) => {
       const filePath = path.join(dir, name);
@@ -224,8 +254,12 @@ describe('usage cache v3 files', () => {
       const time = new Date(Date.UTC(2026, 8, 4, 12, index));
       fs.utimesSync(filePath, time, time);
     });
-    expect(pruneUsageCache(2, dir)).toBe(2);
-    expect(fs.readdirSync(dir).sort()).toEqual(['codex--c.json', 'codex--d.v3.json']);
+    expect(pruneUsageCache(3, dir)).toBe(2);
+    expect(fs.readdirSync(dir).sort()).toEqual([
+      'codex--c.v3.json',
+      'codex--d.json',
+      'codex--e.v4.json',
+    ]);
   });
 });
 
@@ -269,7 +303,10 @@ describe('reasoning tokens', () => {
       );
     }
     const cached = JSON.parse(
-      fs.readFileSync(path.join(getUsageCacheDir(), `codex--${id}.v3.json`), 'utf8'),
+      fs.readFileSync(
+        path.join(getUsageCacheDir(), `codex--${id}.v${USAGE_CACHE_VERSION}.json`),
+        'utf8',
+      ),
     );
     expect(cached.events[0]).toMatchObject({ o: 3_000, bo: 3_000, rt: 2_000 });
   });
@@ -278,6 +315,102 @@ describe('reasoning tokens', () => {
     writeJsonl(claudeFile(repo, 's1'), [claudeUser('hello', 1), claudeAssistant('msg_1', 2)]);
     const result = await collectUsageEvents({ providers: [claude()], noCache: true });
     expect(result.events[0].tokens).not.toHaveProperty('reasoningTokens');
+  });
+});
+
+describe('long-context tiers', () => {
+  const TIERED_MODEL = 'gpt-5.4';
+
+  /** USD of disjoint Codex usage at `rates` (no cache writes). */
+  function costAt(
+    rates: {
+      inputCostPerMillion: number;
+      cacheReadCostPerMillion: number;
+      outputCostPerMillion: number;
+    },
+    uncached: number,
+    cacheRead: number,
+    output: number,
+  ): number {
+    return (
+      (uncached * rates.inputCostPerMillion +
+        cacheRead * rates.cacheReadCostPerMillion +
+        output * rates.outputCostPerMillion) /
+      1_000_000
+    );
+  }
+
+  function tieredPricing() {
+    const pricing = getModelPricing(TIERED_MODEL)!;
+    const tier = pricing.tiers?.[0];
+    expect(tier?.aboveInputTokens).toBe(272_000);
+    return { pricing, tier: tier! };
+  }
+
+  function cachedEvents(id: string): Array<Record<string, unknown>> {
+    return JSON.parse(
+      fs.readFileSync(
+        path.join(getUsageCacheDir(), `codex--${id}.v${USAGE_CACHE_VERSION}.json`),
+        'utf8',
+      ),
+    ).events;
+  }
+
+  it('prices a running-total difference and a restarted total at base rates', async () => {
+    const { pricing } = tieredPricing();
+    const id = '019d86b0-b20c-7b02-a3b2-0000000000a1';
+    // No `last_token_usage`: the first count is the growth from nothing (it
+    // may span several calls), and the second, lower one restarts the
+    // counter, so its whole total is the usage. Each prompt passes 272K.
+    codexRollout(id, [
+      codexMeta(repo, 'cli', { id }),
+      codexTurn(1, TIERED_MODEL),
+      codexUser(['resume the work'], 2),
+      codexTotalOnly(3, {
+        input_tokens: 300_000,
+        cached_input_tokens: 200_000,
+        output_tokens: 2_000,
+        total_tokens: 302_000,
+      }),
+      codexTotalOnly(4, {
+        input_tokens: 290_000,
+        cached_input_tokens: 250_000,
+        output_tokens: 1_000,
+        total_tokens: 291_000,
+      }),
+    ]);
+    const provider = codex();
+    const miss = await collectUsageEvents({ providers: [provider] });
+    const hit = await collectUsageEvents({ providers: [provider] });
+    expect(hit.cacheHits).toBe(1);
+    for (const result of [miss, hit]) {
+      expect(result.events.map((event) => event.costUsd)).toEqual([
+        expect.closeTo(costAt(pricing, 100_000, 200_000, 2_000), 12),
+        expect.closeTo(costAt(pricing, 40_000, 250_000, 1_000), 12),
+      ]);
+    }
+    expect(cachedEvents(id).map((event) => event.rp)).toEqual([undefined, undefined]);
+  });
+
+  it("prices one call's prompt past the threshold at the tier's rates", async () => {
+    const { tier } = tieredPricing();
+    const id = '019d86b0-b20c-7b02-a3b2-0000000000a2';
+    const call = { input_tokens: 300_000, cached_input_tokens: 200_000, output_tokens: 2_000 };
+    codexRollout(id, [
+      codexMeta(repo, 'cli', { id }),
+      codexTurn(1, TIERED_MODEL),
+      codexUser(['read the whole tree'], 2),
+      codexCall(3, call, call),
+    ]);
+    const provider = codex();
+    const miss = await collectUsageEvents({ providers: [provider] });
+    const hit = await collectUsageEvents({ providers: [provider] });
+    expect(hit.cacheHits).toBe(1);
+    for (const result of [miss, hit]) {
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0].costUsd).toBeCloseTo(costAt(tier, 100_000, 200_000, 2_000), 12);
+    }
+    expect(cachedEvents(id)[0]).toMatchObject({ rp: 300_000 });
   });
 });
 
