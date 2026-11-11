@@ -159,6 +159,13 @@
       "require": "./dist/agentPaths.js",
       "default": "./dist/agentPaths.js"
     },
+    "./activity": {
+      "types": "./dist/activity.d.ts",
+      "module": "./dist/esm/activity.js",
+      "import": "./dist/activity.js",
+      "require": "./dist/activity.js",
+      "default": "./dist/activity.js"
+    },
     "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -220,6 +227,9 @@
       ],
       "agentPaths": [
         "dist/agentPaths.d.ts"
+      ],
+      "activity": [
+        "dist/activity.d.ts"
       ]
     }
   },

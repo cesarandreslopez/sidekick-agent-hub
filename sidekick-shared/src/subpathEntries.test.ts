@@ -57,6 +57,10 @@ const SUBPATHS = [
   { name: 'headless', pure: true, maxModules: 14 },
   // 0.31: dependency-free agent paths for hook bundles (Node built-ins only).
   { name: 'agentPaths', pure: false, maxModules: 5 },
+  // 0.32: the activity map (records, reducer, insights, renderers). Pure and
+  // Zod-free; the budget covers its own modules plus the shared helpers it
+  // classifies with (tool categories, MCP names, subagents, turn state, shell).
+  { name: 'activity', pure: true, maxModules: 30 },
 ] as const;
 
 describe('lean subpath entries', { timeout: 30_000 }, () => {
