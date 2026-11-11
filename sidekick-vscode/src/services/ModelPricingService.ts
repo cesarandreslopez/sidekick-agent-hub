@@ -24,6 +24,7 @@ import {
   mergeCostComponents,
   normalizeProviderUsage,
   parseModelId,
+  resolvePricingTier,
   type CostComponent,
   type CostSource,
   type ModelPricing as SharedModelPricing,
@@ -34,23 +35,34 @@ import {
 /** Pricing information for a model. All costs are per million tokens in USD. */
 export type ModelPricing = SharedModelPricing;
 
-/**
- * One raw model id's usage inside a model row, in the categories that price
- * it. Calls whose cost the provider reported keep that cost and their token
- * count; every other call's usage is priced from the catalog on read.
- */
-export interface ModelPricingBucket {
-  /** Uncached input tokens of the calls priced from the catalog. */
+/** Token categories of calls priced at one rate. */
+export interface ModelPricingCategories {
+  /** Uncached input tokens. */
   inputTokens: number;
   outputTokens: number;
   cacheWriteTokens: number;
   cacheReadTokens: number;
   /** Reasoning tokens reported apart from output and billed on top of it. */
   separateReasoningTokens: number;
+}
+
+/**
+ * One raw model id's usage inside a model row, in the categories that price
+ * it. Calls whose cost the provider reported keep that cost and their token
+ * count; every other call's usage is priced from the catalog on read.
+ */
+export interface ModelPricingBucket extends ModelPricingCategories {
   /** Provider-reported spend. */
   reportedCostUsd: number;
   /** Tokens covered by `reportedCostUsd` (not re-priced). */
   reportedTokens: number;
+  /**
+   * Calls whose prompt crossed a long-context price tier, keyed by the tier's
+   * `aboveInputTokens`, kept apart so a merged total never re-prices short
+   * calls at the long-context rate (or long calls at the base rate). Absent
+   * in rows recorded before 0.32, which price at base rates.
+   */
+  longContext?: Record<string, ModelPricingCategories>;
 }
 
 /**
@@ -135,11 +147,45 @@ export function addUsageToPricing(
     bucket.reportedTokens += usage.totalTokens;
     return;
   }
-  bucket.inputTokens += usage.uncachedInputTokens;
-  bucket.outputTokens += usage.outputTokens;
-  bucket.cacheWriteTokens += usage.cacheWriteTokens;
-  bucket.cacheReadTokens += usage.cacheReadTokens;
-  if (!usage.reasoningIncludedInOutput) bucket.separateReasoningTokens += usage.reasoningTokens;
+  // A single request whose prompt crossed a long-context tier keeps its
+  // tokens apart, so pricing the merged row later bills only those calls at
+  // the tier's rates.
+  const tier = resolvePricingTier(getModelPricing(modelId), usage.requestPromptTokens);
+  const target: ModelPricingCategories = tier
+    ? ((bucket.longContext ??= {})[String(tier.aboveInputTokens)] ??= emptyCategories())
+    : bucket;
+  target.inputTokens += usage.uncachedInputTokens;
+  target.outputTokens += usage.outputTokens;
+  target.cacheWriteTokens += usage.cacheWriteTokens;
+  target.cacheReadTokens += usage.cacheReadTokens;
+  if (!usage.reasoningIncludedInOutput) target.separateReasoningTokens += usage.reasoningTokens;
+}
+
+function emptyCategories(): ModelPricingCategories {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    separateReasoningTokens: 0,
+  };
+}
+
+/** Disjoint usage for one category set; `abovePrompt` selects its long-context tier. */
+function categoriesUsage(
+  categories: ModelPricingCategories,
+  abovePrompt?: number,
+): NormalizedUsage {
+  return normalizeProviderUsage({
+    semantics: 'sidekick',
+    inputTokens: categories.inputTokens,
+    outputTokens: categories.outputTokens,
+    cacheWriteTokens: categories.cacheWriteTokens,
+    cacheReadTokens: categories.cacheReadTokens,
+    reasoningTokens: categories.separateReasoningTokens,
+    reasoningIncludedInOutput: false,
+    ...(abovePrompt !== undefined ? { requestPromptTokens: abovePrompt + 1 } : {}),
+  });
 }
 
 /** Price one model row. `model` prices rows without buckets (older snapshots). */
@@ -152,22 +198,20 @@ export function priceModelUsage(model: string, entry: ModelUsageEntry): ModelCos
       cost += bucket.reportedCostUsd;
       components.push({ source: 'reported', tokens: bucket.reportedTokens });
     }
-    const usage = normalizeProviderUsage({
-      semantics: 'sidekick',
-      inputTokens: bucket.inputTokens,
-      outputTokens: bucket.outputTokens,
-      cacheWriteTokens: bucket.cacheWriteTokens,
-      cacheReadTokens: bucket.cacheReadTokens,
-      reasoningTokens: bucket.separateReasoningTokens,
-      reasoningIncludedInOutput: false,
-    });
-    if (usage.totalTokens === 0) continue;
-    const priced = calculateNormalizedUsageCost({ usage, modelId });
-    cost += priced.costUsd ?? 0;
-    components.push({
-      source: costSourceFromPricingProvenance(priced.source),
-      tokens: usage.totalTokens,
-    });
+    const parts: NormalizedUsage[] = [categoriesUsage(bucket)];
+    for (const [threshold, categories] of Object.entries(bucket.longContext ?? {})) {
+      const above = Number(threshold);
+      if (Number.isFinite(above) && above > 0) parts.push(categoriesUsage(categories, above));
+    }
+    for (const usage of parts) {
+      if (usage.totalTokens === 0) continue;
+      const priced = calculateNormalizedUsageCost({ usage, modelId });
+      cost += priced.costUsd ?? 0;
+      components.push({
+        source: costSourceFromPricingProvenance(priced.source),
+        tokens: usage.totalTokens,
+      });
+    }
   }
   const source = mergeCostComponents(components);
   return { cost, ...(source ? { source } : {}), priced: source !== 'unpriced' };
