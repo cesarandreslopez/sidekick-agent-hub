@@ -200,13 +200,13 @@ describe('ActivityMapConnection', () => {
     expect(webview.sent.at(-1)).toEqual({ type: 'activity/empty', reason: 'noSession' });
   });
 
-  it('sends only the missing records to a webview that still holds this epoch', () => {
+  it('answers every ready, a revived webview included, with a full init', () => {
     const { source, webview } = setup();
     source.add(4);
-    webview.receive({ type: 'activity/ready', protocol: 1, have: { epoch: 1, nextSeq: 2 } });
-    expect(webview.sent[0]).toMatchObject({ type: 'activity/append', fromSeq: 2 });
-    webview.receive({ type: 'activity/ready', protocol: 1, have: { epoch: 0, nextSeq: 2 } });
-    expect(webview.sent.at(-1)).toMatchObject({ type: 'activity/init' });
+    webview.receive({ type: 'activity/ready', protocol: 1 });
+    webview.receive({ type: 'activity/ready', protocol: 1 });
+    expect(webview.types()).toEqual(['activity/init', 'activity/init']);
+    expect(webview.sent[1].type === 'activity/init' && webview.sent[1].records).toHaveLength(4);
   });
 
   it('carries a focus on the first init only', () => {

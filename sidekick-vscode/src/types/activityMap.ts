@@ -83,12 +83,7 @@ export type ActivityMapHostMessage =
   | { type: 'activity/empty'; reason: 'noSession' };
 
 export type ActivityMapWebviewMessage =
-  | {
-      type: 'activity/ready';
-      protocol: number;
-      /** What the webview already holds (a revived view), so the host can send only the rest. */
-      have?: { epoch: number; nextSeq: number };
-    }
+  | { type: 'activity/ready'; protocol: number }
   | { type: 'activity/resync'; reason: 'gap' | 'epoch' | 'protocol' }
   | { type: 'activity/popOut'; at?: number; station?: ActivityStationId }
   /** Without a format, the host asks which one. */
