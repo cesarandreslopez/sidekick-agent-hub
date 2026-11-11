@@ -70,6 +70,22 @@ async function main() {
     logLevel: 'warning',
   });
 
+  // Webview context - Activity Map (Browser). The sidebar view and pop-out
+  // panel; the document is rendered by src/providers/activityMapTemplate.ts.
+  // Imports only sidekick-shared/activity, which is pure and tree-shakes.
+  const webviewActivityMapCtx = await esbuild.context({
+    entryPoints: ['src/webview/activityMap/index.ts'],
+    bundle: true,
+    format: 'iife',
+    minify: production,
+    sourcemap: !production,
+    sourcesContent: false,
+    platform: 'browser',
+    outfile: 'out/webview/activityMap.js',
+    target: ['es2020'],
+    logLevel: 'warning',
+  });
+
   // Webview vendor bundle - Chart.js (Browser)
   const webviewChartjsCtx = await esbuild.context({
     entryPoints: ['src/webview/chartjs-vendor.ts'],
@@ -103,6 +119,7 @@ async function main() {
     webviewExplainCtx,
     webviewErrorCtx,
     webviewDashboardCtx,
+    webviewActivityMapCtx,
     webviewChartjsCtx,
     webviewD3Ctx,
   ];

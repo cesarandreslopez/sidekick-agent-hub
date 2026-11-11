@@ -524,6 +524,116 @@
         }
       },
       {
+        "title": "Activity Map",
+        "properties": {
+          "sidekick.activityMap.motion": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "full",
+              "reduced",
+              "none"
+            ],
+            "enumDescriptions": [
+              "Follow workbench.reduceMotion, then the operating system preference",
+              "Animate pulses, rings, clock hands and orbits",
+              "Fades only; clock hands and orbits are drawn still",
+              "No animation: a still frame of the moment shown"
+            ],
+            "default": "auto",
+            "description": "How much the Activity Map moves."
+          },
+          "sidekick.activityMap.layout": {
+            "type": "string",
+            "enum": [
+              "you-top",
+              "you-bottom"
+            ],
+            "enumDescriptions": [
+              "You at the top of the ring",
+              "You at the bottom, with the network and browser at the top"
+            ],
+            "default": "you-top",
+            "description": "Where the You station sits on the Activity Map ring."
+          },
+          "sidekick.activityMap.coreName": {
+            "type": "string",
+            "default": "",
+            "maxLength": 10,
+            "description": "Text in the centre of the Activity Map, up to 10 characters. Empty uses the agent's name (CLAUDE, CODEX, OPENCODE)."
+          },
+          "sidekick.activityMap.labels": {
+            "type": "string",
+            "enum": [
+              "descriptive",
+              "names",
+              "none"
+            ],
+            "enumDescriptions": [
+              "File, host and program names, plus the short description the agent wrote for a command or subagent",
+              "File, host and program names only",
+              "Station words only (no names at all)"
+            ],
+            "default": "descriptive",
+            "description": "How much the Activity Map labels say. Labels never contain file contents, command lines, queries or prompts. Applies to events from now on."
+          },
+          "sidekick.activityMap.memory": {
+            "type": "object",
+            "default": {
+              "paths": [],
+              "mcpServers": [],
+              "commands": []
+            },
+            "properties": {
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Path fragments that make a file a memory (Claude Code's memory folder always counts)."
+              },
+              "mcpServers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "MCP servers whose tools light the Memory station (the `memory` server always counts)."
+              },
+              "commands": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Shell commands or scripts that light the Memory station; `recall` also names `recall-sync.py`."
+              }
+            },
+            "additionalProperties": false,
+            "description": "What the Activity Map counts as memory. Applies to events from now on."
+          },
+          "sidekick.activityMap.stationOverrides": {
+            "type": "object",
+            "default": {},
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "you",
+                "model",
+                "memory",
+                "files",
+                "shell",
+                "network",
+                "browser",
+                "agents",
+                "skills",
+                "hooks",
+                "plan"
+              ]
+            },
+            "markdownDescription": "Move tools to another Activity Map station. Keys are a tool name (`Bash`, `mcp__github__create_issue`) or a whole MCP server (`mcp__github__*`); values are a station: `you`, `model`, `memory`, `files`, `shell`, `network`, `browser`, `agents`, `skills`, `hooks`, `plan`. Applies to events from now on."
+          }
+        }
+      },
+      {
         "title": "Commit Messages",
         "order": 4,
         "properties": {
@@ -1198,6 +1308,18 @@
         "command": "sidekick.accounts.registerCurrent",
         "title": "Register Current Login",
         "category": "Sidekick"
+      },
+      {
+        "command": "sidekick.openActivityMap",
+        "title": "Open Activity Map",
+        "category": "Sidekick",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "sidekick.exportActivityMap",
+        "title": "Export Activity Map…",
+        "category": "Sidekick",
+        "icon": "$(desktop-download)"
       }
     ],
     "submenus": [
@@ -1352,6 +1474,14 @@
         {
           "command": "sidekick.removeAccount",
           "when": "false"
+        },
+        {
+          "command": "sidekick.openActivityMap",
+          "when": "sidekick.monitoringActive"
+        },
+        {
+          "command": "sidekick.exportActivityMap",
+          "when": "sidekick.monitoringActive"
         }
       ],
       "scm/title": [
@@ -1489,6 +1619,16 @@
           "command": "sidekick.accounts.undo",
           "when": "view == sidekick.accounts && sidekick.accounts.canUndo",
           "group": "navigation@3"
+        },
+        {
+          "command": "sidekick.openActivityMap",
+          "when": "view == sidekick.activityMap",
+          "group": "navigation@1"
+        },
+        {
+          "command": "sidekick.exportActivityMap",
+          "when": "view == sidekick.activityMap",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -1561,6 +1701,14 @@
           "type": "webview",
           "id": "sidekick.mindMap",
           "name": "Mind Map",
+          "contextualTitle": "Agent Hub",
+          "when": "sidekick.monitoringActive",
+          "visibility": "collapsed"
+        },
+        {
+          "type": "webview",
+          "id": "sidekick.activityMap",
+          "name": "Activity Map",
           "contextualTitle": "Agent Hub",
           "when": "sidekick.monitoringActive",
           "visibility": "collapsed"

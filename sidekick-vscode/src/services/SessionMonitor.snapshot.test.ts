@@ -93,7 +93,7 @@ describe('SessionMonitor snapshots', () => {
     const position = Buffer.byteLength(CONTENT);
     monitorAt(position).internals.persistSnapshot();
     const saved = loadSnapshot('session')!;
-    expect(saved.consumer.checkpointRevision).toBe(5);
+    expect(saved.consumer.checkpointRevision).toBe(6);
     expect(saved.readerPosition).toBe(position);
     expect(saved.sourceCheckpoint).toMatchObject({ version: 1, offset: position });
 
@@ -136,6 +136,12 @@ describe('SessionMonitor snapshots', () => {
       'revision 4',
       (snapshot: Record<string, unknown>) => {
         (snapshot.consumer as Record<string, unknown>).checkpointRevision = 4;
+      },
+    ],
+    [
+      'revision 5',
+      (snapshot: Record<string, unknown>) => {
+        (snapshot.consumer as Record<string, unknown>).checkpointRevision = 5;
       },
     ],
     [
