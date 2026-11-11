@@ -14,6 +14,9 @@
  * @module themePalette
  */
 
+import { ACTIVITY_DARK_PALETTE, listActivityCssVariables } from 'sidekick-shared/activity';
+import type { ActivityCssVariable, ActivityPaletteRole } from 'sidekick-shared/activity';
+
 /** Attribution category -> CSS custom property holding its color. */
 export const ATTRIBUTION_VARS = {
   systemPrompt: '--sk-attr-system',
@@ -216,5 +219,76 @@ ${decls}
       --sk-chart-label: var(--vscode-foreground, #ccc);
       --sk-chart-grid: var(--vscode-charts-lines, rgba(128, 128, 128, 0.15));
     }
+  </style>`;
+}
+
+// ── Activity map palette ──
+
+/**
+ * Roles the activity map takes from the VS Code theme, so it sits on the
+ * view's own background and text colors. The station hues and the remaining
+ * roles keep the map's own palette (eleven distinct, contrast-checked hues
+ * that the theme's six chart colors cannot provide), switched by theme kind.
+ * `%` stands for the map's own color, kept as the fallback.
+ */
+const ACTIVITY_THEME_ROLES: Partial<Record<ActivityPaletteRole, string>> = {
+  ground: 'var(--sk-activity-surface, %)',
+  raised: 'var(--vscode-editorWidget-background, %)',
+  text: 'var(--vscode-foreground, %)',
+  muted: 'var(--vscode-descriptionForeground, %)',
+  fault: 'var(--vscode-errorForeground, %)',
+  warn: 'var(--vscode-editorWarning-foreground, %)',
+};
+
+/** High-contrast themes draw lines and spokes in the theme's contrast border. */
+const ACTIVITY_HIGH_CONTRAST_ROLES: Partial<Record<ActivityPaletteRole, string>> = {
+  line: 'var(--vscode-contrastBorder, %)',
+  spoke: 'var(--vscode-contrastBorder, %)',
+  dim: 'var(--vscode-foreground, %)',
+};
+
+function activityValue(
+  role: ActivityCssVariable['role'],
+  fallback: string,
+  table: Partial<Record<ActivityPaletteRole, string>>,
+): string {
+  const template = (table as Record<string, string | undefined>)[role];
+  return template ? template.replace('%', fallback) : fallback;
+}
+
+function activityBlock(
+  selector: string,
+  pick: 'dark' | 'light',
+  tables: Array<Partial<Record<ActivityPaletteRole, string>>>,
+): string {
+  const decls = listActivityCssVariables()
+    .map((variable) => {
+      let value = variable[pick];
+      for (const table of tables) value = activityValue(variable.role, value, table);
+      return `      ${variable.name}: ${value};`;
+    })
+    .join('\n');
+  return `    ${selector} {\n${decls}\n    }`;
+}
+
+/**
+ * Declares every custom property an activity-map SVG rendered with
+ * `theme: 'css-vars'` reads, for dark, light and high-contrast themes (VS Code
+ * marks the webview body with `vscode-light`, `vscode-dark`,
+ * `vscode-high-contrast` and `vscode-high-contrast-light`). The list comes
+ * from the shared renderer, so a new role or station cannot be missed.
+ */
+export function getActivityPaletteCSS(): string {
+  return `<style>
+    body {
+      --sk-activity-surface: var(--vscode-sideBar-background, var(--vscode-editor-background, ${ACTIVITY_DARK_PALETTE.ground}));
+    }
+    body[data-mode='panel'] {
+      --sk-activity-surface: var(--vscode-editor-background, ${ACTIVITY_DARK_PALETTE.ground});
+    }
+${activityBlock('body', 'dark', [ACTIVITY_THEME_ROLES])}
+${activityBlock('body.vscode-light', 'light', [ACTIVITY_THEME_ROLES])}
+${activityBlock('body.vscode-high-contrast', 'dark', [ACTIVITY_THEME_ROLES, ACTIVITY_HIGH_CONTRAST_ROLES])}
+${activityBlock('body.vscode-high-contrast-light', 'light', [ACTIVITY_THEME_ROLES, ACTIVITY_HIGH_CONTRAST_ROLES])}
   </style>`;
 }

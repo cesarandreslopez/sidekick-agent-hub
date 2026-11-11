@@ -63,6 +63,10 @@ import { MonitoringDisabledViewProvider } from './providers/MonitoringDisabledVi
 import { registerLazyWebviewView } from './providers/lazyWebviewViewProvider';
 import { collectDeprecatedSettings } from './services/deprecatedSettings';
 import { MindMapViewProvider } from './providers/MindMapViewProvider';
+import { ActivityMapViewProvider } from './providers/ActivityMapViewProvider';
+import { ActivityMapPanel, parseActivityMapOpenRequest } from './providers/ActivityMapPanel';
+import { exportActivityMapFile, readActivitySettingsFromConfig } from './providers/activityMapHost';
+import { LiveActivitySource } from './providers/activityMapSources';
 import { TaskBoardViewProvider } from './providers/TaskBoardViewProvider';
 import { PlanBoardViewProvider } from './providers/PlanBoardViewProvider';
 import { ProjectTimelineViewProvider } from './providers/ProjectTimelineViewProvider';
@@ -904,6 +908,41 @@ export async function activate(context: vscode.ExtensionContext) {
       ),
     );
     log('Mind map view provider registered');
+
+    // Activity map: a lazy sidebar view (not retained — every animation offset
+    // comes from the current time, so a rebuilt view continues seamlessly) and
+    // a pop-out panel with the replay bar. Both read the monitor's activity log.
+    const activityMapView = registerLazyWebviewView(
+      ActivityMapViewProvider.viewType,
+      () => new ActivityMapViewProvider(context.extensionUri, currentMonitor()),
+    );
+    const activityMapPanel = new ActivityMapPanel(context.extensionUri, currentMonitor);
+    context.subscriptions.push(
+      activityMapView,
+      activityMapPanel,
+      vscode.commands.registerCommand('sidekick.openActivityMap', (arg?: unknown) =>
+        activityMapPanel.open(parseActivityMapOpenRequest(arg)),
+      ),
+      vscode.commands.registerCommand('sidekick.exportActivityMap', (arg?: unknown) => {
+        const request =
+          arg && typeof arg === 'object' ? (arg as { format?: 'svg' | 'json'; at?: number }) : {};
+        const source = activityMapPanel.activeSource() ?? new LiveActivitySource(currentMonitor());
+        return exportActivityMapFile(source, request);
+      }),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('sidekick.activityMap')) {
+          currentMonitor().reconfigureActivity(readActivitySettingsFromConfig());
+        }
+        if (
+          event.affectsConfiguration('sidekick.activityMap') ||
+          event.affectsConfiguration('workbench.reduceMotion')
+        ) {
+          activityMapView.peek()?.updateOptions();
+          activityMapPanel.updateOptions();
+        }
+      }),
+    );
+    log('Activity map view provider registered');
 
     // Initialize task persistence service for cross-session task carry-over
     let taskPersistenceService: TaskPersistenceService | undefined;
@@ -1874,9 +1913,12 @@ export async function activate(context: vscode.ExtensionContext) {
       reader.flush();
       const transcript = parseTranscriptFromEvents(events);
       const sessionFileName = path.basename(sessionPath);
+      // The activity section shows the same log as the Activity Map view.
+      const activityStore = sessionMonitor.getActivityStore();
       const html = generateHtmlReport(metrics, transcript, {
         sessionFileName,
         subagents: sessionMonitor.getSubagentStats(),
+        activity: { snapshot: activityStore.snapshot(), insights: activityStore.insights() },
       });
 
       const panel = vscode.window.createWebviewPanel(

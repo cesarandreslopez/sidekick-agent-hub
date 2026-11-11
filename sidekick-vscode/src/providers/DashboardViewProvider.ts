@@ -77,6 +77,7 @@ import { SessionSummaryService } from '../services/SessionSummaryService';
 import { extractDecisions } from '../services/DecisionExtractor';
 import { log, logError } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
+import { safeJsonForScript } from '../utils/safeJson';
 import {
   ATTRIBUTION_LABELS,
   ATTRIBUTION_VARS,
@@ -2623,11 +2624,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Escapes sequences that would break HTML parsing or template literals.
    */
   private _safeJsonForScript(data: unknown): string {
-    return JSON.stringify(data)
-      .replace(/</g, '\\u003c') // Prevents </script> breaking HTML parser
-      .replace(/>/g, '\\u003e') // Prevents --> breaking HTML comments
-      .replace(/\u2028/g, '\\u2028') // Line separator (breaks JS strings)
-      .replace(/\u2029/g, '\\u2029'); // Paragraph separator (breaks JS strings)
+    return safeJsonForScript(data);
   }
 
   /**
