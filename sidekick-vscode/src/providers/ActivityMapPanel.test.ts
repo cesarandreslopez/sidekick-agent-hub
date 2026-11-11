@@ -1,5 +1,7 @@
 /**
- * The pop-out panel's source switching: one live title listener at most.
+ * The pop-out panel's source switching: one live title listener at most, and
+ * a past session replays only after the progress notification had a chance
+ * to paint.
  */
 import * as path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -140,5 +142,25 @@ describe('ActivityMapPanel', () => {
     expect(createWebviewPanel).toHaveBeenCalledTimes(1);
     panel.dispose();
     expect(monitor.sessionStart.size).toBe(0);
+  });
+
+  it('lets the progress notification paint before replaying a past session', async () => {
+    const order: string[] = [];
+    withProgress.mockImplementation(
+      (_options: unknown, task: (...args: unknown[]) => Promise<unknown>) => {
+        const pending = task({ report: () => undefined }, { isCancellationRequested: false });
+        order.push('progress shown');
+        return pending;
+      },
+    );
+    replayActivity.mockImplementation(() => {
+      order.push('replay');
+      return replayed();
+    });
+    const panel = new ActivityMapPanel({ fsPath: '/ext' } as never, () => fakeMonitor() as never);
+    await panel.open({ sessionPath: OLD });
+    expect(order).toEqual(['progress shown', 'replay']);
+    expect(panel.activeSource()?.kind).toBe('archive');
+    panel.dispose();
   });
 });

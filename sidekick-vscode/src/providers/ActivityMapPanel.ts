@@ -178,6 +178,9 @@ export class ActivityMapPanel implements vscode.Disposable {
       return await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: 'Replaying session activity…' },
         async () => {
+          // The replay below is synchronous and holds the extension host until
+          // it ends: yield once first so the notification can paint.
+          await new Promise((resolve) => setTimeout(resolve, 0));
           // A past session has no host measurements: context comes from its usage.
           const replay = replayActivity({
             provider,
