@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.2] - 2026-11-11
+
+### Fixed
+
+- **Top failing tools counted sessions several times.** The VS Code monitor ends a session again each time it switches back to it and whenever a window closes, and each end added another error-history record holding the session's failures so far. The **Failing Tools** card and `sidekick stats` added them all up, so a session's failures were counted once per end (about 4× too high on real data). Error history now keeps one record per session, the latest, and history written before this release is counted once per session too.
+- **Leftover `*.tmp` files in the config folder.** A store write cut off by a closing VS Code window or an exiting process left `<file>.<pid>.<hex>.tmp` files behind. VS Code now finishes the session's writes before it shuts down (up to 3 seconds), a store update that changes nothing is no longer rewritten (a new process no longer rewrites `observed-context-windows.json` for a window it already holds), and leftovers older than a day are removed the next time their folder is written.
+
 ## [0.32.1] - 2026-11-11
 
 ### Fixed

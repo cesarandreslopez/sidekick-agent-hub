@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.2] - 2026-11-11
+
+### Fixed
+
+- The dashboard's **Failing Tools** card counts each session once. The monitor ends a session again each time it switches back to it and whenever a window closes, and each end added another error-history record, so failures were counted several times (about 4× on real data). Older history is counted once per session too.
+- Closing or reloading a window no longer leaves `*.tmp` files in the config folder: the extension finishes the session's history writes before it shuts down (up to 3 seconds), and leftovers older than a day are removed.
+
 ## [0.32.1] - 2026-11-11
 
 ### Fixed

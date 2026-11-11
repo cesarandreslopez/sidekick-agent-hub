@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.2] - 2026-11-11
+
+### Fixed
+
+- `sidekick stats`' **Top Failing Tools** counts each session once. Error history written by the VS Code extension repeated a session each time its monitor ended it again, so failures were counted several times (about 4× on real data); the history now keeps one record per session, and older history is counted once per session too.
+- Leftover `*.tmp` files from interrupted store writes are removed from the config folder once they are a day old, and a store update that changes nothing is no longer rewritten.
+
 ## [0.32.1] - 2026-11-11
 
 ### Fixed

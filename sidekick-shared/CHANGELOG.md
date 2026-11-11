@@ -5,6 +5,18 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.2] - 2026-11-11
+
+### Fixed
+
+- **`appendErrorHistory()` keeps one record per session.** A new record replaces the session's earlier ones (each holds the session's whole rollup so far), and `getTopFailingTools()` counts each session once, including stores written before with repeats. Before, a session ended several times (a monitor switching back to it, every shutdown) was counted once per end.
+- **`updateJsonStoreAtomic()` and `updateJsonStoreAtomicSync()` skip unchanged stores.** When the update's result serializes to what is already on disk, nothing is written, so `recordObservedContextWindow()` in a new process no longer rewrites a window the store already holds.
+- **Stranded temp files.** The first atomic write to a directory inside the config directory, per process, removes `<file>.<pid>.<hex>.tmp` files older than a day. Directories outside it (Claude and Codex homes) are never swept.
+
+### Added
+
+- `waitForPendingAtomicWrites(timeoutMs?)` (root and `/node`): waits for this process's in-flight atomic writes, including ones started while waiting, and resolves `false` on timeout. Call it before a long-lived host exits.
+
 ## [0.32.1] - 2026-11-11
 
 ### Fixed
