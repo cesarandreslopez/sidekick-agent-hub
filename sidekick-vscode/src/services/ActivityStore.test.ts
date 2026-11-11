@@ -160,7 +160,6 @@ describe('ActivityStore', () => {
     const store = newStore();
     for (const event of session()) store.observe(event);
     const persisted = JSON.parse(JSON.stringify(store.serialize()));
-    expect(persisted.complete).toBe(true);
 
     const resumed = newStore();
     const epoch = resumed.epoch;
@@ -176,7 +175,7 @@ describe('ActivityStore', () => {
     expect(resumed.records()).toEqual(store.records());
   });
 
-  it('refuses a state from another session, provider, or one that dropped records', () => {
+  it('refuses a state from another session or provider, or a malformed one', () => {
     const store = newStore();
     for (const event of session()) store.observe(event);
     const persisted = store.serialize();
@@ -191,22 +190,42 @@ describe('ActivityStore', () => {
     expect(otherProvider.restore(persisted)).toBe(false);
     expect(newStore().restore({ ...persisted, version: 2 })).toBe(false);
     expect(newStore().restore(null)).toBe(false);
-    expect(newStore().restore({ ...persisted, records: persisted.records.slice(1) })).toBe(false);
+    const gap = [...persisted.records.slice(0, 2), ...persisted.records.slice(3)];
+    expect(newStore().restore({ ...persisted, records: gap })).toBe(false);
+    expect(newStore().restore({ ...persisted, base: { kind: 'other' } })).toBe(false);
+    const withoutBase: Record<string, unknown> = { ...persisted };
+    delete withoutBase.base;
+    expect(newStore().restore(withoutBase)).toBe(false);
+  });
 
-    // A cap drops old records (the timeline keeps at least two checkpoint
-    // intervals, 512): the state can no longer rebuild its totals.
+  it('restores a log that dropped old records, totals and all', () => {
+    // A cap drops old records (the timeline keeps at least two checkpoint intervals, 512).
     const capped = newStore({ maxRecords: 40 });
+    capped.observe(prompt(0));
     for (let i = 0; i < 300; i++) {
       capped.observe(toolUse(i * 1_000, `c${i}`, 'Read', { file_path: `/repo/f${i}.ts` }));
-      capped.observe(toolResult(i * 1_000 + 10, `c${i}`, 'ok'));
+      capped.observe(toolResult(i * 1_000 + 10, `c${i}`, 'ok', i % 9 === 0));
     }
     expect(capped.baseSeq).toBeGreaterThan(0);
     expect(capped.recordsFrom(0)).toBeNull();
-    const trimmed = capped.serialize();
-    expect(trimmed.complete).toBe(false);
-    expect(newStore().restore(trimmed)).toBe(false);
     // Totals still count every call.
     expect(capped.snapshot().stations.find((s) => s.id === 'files')?.count).toBe(300);
+
+    const persisted = JSON.parse(JSON.stringify(capped.serialize()));
+    const resumed = newStore({ maxRecords: 40 });
+    expect(resumed.restore(persisted)).toBe(true);
+    expect(resumed.baseSeq).toBe(capped.baseSeq);
+    expect(resumed.nextSeq).toBe(capped.nextSeq);
+    expect(resumed.snapshot()).toEqual(capped.snapshot());
+    expect(resumed.insights()).toEqual(capped.insights());
+    const mid = capped.records()[Math.floor(capped.records().length / 2)].at;
+    expect(resumed.snapshot(mid)).toEqual(capped.snapshot(mid));
+
+    const next = toolUse(400_000, 'n1', 'Bash', { command: 'npm test' });
+    capped.observe(next);
+    resumed.observe(next);
+    expect(resumed.records()).toEqual(capped.records());
+    expect(resumed.insights()).toEqual(capped.insights());
   });
 
   it('applies new label settings to later events without renumbering', () => {

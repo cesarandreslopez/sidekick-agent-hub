@@ -182,8 +182,9 @@ const CUSTOM_SESSION_PATH_KEY = 'sidekick.customSessionPath';
  * aggregator's subagent state changed.
  * 5: subagent lifecycles track Codex spawns and record what settled a
  * background agent (aggregator schema 7).
- * 6: the activity map's log (`consumer.activity`) is checkpointed with the
- * rest, and Claude readers keep hook and memory signals.
+ * 6: the activity map's log (`consumer.activity`: the records kept and the
+ * state before them) is checkpointed with the rest, and Claude readers keep
+ * hook and memory signals.
  */
 const VSCODE_CHECKPOINT_REVISION = 6;
 
@@ -2022,8 +2023,8 @@ export class SessionMonitor implements vscode.Disposable {
       return false;
     }
 
-    // Restore the activity log at the same reader position. A log that
-    // dropped old records cannot rebuild its totals: replay instead.
+    // Restore the activity log at the same reader position (a trimmed log
+    // carries its base state). Malformed activity data: replay instead.
     if (!this.activity.restore(snapshot.consumer.activity)) {
       log(`Snapshot invalidated for ${this.sessionId} (activity log not restorable)`);
       this.reader.reset();
