@@ -1,10 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ActivityRecord, ActivityInsights, ActivitySnapshot } from 'sidekick-shared';
+import { createActivityState } from 'sidekick-shared';
+import type {
+  ActivityRecord,
+  ActivityInsights,
+  ActivitySnapshot,
+  SessionEvent,
+} from 'sidekick-shared';
+import { ActivityStore } from '../services/ActivityStore';
+import { ActivityTimelineModel } from '../webview/activityMap/model';
 import {
   ActivityMapConnection,
   type ActivitySource,
   type WebviewLike,
 } from './ActivityMapConnection';
+import { LiveActivitySource } from './activityMapSources';
 import type { ActivityMapHostMessage, ActivityMapWebviewMessage } from '../types/activityMap';
 
 function record(seq: number): ActivityRecord {
@@ -37,6 +46,9 @@ class FakeSource implements ActivitySource {
   }
   baseSeq() {
     return this.list[0]?.seq ?? 0;
+  }
+  base() {
+    return createActivityState();
   }
   records() {
     return this.list;
@@ -207,6 +219,67 @@ describe('ActivityMapConnection', () => {
     webview.receive({ type: 'activity/ready', protocol: 1 });
     expect(webview.types()).toEqual(['activity/init', 'activity/init']);
     expect(webview.sent[1].type === 'activity/init' && webview.sent[1].records).toHaveLength(4);
+  });
+
+  it('hands the webview what the host dropped: its model matches the host', () => {
+    // A tiny cap (the timeline keeps at least two checkpoint intervals, 512).
+    const store = new ActivityStore({
+      recorder: { providerId: 'claude-code', sessionId: 's1', deriveContext: false },
+      maxRecords: 40,
+    });
+    const iso = (offsetMs: number) => new Date(Date.UTC(2026, 10, 1) + offsetMs).toISOString();
+    for (let i = 0; i < 300; i++) {
+      const id = `c${i}`;
+      store.observe({
+        type: 'assistant',
+        timestamp: iso(i * 1_000),
+        message: {
+          id: `msg-${id}`,
+          role: 'assistant',
+          model: 'claude-opus-5-5',
+          content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: `/r/f${i}.ts` } }],
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
+      } as SessionEvent);
+      store.observe({
+        type: 'user',
+        timestamp: iso(i * 1_000 + 10),
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: id, content: 'ok', is_error: i % 7 === 0 }],
+        },
+      } as SessionEvent);
+    }
+    expect(store.baseSeq).toBeGreaterThan(0);
+    const none = () => ({ dispose: () => undefined });
+    const monitor = {
+      getActivityStore: () => store,
+      isActive: () => true,
+      getSessionPath: () => '/s1.jsonl',
+      getProvider: () => ({
+        id: 'claude-code' as const,
+        displayName: 'Claude Code',
+        getSessionId: () => 's1',
+      }),
+      onSessionStart: none,
+      onSessionEnd: none,
+      onSessionReset: none,
+    };
+    const webview = new FakeWebview();
+    new ActivityMapConnection(webview, new LiveActivitySource(monitor), { isVisible: () => true });
+    webview.receive({ type: 'activity/ready', protocol: 1 });
+    // As the webview receives it: structured-cloned JSON.
+    const message = JSON.parse(JSON.stringify(webview.sent[0])) as ActivityMapHostMessage;
+    if (message.type !== 'activity/init') throw new Error(`expected an init, got ${message.type}`);
+
+    const model = new ActivityTimelineModel();
+    model.init(message);
+    expect(model.length).toBe(store.records().length);
+    expect(model.snapshotAt()).toEqual(store.snapshot());
+    expect(model.insightsAt()).toEqual(store.insights());
+    expect(model.snapshotAt().stations.find((s) => s.id === 'files')?.count).toBe(300);
+    const mid = model.records()[Math.floor(model.length / 2)].at;
+    expect(model.snapshotAt(mid)).toEqual(store.snapshot(mid));
   });
 
   it('carries a focus on the first init only', () => {

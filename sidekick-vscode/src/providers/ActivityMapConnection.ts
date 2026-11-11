@@ -13,6 +13,7 @@ import type {
   ActivityInsights,
   ActivityRecord,
   ActivitySnapshot,
+  ActivityState,
   ActivityStationId,
 } from 'sidekick-shared';
 import { ACTIVITY_MAP_PROTOCOL } from '../types/activityMap';
@@ -36,6 +37,8 @@ export interface ActivitySource {
   epoch(): number;
   nextSeq(): number;
   baseSeq(): number;
+  /** The state before the first record held (dropped records leave their effect here). */
+  base(): ActivityState;
   records(): readonly ActivityRecord[];
   /** Null when `seq` is no longer (or not yet) held. */
   recordsFrom(seq: number): ActivityRecord[] | null;
@@ -194,6 +197,7 @@ export class ActivityMapConnection implements Disposable {
       epoch,
       baseSeq: this.source.baseSeq(),
       nextSeq,
+      base: this.source.base(),
       records,
       hostNow: this.now(),
       live,

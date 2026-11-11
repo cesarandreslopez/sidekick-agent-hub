@@ -3,8 +3,9 @@
  * sidebar view and the pop-out panel share them).
  *
  * The host sends the activity log as records numbered by `seq` within an
- * `epoch`: `activity/init` carries every record held, `activity/append` the
- * next run of them. A webview that sees a gap, or an epoch it does not hold,
+ * `epoch`: `activity/init` carries every record held and the state before
+ * the first of them (what records the host dropped left behind),
+ * `activity/append` the next run of them. A webview that sees a gap, or an epoch it does not hold,
  * asks for `activity/resync` and receives a fresh `activity/init`.
  *
  * Types only, imported by both sides.
@@ -15,6 +16,7 @@
 import type {
   ActivityLayout,
   ActivityRecord,
+  ActivityState,
   ActivityStationId,
   ProviderId,
 } from 'sidekick-shared';
@@ -65,6 +67,8 @@ export type ActivityMapHostMessage =
       epoch: number;
       baseSeq: number;
       nextSeq: number;
+      /** The state before `records[0]`: the host timeline's `base()`. */
+      base: ActivityState;
       records: ActivityRecord[];
       /** Host clock when sent, for the webview's clock offset. */
       hostNow: number;

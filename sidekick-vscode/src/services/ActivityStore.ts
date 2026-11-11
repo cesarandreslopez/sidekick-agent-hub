@@ -31,6 +31,7 @@ import type {
   ActivityRecorderOptions,
   ActivityRecorderState,
   ActivitySnapshot,
+  ActivityState,
   ActivityTimeline,
   ProviderId,
   SessionEvent,
@@ -191,6 +192,11 @@ export class ActivityStore {
   /** Every record held, oldest first. */
   records(): readonly ActivityRecord[] {
     return this.timeline.records();
+  }
+
+  /** A fresh copy of the state before the first record held (what dropped records left). */
+  base(): ActivityState {
+    return this.timeline.base();
   }
 
   /** Records from `seq` on; null when `seq` was dropped already or lies ahead. */
