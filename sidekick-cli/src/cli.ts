@@ -8,6 +8,7 @@ import {
   IMPORT_EXAMPLES,
   USAGE_REPORT_EXAMPLES,
   HISTORY_EXAMPLES,
+  MAP_EXAMPLES,
   QUOTA_EXAMPLES,
   ROOT_EXAMPLES,
 } from './help';
@@ -15,6 +16,10 @@ import { firstCommandToken } from './argvScan';
 import { isOfflineRun, needsFullStartup, runStartupSideEffects } from './startup';
 import { shouldRunUpdateNotice, startUpdateNotice, type UpdateNoticeHandle } from './updateCheck';
 import {
+  mapFormatOption,
+  mapLabelsOption,
+  mapMotionOption,
+  mapThemeOption,
   quotaHistoryProviderOption,
   quotaProviderOption,
   reportThemeOption,
@@ -71,9 +76,8 @@ program.hook('preAction', async (_program, actionCommand) => {
   }
   const outputFile = program.opts().outputFile as string | undefined;
   if (outputFile) {
-    const { installOutputRedirect, REDIRECT_UNSUPPORTED_COMMANDS } =
-      await import('./outputRedirect');
-    if (commandToken && REDIRECT_UNSUPPORTED_COMMANDS.has(commandToken)) {
+    const { installOutputRedirect, isRedirectUnsupported } = await import('./outputRedirect');
+    if (commandToken && isRedirectUnsupported(commandToken, process.argv.slice(2))) {
       process.stderr.write(`--output-file is ignored for '${commandToken}'.\n`);
     } else {
       installOutputRedirect(outputFile);
@@ -209,6 +213,33 @@ const reportCmd = new Command('report')
     return reportAction(_opts, cmd);
   });
 program.addCommand(reportCmd);
+
+// Map command — the activity map: where a session's work went, live or replayed
+const mapCmd = new Command('map')
+  .description(
+    'Activity map of a session (files, shell, network, memory, agents, …): text, SVG, JSON, or live with --follow',
+  )
+  .option('--session <id>', 'Session to show (default: most recent)')
+  .option('-f, --follow', 'Live full-screen map of the running session; follows newer sessions')
+  .addOption(mapFormatOption())
+  .option(
+    '--at <time>',
+    'Moment to show: end (default), start, +15m after the start, -5m before the end, 50%, HH:MM[:SS], or an ISO date-time',
+  )
+  .option('-o, --output <path>', 'Write to a file instead of stdout')
+  .addOption(mapThemeOption())
+  .addOption(mapMotionOption())
+  .addOption(mapLabelsOption())
+  .option('--width <cols>', 'Text width (default: terminal width)')
+  .option('--height <rows>', 'Rows for the text map (default: from the terminal)')
+  .option('--subagents', 'Include subagent transcripts in the replay')
+  .option('--core-name <name>', 'Text in the core of the map (default: the agent)')
+  .addHelpText('after', MAP_EXAMPLES)
+  .action(async (_opts: Record<string, unknown>, cmd: Command) => {
+    const { mapAction } = await import('./commands/map');
+    return mapAction(_opts, cmd);
+  });
+program.addCommand(mapCmd);
 
 // Search command — full-text search across sessions
 const searchCmd = new Command('search')

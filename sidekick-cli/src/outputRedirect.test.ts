@@ -3,7 +3,22 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import chalk from 'chalk';
-import { installOutputRedirect } from './outputRedirect';
+import { installOutputRedirect, isRedirectUnsupported } from './outputRedirect';
+
+describe('isRedirectUnsupported', () => {
+  it('refuses live UIs and the wire protocol, accepts documents', () => {
+    expect(isRedirectUnsupported('dashboard', ['dashboard'])).toBe(true);
+    expect(isRedirectUnsupported('mcp', ['mcp'])).toBe(true);
+    expect(isRedirectUnsupported('quota', ['quota'])).toBe(false);
+  });
+
+  it('refuses map only when it runs live', () => {
+    expect(isRedirectUnsupported('map', ['map', '--follow'])).toBe(true);
+    expect(isRedirectUnsupported('map', ['--output-file', 'x', 'map', '-f'])).toBe(true);
+    expect(isRedirectUnsupported('map', ['map', '--format', 'svg'])).toBe(false);
+    expect(isRedirectUnsupported('map', ['map'])).toBe(false);
+  });
+});
 
 describe('installOutputRedirect', () => {
   const originalWrite = process.stdout.write;

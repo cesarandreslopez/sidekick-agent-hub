@@ -40,6 +40,41 @@ export function reportThemeOption(): Option {
   return new Option('--theme <theme>', 'Color theme').default('dark').choices(['dark', 'light']);
 }
 
+/** `sidekick map --format`: text (default), an SVG image, or JSON. */
+export function mapFormatOption(): Option {
+  return new Option('--format <format>', 'Output format (default: text)').choices([
+    'text',
+    'svg',
+    'json',
+  ]);
+}
+
+/** `sidekick map --theme`: SVG colors; auto follows the viewer's light or dark setting. */
+export function mapThemeOption(): Option {
+  return new Option('--theme <theme>', 'SVG colors (default: auto)').choices([
+    'auto',
+    'dark',
+    'light',
+  ]);
+}
+
+/** `sidekick map --motion`: SVG animation; none draws one still frame. */
+export function mapMotionOption(): Option {
+  return new Option('--motion <motion>', 'SVG animation (default: none)').choices([
+    'none',
+    'reduced',
+    'full',
+  ]);
+}
+
+/** `sidekick map --labels`: how much a label may say. */
+export function mapLabelsOption(): Option {
+  return new Option(
+    '--labels <mode>',
+    "Label detail: names, descriptive (adds the agent's short descriptions), or none (default: descriptive for text, names for files)",
+  ).choices(['names', 'descriptive', 'none']);
+}
+
 export function tasksStatusOption(): Option {
   return new Option('--status <status>', 'Filter by status (default: all)').choices([
     'pending',

@@ -42,3 +42,14 @@ export function installOutputRedirect(
 
 /** Commands whose stdout is a live UI or a wire protocol, not a document. */
 export const REDIRECT_UNSUPPORTED_COMMANDS = new Set(['dashboard', 'mcp']);
+
+/**
+ * Whether `--output-file` must be ignored for this invocation: always for the
+ * commands above, and for `map` only when it runs live (`--follow` / `-f`),
+ * since its exports are documents like any other command's output.
+ */
+export function isRedirectUnsupported(commandToken: string, argv: readonly string[]): boolean {
+  if (REDIRECT_UNSUPPORTED_COMMANDS.has(commandToken)) return true;
+  if (commandToken !== 'map') return false;
+  return argv.some((arg) => arg === '--follow' || arg === '-f');
+}
