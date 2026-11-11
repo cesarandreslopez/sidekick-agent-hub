@@ -193,10 +193,10 @@ describe('a checkpoint that splits one Claude response', () => {
   });
 });
 
-it('records a source checkpoint at the reader position and revision 5', () => {
+it('records a source checkpoint at the reader position and revision 6', () => {
   const { filename, size } = checkpointedSession();
   const snapshot = loadSnapshot('session')!;
-  expect(snapshot.consumer.checkpointRevision).toBe(5);
+  expect(snapshot.consumer.checkpointRevision).toBe(6);
   expect(snapshot.sourceSize).toBe(size);
   expect(snapshot.sourceCheckpoint).toMatchObject({ version: 1, offset: size });
   fs.appendFileSync(filename, event('three', 3));
@@ -205,7 +205,7 @@ it('records a source checkpoint at the reader position and revision 5', () => {
   );
 });
 
-it.each([undefined, 2, 3, 4])('rejects unsafe CLI checkpoint revision %s', (revision) => {
+it.each([undefined, 2, 3, 4, 5])('rejects unsafe CLI checkpoint revision %s', (revision) => {
   const { filename } = checkpointedSession();
   const snapshot = loadSnapshot('session')!;
   snapshot.consumer.checkpointRevision = revision;
@@ -414,4 +414,110 @@ describe('a session file that starts over while followed', () => {
       expect(reopened.getMetrics().tokens.input).toBe(scenario.expectedInput);
     },
   );
+});
+
+describe('activity map checkpoint', () => {
+  function toolLine(second: number, id: string, name: string, input: object): Buffer {
+    return Buffer.from(
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: new Date(Date.UTC(2026, 8, 6, 12, 0, second)).toISOString(),
+        message: {
+          id: `msg-${id}`,
+          role: 'assistant',
+          model: 'claude-sonnet-4-20250514',
+          content: [{ type: 'tool_use', id, name, input }],
+          usage: { input_tokens: 10, output_tokens: 1 },
+        },
+      }) + '\n',
+    );
+  }
+  function resultLine(second: number, id: string, isError = false): Buffer {
+    return Buffer.from(
+      JSON.stringify({
+        type: 'user',
+        timestamp: new Date(Date.UTC(2026, 8, 6, 12, 0, second)).toISOString(),
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: id, content: 'out', is_error: isError }],
+        },
+      }) + '\n',
+    );
+  }
+  /** A watcher feeding both the follow events and the activity map, as the dashboard does. */
+  function watchActivity(file: string, state: DashboardState) {
+    const provider = {
+      id: 'claude-code',
+      findAllSessions: () => [file],
+      getSessionId: () => 'session',
+    } as unknown as SessionProviderBase;
+    const { watcher } = createWatcher({
+      provider,
+      workspacePath: directory,
+      includeActivitySignals: true,
+      callbacks: {
+        onEvent: (event) => state.processEvent(event),
+        onSessionEvent: (event) => state.observeSessionEvent(event),
+        onError: (error) => {
+          throw error;
+        },
+      },
+    });
+    watchers.push(watcher);
+    return watcher;
+  }
+  function stateFor(): DashboardState {
+    const state = new DashboardState();
+    state.configureActivity('claude-code');
+    state.setSessionId('session');
+    return state;
+  }
+
+  it('restores the map from the checkpoint and keeps building on it', () => {
+    const filename = path.join(directory, 'session.jsonl');
+    fs.writeFileSync(
+      filename,
+      Buffer.concat([
+        toolLine(1, 'r1', 'Read', { file_path: '/repo/src/a.ts' }),
+        resultLine(2, 'r1'),
+        toolLine(3, 'b1', 'Bash', { command: 'npm test' }),
+        resultLine(5, 'b1', true),
+      ]),
+    );
+    const first = stateFor();
+    const watcher = watchActivity(filename, first);
+    watcher.start(true);
+    first.markHistoryReplayed('claude-code');
+    first.persistSnapshot(watcher.getPosition!(), filename, watcher.getResumeState?.());
+    expect(loadSnapshot('session')!.consumer.activity).toBeDefined();
+
+    fs.appendFileSync(filename, toolLine(6, 'e1', 'Edit', { file_path: '/repo/src/a.ts' }));
+
+    const reopened = stateFor();
+    const resumed = watchActivity(filename, reopened);
+    expect(
+      reopened.tryRestoreFromSnapshot('session', 'claude-code', filename, resumed),
+    ).not.toBeNull();
+    resumed.start(true);
+
+    const full = stateFor();
+    watchActivity(filename, full).start(true);
+
+    const counts = (state: DashboardState) =>
+      state.getActivitySnapshot()!.stations.map((station) => [station.id, station.count]);
+    expect(counts(reopened)).toEqual(counts(full));
+    expect(
+      reopened.getMetrics().activity?.snapshot.stations.find((s) => s.id === 'files')?.count,
+    ).toBe(2);
+    expect(reopened.getMetrics().activity?.insights.totals.errors).toBe(1);
+  });
+
+  it('replays when the checkpoint has no usable activity', () => {
+    const { filename } = checkpointedSession();
+    const snapshot = loadSnapshot('session')!;
+    snapshot.consumer.activity = { version: 99 };
+    saveSnapshot(snapshot);
+    expect(stateFor().tryRestoreFromSnapshot('session', 'claude-code', filename)).toBeNull();
+    expect(loadSnapshot('session')).toBeNull();
+  });
 });

@@ -319,15 +319,24 @@ export function Dashboard({
   // Usable detail-pane columns for the current layout: total minus the side
   // panel minus border/padding overhead (parity with the legacy 29 - 26 = 3).
   const detailContentWidth = Math.max(40, columns - sideWidth - 3);
+  // Visible detail rows; computed before the render so tabs that fill the
+  // pane (the activity map) can size themselves to it.
+  const detailViewportHeight = Math.max(1, rows - 5);
 
   const sessionFilterActive = Boolean(state.sessionFilter);
   const detailContent = useMemo(() => {
     if (selectedItem && detailTabs.length > 0 && tabIdx >= 0) {
       const tab = detailTabs[tabIdx];
       const tabLabel = tab.label;
-      const skipPhrase = tabLabel === 'Timeline' || tabLabel === 'Mind Map';
+      const skipPhrase = tabLabel === 'Timeline' || tabLabel === 'Mind Map' || tabLabel === 'Map';
       const prefix = skipPhrase ? '' : detailPhrase + '\n';
-      return prefix + tab.render(selectedItem, metrics, staticData, { width: detailContentWidth });
+      return (
+        prefix +
+        tab.render(selectedItem, metrics, staticData, {
+          width: detailContentWidth,
+          height: detailViewportHeight,
+        })
+      );
     }
     if (!selectedItem) {
       const filterablePanel = ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id);
@@ -344,13 +353,13 @@ export function Dashboard({
     metrics,
     staticData,
     detailContentWidth,
+    detailViewportHeight,
     panel,
     panelViewVersion,
     sessionFilterActive,
   ]);
 
   const detailLines = detailContent.split('\n');
-  const detailViewportHeight = Math.max(1, rows - 5);
 
   // Auto-scroll for tabs that request it (e.g., Timeline)
   const activeTab = detailTabs[tabIdx];

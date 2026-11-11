@@ -32,8 +32,16 @@ import {
   deleteSnapshot,
   captureJsonlCheckpoint,
 } from 'sidekick-shared';
-import type { SessionSnapshot } from 'sidekick-shared';
+import type {
+  ActivityInsights,
+  ActivitySnapshot,
+  ProviderId,
+  SessionEvent,
+  SessionSnapshot,
+} from 'sidekick-shared';
 import { quotaFromCodexRateLimits } from 'sidekick-shared';
+import { LiveActivity } from '../activity/liveActivity';
+import type { LiveActivityRecorderOptions } from '../activity/liveActivity';
 import { mergeModelUsage } from '../modelUsage';
 import { getContextWindowSize } from './modelContext';
 import type { QuotaState } from './QuotaService';
@@ -304,6 +312,8 @@ export interface DashboardMetrics {
   patterns: Array<{ template: string; count: number; examples: string[] }>;
   /** Rolling activity heatmap buckets (from HeatmapTracker). */
   heatmapBuckets: Array<{ timestamp: string; count: number }>;
+  /** The activity map of the followed session; absent until it is configured. */
+  activity?: { snapshot: ActivitySnapshot; insights: ActivityInsights };
 }
 
 // ── Constants ──
@@ -323,8 +333,10 @@ const TIMELINE_RING_SIZE = 200;
  * aggregator's subagent state changed.
  * 5: subagent lifecycles track Codex spawns and record what settled a
  * background agent (aggregator schema 7).
+ * 6: the activity map's recorder and state (`consumer.activity`); a restored
+ * session would otherwise lose every event before the reader position.
  */
-const CLI_CHECKPOINT_REVISION = 5;
+const CLI_CHECKPOINT_REVISION = 6;
 
 /**
  * Shows an agent's task item as the agent reads: still "Running …" only while
@@ -423,6 +435,9 @@ export class DashboardState {
   // CLI-specific: per-task tool call counts (aggregator doesn't track this)
   private _taskToolCallCounts = new Map<string, number>();
 
+  // The activity map, fed canonical session events (`observeSessionEvent`).
+  private _activity: LiveActivity | null = null;
+
   // Task management tools that don't count towards task tool call counts
   private static readonly TASK_MGMT_TOOLS = ['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'];
 
@@ -466,6 +481,33 @@ export class DashboardState {
     this._lastKnownCompactionCount = 0;
     this._taskToolCallCounts.clear();
     this._subagentStats = [];
+    this._activity?.reset(this._sessionId);
+  }
+
+  /**
+   * Turns the activity map on for a provider (call before the watcher starts;
+   * calling again with other options starts the map over).
+   */
+  configureActivity(providerId: ProviderId, recorder: LiveActivityRecorderOptions = {}): void {
+    this.touch();
+    this._activity = new LiveActivity({
+      providerId,
+      ...(this._sessionId ? { sessionId: this._sessionId } : {}),
+      recorder,
+    });
+  }
+
+  /** Feeds one canonical session event to the activity map; true when the map changed. */
+  observeSessionEvent(event: SessionEvent): boolean {
+    if (!this._activity) return false;
+    if (this._activity.observe(event) === 0) return false;
+    this.touch();
+    return true;
+  }
+
+  /** The activity map now; null before it is configured. */
+  getActivitySnapshot(): ActivitySnapshot | null {
+    return this._activity?.snapshot() ?? null;
   }
 
   /**
@@ -495,7 +537,10 @@ export class DashboardState {
   /** Set the session ID for plan persistence. */
   setSessionId(id: string): void {
     this.touch();
-    if (id !== this._sessionId) this._checkpointProviderId = undefined;
+    if (id !== this._sessionId) {
+      this._checkpointProviderId = undefined;
+      this._activity?.reset(id);
+    }
     this._sessionId = id;
   }
 
@@ -552,6 +597,14 @@ export class DashboardState {
       return null;
     }
 
+    // The activity map holds every event before the reader position too; a
+    // snapshot without a usable copy must replay, or the map would start blank.
+    if (this._activity && !this._activity.restore(snapshot.consumer.activity)) {
+      this._aggregator.reset();
+      deleteSnapshot(sessionId);
+      return null;
+    }
+
     // The watcher's parse state at that position (for Claude, which
     // split-line responses it already counted). Rejected state: replay.
     if (watcher?.seekTo) {
@@ -559,6 +612,7 @@ export class DashboardState {
       if (watcher.restoreResumeState?.(snapshot.readerState) === false) {
         watcher.seekTo(0);
         this._aggregator.reset();
+        this._activity?.reset(sessionId);
         deleteSnapshot(sessionId);
         return null;
       }
@@ -677,6 +731,7 @@ export class DashboardState {
         providerName: this._providerName,
         lastKnownCompactionCount: this._lastKnownCompactionCount,
         taskToolCallCounts: Array.from(this._taskToolCallCounts.entries()),
+        ...(this._activity ? { activity: this._activity.serialize() } : {}),
       },
     };
 
@@ -992,6 +1047,14 @@ export class DashboardState {
       wordFrequency: m.wordFrequency ?? [],
       patterns: m.patterns ?? [],
       heatmapBuckets: m.heatmapBuckets ?? [],
+      ...(this._activity
+        ? {
+            activity: {
+              snapshot: this._activity.snapshot(),
+              insights: this._activity.insights(),
+            },
+          }
+        : {}),
     };
   }
 
