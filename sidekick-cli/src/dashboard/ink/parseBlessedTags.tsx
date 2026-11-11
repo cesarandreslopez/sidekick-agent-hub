@@ -1,7 +1,8 @@
 /**
  * Stack-based parser converting blessed tag strings to React/Ink nodes.
  *
- * Supports: {bold}, {underline}, {color-fg}, {/tag}, nested tags.
+ * Supports: {bold}, {underline}, {color-fg}, {/tag}, nested tags, and the
+ * escapes {open} / {close} for literal braces.
  * Ignores: {center} (handled at layout level).
  */
 
@@ -56,6 +57,12 @@ export function parseBlessedTags(input: string): React.ReactNode {
 
     const isClose = match[1] === '/';
     const tagName = match[2];
+
+    // `{open}` / `{close}` are escapes for literal braces (see escapeBlessed).
+    if (!isClose && (tagName === 'open' || tagName === 'close')) {
+      segments.push(renderSpan(tagName === 'open' ? '{' : '}', currentStyle(styleStack), segKey++));
+      continue;
+    }
 
     if (isClose) {
       let matchingIndex = -1;

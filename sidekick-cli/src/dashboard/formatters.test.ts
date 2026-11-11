@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  escapeBlessed,
   fmtNum,
   formatDuration,
   stripBlessedTags,
@@ -34,6 +35,13 @@ describe('stripBlessedTags', () => {
 
   it('returns plain text unchanged', () => {
     expect(stripBlessedTags('no tags here')).toBe('no tags here');
+  });
+
+  it('turns the brace escapes back into braces and counts them once', () => {
+    const escaped = `{bold}${escapeBlessed('a {red-fg} b }')}{/bold}`;
+    expect(escaped).toBe('{bold}a {open}red-fg{close} b {close}{/bold}');
+    expect(stripBlessedTags(escaped)).toBe('a {red-fg} b }');
+    expect(visibleLength(escaped)).toBe('a {red-fg} b }'.length);
   });
 
   it('handles empty string', () => {
