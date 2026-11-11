@@ -221,10 +221,11 @@ export function parseActivityMapConfig(raw: unknown): ParsedActivityMapConfig {
     const servers: Record<string, ActivityStationId> = {};
     for (const [key, station] of Object.entries(raw.stationOverrides)) {
       if (!isActivityStationId(station) || key.trim() === '') continue;
+      // As in VS Code: `mcp__<server>__*` names a server, any other key a tool
+      // (`Bash`, `update_plan`, `mcp__srv__tool`).
       const server = /^mcp__([^_].*?)__\*$/.exec(key.trim());
       if (server) servers[server[1]] = station;
-      else if (key.includes('__') || /^[A-Z]/.test(key)) tools[key.trim()] = station;
-      else servers[key.trim()] = station;
+      else tools[key.trim()] = station;
     }
     if (Object.keys(tools).length > 0 || Object.keys(servers).length > 0) {
       result.recorder.stationOverrides = {

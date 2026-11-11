@@ -31,14 +31,17 @@ describe('parseActivityMapConfig', () => {
       parseActivityMapConfig({
         stationOverrides: {
           'mcp__notes__*': 'memory',
+          'mcp__playwright__*': 'browser',
           mcp__browserish__open: 'browser',
           Bash: 'shell',
-          playwright: 'browser',
+          update_plan: 'plan',
           ghost: 'nowhere',
         },
       }).recorder.stationOverrides,
     ).toEqual({
-      tools: { mcp__browserish__open: 'browser', Bash: 'shell' },
+      // As in VS Code: only `mcp__<server>__*` names a server; lowercase tool
+      // names (Codex `update_plan`) are tools.
+      tools: { mcp__browserish__open: 'browser', Bash: 'shell', update_plan: 'plan' },
       servers: { notes: 'memory', playwright: 'browser' },
     });
   });

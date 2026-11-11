@@ -155,7 +155,8 @@ export async function runMapFollow(options: MapFollowOptions): Promise<void> {
     const snapshot = sessionPath ? (paused ? live.snapshotAt(cursor) : live.snapshot()) : null;
     return buildFollowFrame({
       snapshot,
-      insights: sessionPath ? live.insights() : null,
+      // While paused the insights describe the cursor's moment, like the map.
+      insights: sessionPath ? (paused ? live.insightsAt(cursor) : live.insights()) : null,
       now,
       width: size.columns,
       height: size.rows,

@@ -58,6 +58,8 @@ export class LiveActivity {
   private _version = 0;
   private snapshotCache: { version: number; snapshot: ActivitySnapshot } | null = null;
   private insightsCache: { version: number; insights: ActivityInsights } | null = null;
+  private insightsAtCache: { version: number; at: number; insights: ActivityInsights } | null =
+    null;
 
   constructor(private options: LiveActivityOptions) {
     this.recorder = this.createRecorder();
@@ -129,6 +131,21 @@ export class LiveActivity {
       this.insightsCache = { version: this._version, insights: summarizeActivity(this.state) };
     }
     return this.insightsCache.insights;
+  }
+
+  /** The insights as of `at`, matching `snapshotAt(at)`; without kept records, the current ones. */
+  insightsAt(at: number): ActivityInsights {
+    if (!this.timeline || this.timeline.length === 0) return this.insights();
+    const end = this.timeline.endAt;
+    if (end !== undefined && at >= end) return this.insights();
+    if (this.insightsAtCache?.version !== this._version || this.insightsAtCache.at !== at) {
+      this.insightsAtCache = {
+        version: this._version,
+        at,
+        insights: summarizeActivity(this.timeline.stateAt(at)),
+      };
+    }
+    return this.insightsAtCache.insights;
   }
 
   /** First and last record times, or null before anything happened. */

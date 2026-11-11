@@ -110,6 +110,16 @@ describe('LiveActivity', () => {
     expect(live.snapshotAt(range!.endMs)).toBe(live.snapshot());
   });
 
+  it('gives insights as of a past moment, matching the snapshot there', () => {
+    const live = new LiveActivity({ providerId: 'claude-code', keepRecords: 1_000 });
+    live.observeMany(events);
+    const at = Date.parse(T(2.5));
+    const past = live.insightsAt(at);
+    expect(past.totals.calls).toBe(live.snapshotAt(at).totals.calls);
+    expect(past.totals.calls).toBeLessThan(live.insights().totals.calls);
+    expect(live.insightsAt(live.range()!.endMs)).toBe(live.insights());
+  });
+
   it('resets for a new session', () => {
     const live = new LiveActivity({ providerId: 'claude-code', sessionId: 's1' });
     live.observeMany(events);
