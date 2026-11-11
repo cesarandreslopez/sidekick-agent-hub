@@ -84,6 +84,9 @@ import {
   isAgentsKilledSystemEvent,
   isSubagentActivitySystemEvent,
   isTurnLifecycleSystemEvent,
+  isHookActivitySystemEvent,
+  isMemoryAttachmentSystemEvent,
+  DEFAULT_CONTEXT_WINDOW,
   agentsStoppedNoticeFromEvent,
   describeSubagentActivity,
   resolveSubagentDisplayState,
@@ -95,6 +98,15 @@ import {
   type SubagentEvidence,
 } from 'sidekick-shared';
 import { calculateLineChanges } from '../utils/lineChangeCalculator';
+import { ActivityStore } from './ActivityStore';
+import {
+  ACTIVITY_MAP_SETTINGS_SECTION,
+  DEFAULT_ACTIVITY_MAP_SETTINGS,
+  readActivityMapSettings,
+  toClassificationOptions,
+  toRecorderOptions,
+  type ActivityMapSettings,
+} from '../utils/activityMapSettings';
 
 /**
  * True for a plan file Claude Code writes: under the live Claude home's
@@ -103,6 +115,16 @@ import { calculateLineChanges } from '../utils/lineChangeCalculator';
 export function isClaudePlanFile(filePath: string): boolean {
   const plansDir = path.resolve(getLiveClaudeHome(), 'plans') + path.sep;
   return filePath.includes('.claude/plans/') || path.resolve(filePath).startsWith(plansDir);
+}
+
+/** `sidekick.activityMap` settings; defaults when the configuration is unavailable (tests). */
+function readActivitySettings(): ActivityMapSettings {
+  try {
+    const config = vscode.workspace.getConfiguration(ACTIVITY_MAP_SETTINGS_SECTION);
+    return readActivityMapSettings((key) => config.get(key));
+  } catch {
+    return DEFAULT_ACTIVITY_MAP_SETTINGS;
+  }
 }
 
 /** Payload of `SessionMonitor.onSessionReset`. */
@@ -160,8 +182,10 @@ const CUSTOM_SESSION_PATH_KEY = 'sidekick.customSessionPath';
  * aggregator's subagent state changed.
  * 5: subagent lifecycles track Codex spawns and record what settled a
  * background agent (aggregator schema 7).
+ * 6: the activity map's log (`consumer.activity`) is checkpointed with the
+ * rest, and Claude readers keep hook and memory signals.
  */
-const VSCODE_CHECKPOINT_REVISION = 5;
+const VSCODE_CHECKPOINT_REVISION = 6;
 
 /** Type guard for content blocks with a `type` string property */
 function isTypedBlock(block: unknown): block is Record<string, unknown> & { type: string } {
@@ -198,6 +222,9 @@ export class SessionMonitor implements vscode.Disposable {
 
   /** Shared aggregation engine (tokens, model stats, context, compaction, latency, etc.) */
   private aggregator: EventAggregator;
+
+  /** Activity-map log, fed from every event this monitor handles (replays included). */
+  private activity: ActivityStore;
 
   /** Accumulated session statistics */
   private stats: SessionStats;
@@ -440,6 +467,24 @@ export class SessionMonitor implements vscode.Disposable {
     });
     // Initialize empty statistics
     this.stats = this.createEmptyStats();
+    this.activity = new ActivityStore({
+      recorder: toRecorderOptions(readActivitySettings(), provider.id),
+    });
+  }
+
+  /** The activity map's log for the monitored session. */
+  getActivityStore(): ActivityStore {
+    return this.activity;
+  }
+
+  /** Applies changed `sidekick.activityMap` classification settings to new events. */
+  reconfigureActivity(settings: ActivityMapSettings = readActivitySettings()): void {
+    this.activity.reconfigure(toClassificationOptions(settings));
+  }
+
+  /** Starts an empty activity log for the session now being read. */
+  private resetActivity(): void {
+    this.activity.reset({ providerId: this.provider.id, sessionId: this.sessionId });
   }
 
   /**
@@ -568,7 +613,8 @@ export class SessionMonitor implements vscode.Disposable {
     try {
       this.isWaitingForSession = false;
       this.sessionId = this.provider.getSessionId(this.sessionPath);
-      this.reader = this.provider.createReader(this.sessionPath);
+      this.reader = this.provider.createReader(this.sessionPath, { includeActivitySignals: true });
+      this.resetActivity();
 
       const usageSnapshot = this.provider.getCurrentUsageSnapshot?.(this.sessionPath);
       if (usageSnapshot) {
@@ -697,6 +743,7 @@ export class SessionMonitor implements vscode.Disposable {
       },
     });
     oldProvider.dispose();
+    this.resetActivity();
 
     if (!this.workspacePath) {
       return false;
@@ -1069,7 +1116,8 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     // Reset state for new session
-    this.reader = this.provider.createReader(sessionPath);
+    this.reader = this.provider.createReader(sessionPath, { includeActivitySignals: true });
+    this.resetActivity();
     this.pendingToolCalls.clear();
     this.toolCallsById.clear();
     this.toolAnalyticsMap.clear();
@@ -1850,6 +1898,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.currentTurnIndex = 0;
     this.contextTimeline = [];
     this.aggregator.reset();
+    this.resetActivity();
 
     this.lastModelId = null;
     this.stats = this.createEmptyStats();
@@ -1892,6 +1941,7 @@ export class SessionMonitor implements vscode.Disposable {
     }
 
     this._isReplaying = true;
+    this.activity.beginReplay();
     this._onReplayStateChange.fire(true);
     try {
       const events = this.reader.readNew();
@@ -1913,6 +1963,7 @@ export class SessionMonitor implements vscode.Disposable {
       throw error;
     } finally {
       this._isReplaying = false;
+      this.activity.endReplay();
       this._onReplayStateChange.fire(false);
     }
   }
@@ -1971,9 +2022,19 @@ export class SessionMonitor implements vscode.Disposable {
       return false;
     }
 
+    // Restore the activity log at the same reader position. A log that
+    // dropped old records cannot rebuild its totals: replay instead.
+    if (!this.activity.restore(snapshot.consumer.activity)) {
+      log(`Snapshot invalidated for ${this.sessionId} (activity log not restorable)`);
+      this.reader.reset();
+      deleteSnapshot(this.sessionId);
+      return false;
+    }
+
     // Restore aggregator state
     if (!this.aggregator.restore(snapshot.aggregator)) {
       this.reader.reset();
+      this.resetActivity();
       deleteSnapshot(this.sessionId);
       return false;
     }
@@ -2121,6 +2182,7 @@ export class SessionMonitor implements vscode.Disposable {
         timeline: this.timeline,
         toolAnalyticsMap: Array.from(this.toolAnalyticsMap.entries()),
         seenHashes: Array.from(this.seenHashes),
+        activity: this.activity.serialize(),
       },
     };
 
@@ -2448,6 +2510,14 @@ export class SessionMonitor implements vscode.Disposable {
       return;
     }
 
+    // Hook and memory signals exist for the activity map alone: every other
+    // consumer (aggregator, timeline, event stream, audit log) skips them.
+    if (isHookActivitySystemEvent(event) || isMemoryAttachmentSystemEvent(event)) {
+      this.activity.observe(event);
+      this.stats.lastUpdated = new Date();
+      return;
+    }
+
     // Log event to JSONL audit trail (lazy-start on first event)
     if (this.eventLogger) {
       if (!this.eventLogger.isSessionActive() && this.sessionId) {
@@ -2461,6 +2531,7 @@ export class SessionMonitor implements vscode.Disposable {
     const prevCompactionCount = this.aggregator.getCompactionEvents().length;
     const prevTruncationCount = this.aggregator.getTruncationEvents().length;
     this.aggregator.processEvent(event);
+    this.activity.observe(event);
 
     // During replay, skip expensive VS Code event firing — views will get
     // a batch update via onSessionStart after replay completes.
@@ -2640,6 +2711,13 @@ export class SessionMonitor implements vscode.Disposable {
 
       if (hasContextSignal) {
         this.addContextTimelinePoint(event.timestamp, newContextSize, this.currentTurnIndex);
+        // The same numbers the dashboard's context gauge shows.
+        this.activity.observeContext({
+          at: Date.parse(event.timestamp),
+          usedTokens: newContextSize,
+          windowTokens:
+            this.provider.getContextWindowLimit?.(usage.model) ?? DEFAULT_CONTEXT_WINDOW,
+        });
       }
 
       // Attribute tokens to active plan step
@@ -3896,6 +3974,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.logReaderReset('while monitoring');
     this.resetSessionProcessingState();
     this._isReplaying = true;
+    this.activity.beginReplay();
     this._onReplayStateChange.fire(true);
     try {
       for (const event of events) {
@@ -3903,6 +3982,7 @@ export class SessionMonitor implements vscode.Disposable {
       }
     } finally {
       this._isReplaying = false;
+      this.activity.endReplay();
       this._onReplayStateChange.fire(false);
     }
     this.persistSnapshot();
@@ -3930,6 +4010,7 @@ export class SessionMonitor implements vscode.Disposable {
     this.contextTimeline = [];
     this.resetTaskState();
     this.aggregator.reset();
+    this.resetActivity();
   }
 
   /** Retains useful structured metadata while bounding large tool payloads. */
