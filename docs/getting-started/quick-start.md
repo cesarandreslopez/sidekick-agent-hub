@@ -62,6 +62,6 @@ If you installed the [CLI](installation.md#cli-terminal-dashboard), you can moni
 sidekick dashboard
 ```
 
-The dashboard auto-detects your project and provider (Claude Code, OpenCode, or Codex). Use number keys **1–8** to switch panels and **Tab** to cycle through detail tabs. You'll see live session activity, token usage, tasks, a mind map, and more.
+The dashboard auto-detects your project and provider (Claude Code, OpenCode, or Codex). Use number keys **1–9** to switch panels and **Tab** to cycle through detail tabs. You'll see live session activity, token usage, tasks, a mind map, and more.
 
 See [CLI reference](../features/cli.md) for the full command list.

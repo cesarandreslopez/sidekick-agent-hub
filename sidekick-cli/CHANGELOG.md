@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session summaries use Claude Haiku 5.5 with thinking off, and OpenAI summaries pick a reasoning effort each model accepts.
 - GPT-5.6, GPT-6 and GPT-6.1 context gauges use the models' 922K maximum input.
 - The dashboard checkpoint moves to revision 6 and now carries the activity log, so each session replays once after upgrading.
-- `--output-file` is refused for `map --follow`; `map` exports accept it.
+- `--output-file` is ignored for `map --follow`; `map` exports honor it.
 - MCP SDK 1.32.2 and Zod 4.
 
 ### Fixed

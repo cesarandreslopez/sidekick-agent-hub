@@ -64,7 +64,7 @@ See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/
 
 ## Replay and Recovery
 
-Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.30.0 replay once. A file truncated, rewritten or replaced while the dashboard follows it is also replayed from the start (a truncated Codex file is not counted twice), and once that replay completes the dashboard saves a fresh checkpoint. Otherwise live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
+Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.32.0 replay once. A file truncated, rewritten or replaced while the dashboard follows it is also replayed from the start (a truncated Codex file is not counted twice), and once that replay completes the dashboard saves a fresh checkpoint. Otherwise live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
 
 ## Installation
 
@@ -100,22 +100,22 @@ If `sqlite3` is missing or not executable in the current shell environment, Side
 ```bash
 sidekick dashboard [options]
 sidekick tasks|decisions|notes|stats|import|blocks|daily|weekly|monthly|sessions|quota|status|accounts|handoff|search|context|extract [options]
-sidekick dump|history|report|peak|today|doctor|statusline|mcp [options]
+sidekick dump|history|report|map|peak|today|doctor|statusline|mcp [options]
 sidekick tasks add|tasks done|note add|decision add [args]
 ```
 
-Most commands run one-shot queries and print to stdout; `dashboard` opens the full-screen TUI, `accounts` and `extract -i` open interactive pickers, and `mcp` serves stdio until closed. Every command except `statusline` accepts the global flags below.
+Most commands run one-shot queries and print to stdout; `dashboard` and `map --follow` open full-screen TUIs, `accounts` and `extract -i` open interactive pickers, and `mcp` serves stdio until closed. Every command except `statusline` accepts the global flags below.
 
-| Flag                   | Description                                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| `--json`               | Machine-readable JSON output (commands that support it)                                     |
-| `--project <path>`     | Override project path (default: current working directory)                                  |
-| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)                   |
-| `--no-color`           | Disable colored output (also honors `NO_COLOR`)                                             |
-| `--offline`            | Price from the cached catalog only (also `SIDEKICK_OFFLINE=1`)                              |
-| `--output-file <path>` | Write a command's stdout to a file, without colour codes (ignored by `dashboard` and `mcp`) |
+| Flag                   | Description                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `--json`               | Machine-readable JSON output (commands that support it)                                                      |
+| `--project <path>`     | Override project path (default: current working directory)                                                   |
+| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)                                    |
+| `--no-color`           | Disable colored output (also honors `NO_COLOR`)                                                              |
+| `--offline`            | Price from the cached catalog only (also `SIDEKICK_OFFLINE=1`)                                               |
+| `--output-file <path>` | Write a command's stdout to a file, without colour codes (ignored by `dashboard`, `mcp`, and `map --follow`) |
 
-Per-command: `--session <id>` follows a specific session by ID (`dashboard`, `dump`, `report`, `handoff open`), and `--replay` replays existing events from the beginning before streaming live (`dashboard` only).
+Per-command: `--session <id>` follows a specific session by ID (`dashboard`, `dump`, `report`, `map`, `handoff open`), and `--replay` replays existing events from the beginning before streaming live (`dashboard` only).
 
 ## Daily Brief & Statusline
 
@@ -237,7 +237,7 @@ sidekick map --format json --at 50%        # snapshot and insights halfway throu
 | `--subagents`                       | Include subagent transcripts in the replay                                                                                       |
 | `--core-name <name>`                | Text in the centre (default: the agent)                                                                                          |
 
-Live keys: `f` feed, `i` insights, `p` or `Space` pause, `←`/`→` step while paused (`Shift` for a minute), `l` live, `q` quit. `--follow` cannot be combined with `--format`, `--at` or `-o`. Labels carry names, never content: a file's last two path parts, a host, a command's name.
+Live keys: `f` feed, `i` insights, `p` or `Space` pause, `←`/`→` pause and step 10 s (`Shift` for a minute), `l` live, `q`, `Esc` or `Ctrl+C` quit. `--follow` cannot be combined with `--format`, `--at` or `-o`. Labels carry names, never content: a file's last two path parts, a host, a command's name.
 
 ## MCP Facts Server
 
@@ -516,7 +516,7 @@ Press `z` to cycle through layout modes:
 
 | Key       | Action                                         |
 | --------- | ---------------------------------------------- |
-| `1`–`8`   | Switch panel                                   |
+| `1`–`9`   | Switch panel                                   |
 | `Tab`     | Toggle focus between side list and detail pane |
 | `j` / `↓` | Next item (side) or scroll down (detail)       |
 | `k` / `↑` | Previous item (side) or scroll up (detail)     |

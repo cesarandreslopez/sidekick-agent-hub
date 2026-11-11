@@ -52,7 +52,7 @@ For a whole session, the map also reports:
 
 Open **Activity Map** in the Agent Hub sidebar, next to the Mind Map. It follows the current session live, including the history read before VS Code started.
 
-- **Pop out** opens the map large in an editor tab, with insights beside it and a replay bar: play and pause, 1×/10×/60× speed, a scrubber with markers for prompts, faults, compactions and model switches, and **Live** to return to the present. Keys: <kbd>Space</kbd> play/pause, <kbd>←</kbd>/<kbd>→</kbd> ±5 s (<kbd>Shift</kbd> ±60 s), <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>L</kbd> live, <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> speed.
+- **Open Activity Map** (the ⧉ button on the view) opens the map large in an editor tab, with insights beside it and a replay bar: play and pause, 1×/10×/60× speed, a scrubber with markers for prompts, faults, compactions and model switches, and **Live** to return to the present. Keys: <kbd>Space</kbd> play/pause, <kbd>←</kbd>/<kbd>→</kbd> ±5 s (<kbd>Shift</kbd> ±60 s), <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>L</kbd> live, <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> speed. With no live session, it offers a recent session to replay.
 - **Hover** a station for its calls, time, errors and top labels; **click** it to filter the feed and highlight it on the map.
 - **Export Activity Map…** saves the map as SVG or the session's activity as JSON.
 - The HTML session report includes the map and the station table.
@@ -82,7 +82,7 @@ tmux split-window -h 'sidekick map --follow'
 sidekick map --follow
 ```
 
-It waits for a session if none has started yet and follows newer sessions as they begin (pass `--session <id>` to stay on one). Keys: <kbd>f</kbd> feed, <kbd>i</kbd> insights, <kbd>p</kbd> or <kbd>Space</kbd> pause, <kbd>←</kbd>/<kbd>→</kbd> step while paused, <kbd>l</kbd> live, <kbd>q</kbd> quit.
+It waits for a session if none has started yet and follows newer sessions as they begin (pass `--session <id>` to stay on one). Keys: <kbd>f</kbd> feed, <kbd>i</kbd> insights, <kbd>p</kbd> or <kbd>Space</kbd> pause, <kbd>←</kbd>/<kbd>→</kbd> pause and step 10 s (<kbd>Shift</kbd> for a minute), <kbd>l</kbd> live, <kbd>q</kbd> quit.
 
 Export a session instead:
 

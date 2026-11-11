@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Activity Map view.** A new view next to the Mind Map draws what the agent is doing: every tool call pulses from the agent to one of eleven stations (you, model, memory, files, shell, network, browser, agents, skills, hooks, plan), with the context window as a ring, faults until your next prompt, orbiting subagents, the agent's route, and marks for answers, model switches and compactions. It follows the current session live, including what was read before VS Code started, for Claude Code, Codex and OpenCode.
-  - **Open Activity Map** opens it large in an editor tab with insights (each station's calls, busy time, errors, denials and context weight; retry streaks and edit ↔ test loops) and a replay bar: play and pause, 1×/10×/60×, a scrubber with prompt, fault, compaction and model-switch markers, and **Live**. It can also replay a past session.
+  - **Open Activity Map** opens it large in an editor tab with insights (each station's calls, busy time, errors, denials and context weight; retry streaks and edit ↔ test loops) and a replay bar: play and pause, 1×/10×/60×, a scrubber with prompt, fault, compaction and model-switch markers, and **Live**. With no live session, it offers a recent session to replay.
   - Hover a station for its numbers and top labels; click it to filter the feed and highlight it.
   - **Export Activity Map…** saves the map as SVG or the session's activity as JSON.
   - Settings: `sidekick.activityMap.motion` (follows VS Code's reduce-motion setting by default), `layout`, `coreName`, `labels` (`descriptive` by default), `memory` and `stationOverrides`.
