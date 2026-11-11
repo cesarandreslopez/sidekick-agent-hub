@@ -88,7 +88,9 @@ class Timeline implements ActivityTimeline {
       typeof options.maxRecords === 'number' && options.maxRecords > 0
         ? Math.max(this.every * 2, Math.floor(options.maxRecords))
         : Number.POSITIVE_INFINITY;
-    this.current = createActivityState(undefined, options);
+    this.current = options.base
+      ? cloneActivityState(options.base)
+      : createActivityState(undefined, options);
     // Checkpoint 0: the state before the first record held.
     this.checkpoints.push(cloneActivityState(this.current));
     this.append(records);
@@ -204,6 +206,10 @@ class Timeline implements ActivityTimeline {
 
   records(): readonly ActivityRecord[] {
     return this.list;
+  }
+
+  base(): ActivityState {
+    return cloneActivityState(this.checkpoints[0]);
   }
 
   /** Drops the oldest quarter: their effect stays in a new base checkpoint. */

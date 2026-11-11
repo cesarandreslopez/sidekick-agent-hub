@@ -556,6 +556,11 @@ export interface ActivityTimelineOptions extends ActivityStateOptions {
   checkpointEvery?: number;
   /** Oldest records are dropped past this (their effect stays in the totals). Default unbounded. */
   maxRecords?: number;
+  /**
+   * The state before the first record given: another timeline's `base()`
+   * (after it dropped old records), or a restored checkpoint. Default: empty.
+   */
+  base?: ActivityState;
 }
 
 export interface ActivityTimeline {
@@ -570,6 +575,12 @@ export interface ActivityTimeline {
   snapshotAt(at: number): ActivitySnapshot;
   markers(): ActivityMarker[];
   records(): readonly ActivityRecord[];
+  /**
+   * A fresh copy of the state before the first record held: empty, the
+   * `base` the timeline was created with, or the effect of records dropped
+   * by `maxRecords`. With `records()` it rebuilds this timeline exactly.
+   */
+  base(): ActivityState;
 }
 
 export interface ActivityExport {

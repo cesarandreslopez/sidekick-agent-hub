@@ -66,6 +66,24 @@ describe('activity timeline', () => {
     expect(timeline.snapshotAt(timeline.endAt!)).toEqual(snapshotActivity(state));
   });
 
+  it('rebuilds exactly from base() and records() after trimming', () => {
+    const all = records();
+    const trimmed = createActivityTimeline([], { checkpointEvery: 16, maxRecords: 40 });
+    trimmed.append(all);
+    expect(trimmed.records()[0]?.seq).toBeGreaterThan(0);
+    // What a host sends a view (or saves in a checkpoint): JSON, base plus the kept records.
+    const wire = JSON.parse(JSON.stringify({ base: trimmed.base(), records: trimmed.records() }));
+    const rebuilt = createActivityTimeline(wire.records, { checkpointEvery: 16, base: wire.base });
+    expect(snapshotActivity(rebuilt.head())).toEqual(snapshotActivity(trimmed.head()));
+    const mid = trimmed.records()[Math.floor(trimmed.length / 2)]!.at;
+    expect(rebuilt.snapshotAt(mid)).toEqual(trimmed.snapshotAt(mid));
+    // Without the base the view would undercount.
+    const naive = createActivityTimeline(wire.records, { checkpointEvery: 16 });
+    expect(snapshotActivity(naive.head()).totals.calls).toBeLessThan(
+      snapshotActivity(trimmed.head()).totals.calls,
+    );
+  });
+
   it('lists markers for the scrubber', () => {
     const kinds = new Set(
       createActivityTimeline(records())
