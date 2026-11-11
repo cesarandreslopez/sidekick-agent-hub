@@ -84,6 +84,7 @@ nav:
       - Extract Session Assets: features/session-asset-extraction.md
       - Peak Hours: features/peak-hours.md
       - Mind Map: features/mind-map.md
+      - Activity Map: features/activity-map.md
       - Kanban Board: features/kanban-board.md
       - Project Timeline: features/project-timeline.md
       - Knowledge Notes: features/knowledge-notes.md
