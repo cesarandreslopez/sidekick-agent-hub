@@ -11,6 +11,7 @@
 
 import { parseMcpToolName } from './parsers/mcpToolName';
 import type { PromptHistoryProvider } from './promptHistory';
+import { commandOf } from './shellCommand';
 import { classifyTool, type ToolCategory } from './toolCategory';
 
 export type PromptHistorySignalKind =
@@ -728,45 +729,6 @@ function toolResultText(content: unknown): string {
 
 function nonZero(value: unknown): boolean {
   return typeof value === 'number' && value !== 0;
-}
-
-const POSIX_SHELLS: ReadonlySet<string> = new Set(['sh', 'bash', 'zsh', 'dash', 'fish', 'ksh']);
-const POWERSHELLS: ReadonlySet<string> = new Set(['pwsh', 'powershell']);
-
-/** `/usr/bin/zsh` → `zsh`, `C:\Windows\System32\cmd.exe` → `cmd`. */
-function programName(argv0: string): string {
-  return (argv0.split(/[\\/]/).pop() ?? argv0).toLowerCase().replace(/\.exe$/, '');
-}
-
-/** An argv element as a POSIX shell would need it written. */
-function shellQuote(arg: string): string {
-  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(arg)) return arg;
-  return `'${arg.replace(/'/g, `'\\''`)}'`;
-}
-
-/**
- * The command a call ran, as a person would type it: a string as is; for an
- * argv, the script of a shell wrapper (`bash -lc <script>`, `pwsh -Command
- * …`, `cmd /c …`), else the arguments joined with shell quoting.
- */
-function commandOf(value: unknown): string | undefined {
-  if (typeof value === 'string') return value.trim() ? value : undefined;
-  if (!Array.isArray(value)) return undefined;
-  const argv = value.filter((part): part is string => typeof part === 'string');
-  if (argv.length === 0) return undefined;
-  const program = programName(argv[0]);
-  if (POSIX_SHELLS.has(program) && argv.length >= 3 && /^-[a-z]*c$/.test(argv[1])) {
-    return argv[2];
-  }
-  if (POWERSHELLS.has(program)) {
-    const flag = argv.findIndex((arg, index) => index > 0 && /^-(?:command|c)$/i.test(arg));
-    if (flag > 0 && flag + 1 < argv.length) return argv.slice(flag + 1).join(' ');
-  }
-  if (program === 'cmd') {
-    const flag = argv.findIndex((arg, index) => index > 0 && /^\/c$/i.test(arg));
-    if (flag > 0 && flag + 1 < argv.length) return argv.slice(flag + 1).join(' ');
-  }
-  return argv.map(shellQuote).join(' ');
 }
 
 function errorText(error: unknown): string | undefined {

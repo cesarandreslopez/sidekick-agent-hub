@@ -1,0 +1,736 @@
+{
+  "schemaVersion": 1,
+  "providerId": "claude-code",
+  "sessionId": "sess-activity",
+  "at": 1793527280100,
+  "startedAt": 1793527200000,
+  "stations": [
+    {
+      "id": "you",
+      "count": 2,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527270000
+    },
+    {
+      "id": "model",
+      "count": 22,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527272000
+    },
+    {
+      "id": "memory",
+      "count": 3,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527237000,
+      "pushed": 1
+    },
+    {
+      "id": "files",
+      "count": 6,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527247000,
+      "lastFaultAt": 1793527242200
+    },
+    {
+      "id": "shell",
+      "count": 5,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527272000,
+      "lastFaultAt": 1793527223000
+    },
+    {
+      "id": "network",
+      "count": 2,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527240000,
+      "lastFaultAt": 1793527241000
+    },
+    {
+      "id": "browser",
+      "count": 1,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527234000
+    },
+    {
+      "id": "agents",
+      "count": 3,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527260000
+    },
+    {
+      "id": "skills",
+      "count": 1,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527239000
+    },
+    {
+      "id": "hooks",
+      "count": 3,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527242100,
+      "lastFaultAt": 1793527242100
+    },
+    {
+      "id": "plan",
+      "count": 1,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527238000
+    }
+  ],
+  "entries": [
+    {
+      "key": "hook-1",
+      "station": "hooks",
+      "label": "SessionStart",
+      "from": "core",
+      "startedAt": 1793527200000,
+      "endedAt": 1793527200000,
+      "outcome": "ok",
+      "mark": "pushed"
+    },
+    {
+      "key": "prompt-1793527201000-1",
+      "station": "you",
+      "label": "new message",
+      "labelKey": "newMessage",
+      "from": "inbound",
+      "startedAt": 1793527201000,
+      "endedAt": 1793527201000,
+      "outcome": "ok",
+      "mark": "prompt"
+    },
+    {
+      "key": "pushed-3",
+      "station": "memory",
+      "label": "src/CLAUDE.md",
+      "from": "inbound",
+      "startedAt": 1793527201500,
+      "endedAt": 1793527201500,
+      "outcome": "ok",
+      "mark": "pushed"
+    },
+    {
+      "key": "step-4",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527201000,
+      "endedAt": 1793527202000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_01",
+      "station": "memory",
+      "label": "memory/notes.md",
+      "from": "core",
+      "startedAt": 1793527202000,
+      "hint": "read",
+      "tool": "Read",
+      "endedAt": 1793527203000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-8",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527203000,
+      "endedAt": 1793527204000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_02",
+      "station": "files",
+      "label": "src/math.ts",
+      "from": "core",
+      "startedAt": 1793527204000,
+      "hint": "edit",
+      "tool": "Edit",
+      "endedAt": 1793527205000,
+      "outcome": "ok"
+    },
+    {
+      "key": "hook-11",
+      "station": "hooks",
+      "label": "PreToolUse · Edit",
+      "from": "core",
+      "startedAt": 1793527203950,
+      "endedAt": 1793527204600,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-13",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527205000,
+      "endedAt": 1793527206000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_03",
+      "station": "shell",
+      "label": "npm test",
+      "from": "core",
+      "startedAt": 1793527206000,
+      "hint": "test",
+      "tool": "Bash",
+      "endedAt": 1793527211000,
+      "outcome": "error"
+    },
+    {
+      "key": "step-16",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527211000,
+      "endedAt": 1793527212000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_04",
+      "station": "shell",
+      "label": "npm test",
+      "from": "core",
+      "startedAt": 1793527212000,
+      "hint": "test",
+      "tool": "Bash",
+      "endedAt": 1793527216000,
+      "outcome": "error"
+    },
+    {
+      "key": "step-19",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527216000,
+      "endedAt": 1793527217000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_05",
+      "station": "files",
+      "label": "src/math.ts",
+      "from": "core",
+      "startedAt": 1793527217000,
+      "hint": "edit",
+      "tool": "Edit",
+      "endedAt": 1793527218000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-22",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527218000,
+      "endedAt": 1793527219000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_06",
+      "station": "shell",
+      "label": "npm test",
+      "from": "core",
+      "startedAt": 1793527219000,
+      "hint": "test",
+      "tool": "Bash",
+      "endedAt": 1793527223000,
+      "outcome": "error"
+    },
+    {
+      "key": "step-25",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527223000,
+      "endedAt": 1793527224000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_07",
+      "station": "files",
+      "label": "src/math.ts",
+      "from": "core",
+      "startedAt": 1793527224000,
+      "hint": "edit",
+      "tool": "Edit",
+      "endedAt": 1793527225000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-28",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527225000,
+      "endedAt": 1793527226000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_08",
+      "station": "shell",
+      "label": "npm test",
+      "from": "core",
+      "startedAt": 1793527226000,
+      "hint": "test",
+      "tool": "Bash",
+      "endedAt": 1793527230000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-31",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527230000,
+      "endedAt": 1793527231000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_09",
+      "station": "network",
+      "label": "docs.example.com",
+      "from": "core",
+      "startedAt": 1793527231000,
+      "hint": "remote",
+      "tool": "WebFetch",
+      "endedAt": 1793527233000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-34",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527233000,
+      "endedAt": 1793527234000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_10",
+      "station": "browser",
+      "label": "app.example.org",
+      "from": "core",
+      "startedAt": 1793527234000,
+      "tool": "mcp__claude-in-chrome__navigate",
+      "endedAt": 1793527236000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-37",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527236000,
+      "endedAt": 1793527237000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_11",
+      "station": "memory",
+      "label": "search nodes #42",
+      "from": "core",
+      "startedAt": 1793527237000,
+      "tool": "mcp__memory__search_nodes",
+      "endedAt": 1793527237500,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-40",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527237500,
+      "endedAt": 1793527238000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_12",
+      "station": "plan",
+      "label": "todo list",
+      "labelKey": "todoList",
+      "from": "core",
+      "startedAt": 1793527238000,
+      "tool": "TodoWrite",
+      "endedAt": 1793527238200,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-43",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527238200,
+      "endedAt": 1793527239000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_13",
+      "station": "skills",
+      "label": "review",
+      "from": "core",
+      "startedAt": 1793527239000,
+      "tool": "Skill",
+      "endedAt": 1793527239500,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-46",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527239500,
+      "endedAt": 1793527240000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_14",
+      "station": "network",
+      "label": "curl api.example.net",
+      "from": "core",
+      "startedAt": 1793527240000,
+      "hint": "remote",
+      "tool": "Bash",
+      "endedAt": 1793527241000,
+      "outcome": "denied",
+      "deniedBy": "user"
+    },
+    {
+      "key": "step-49",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527241000,
+      "endedAt": 1793527242000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_15",
+      "station": "files",
+      "label": "rm",
+      "from": "core",
+      "startedAt": 1793527242000,
+      "hint": "edit",
+      "tool": "Bash",
+      "endedAt": 1793527242200,
+      "outcome": "denied",
+      "deniedBy": "hook"
+    },
+    {
+      "key": "hook-51",
+      "station": "hooks",
+      "label": "PreToolUse · Bash",
+      "from": "core",
+      "startedAt": 1793527242070,
+      "endedAt": 1793527242100,
+      "outcome": "denied",
+      "deniedBy": "hook"
+    },
+    {
+      "key": "step-53",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527242200,
+      "endedAt": 1793527243000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_16",
+      "station": "agents",
+      "label": "Explore",
+      "from": "core",
+      "startedAt": 1793527243000,
+      "tool": "Agent",
+      "endedAt": 1793527249000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-56",
+      "station": "model",
+      "label": "claude-haiku-5-5",
+      "labelKey": "modelStep",
+      "from": "agents",
+      "agentId": "toolu_16",
+      "startedAt": 1793527244000,
+      "endedAt": 1793527245000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_16/toolu_s1",
+      "station": "files",
+      "label": "Grep",
+      "from": "agents",
+      "agentId": "toolu_16",
+      "startedAt": 1793527245000,
+      "hint": "search",
+      "tool": "Grep",
+      "endedAt": 1793527246000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-59",
+      "station": "model",
+      "label": "claude-haiku-5-5",
+      "labelKey": "modelStep",
+      "from": "agents",
+      "agentId": "toolu_16",
+      "startedAt": 1793527246000,
+      "endedAt": 1793527247000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_16/toolu_s2",
+      "station": "files",
+      "label": "src/util.ts",
+      "from": "agents",
+      "agentId": "toolu_16",
+      "startedAt": 1793527247000,
+      "hint": "read",
+      "tool": "Read",
+      "endedAt": 1793527247500,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-62",
+      "station": "model",
+      "label": "claude-haiku-5-5",
+      "labelKey": "modelStep",
+      "from": "agents",
+      "agentId": "toolu_16",
+      "startedAt": 1793527247500,
+      "endedAt": 1793527248000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-65",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527249000,
+      "endedAt": 1793527250000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_17",
+      "station": "agents",
+      "label": "general-purpose",
+      "from": "core",
+      "startedAt": 1793527250000,
+      "tool": "Agent",
+      "endedAt": 1793527250500,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-69",
+      "station": "model",
+      "label": "claude-opus-5-5",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527250500,
+      "endedAt": 1793527251000,
+      "outcome": "ok"
+    },
+    {
+      "key": "turn-70",
+      "station": "you",
+      "label": "answer ready",
+      "labelKey": "answerReady",
+      "from": "core",
+      "startedAt": 1793527251000,
+      "endedAt": 1793527251000,
+      "outcome": "ok",
+      "mark": "done"
+    },
+    {
+      "key": "inbound-71",
+      "station": "agents",
+      "label": "notification",
+      "labelKey": "notification",
+      "from": "inbound",
+      "startedAt": 1793527260000,
+      "endedAt": 1793527260000,
+      "outcome": "ok",
+      "mark": "notification"
+    },
+    {
+      "key": "prompt-1793527270000-2",
+      "station": "you",
+      "label": "new message",
+      "labelKey": "newMessage",
+      "from": "inbound",
+      "startedAt": 1793527270000,
+      "endedAt": 1793527270000,
+      "outcome": "ok",
+      "mark": "prompt"
+    },
+    {
+      "key": "compaction-74",
+      "station": "model",
+      "label": "compacting context",
+      "labelKey": "compacting",
+      "from": "core",
+      "startedAt": 1793527271000,
+      "endedAt": 1793527271000,
+      "outcome": "ok",
+      "mark": "compaction"
+    },
+    {
+      "key": "switch-75",
+      "station": "model",
+      "label": "claude-opus-5-5 → claude-fable-5-2",
+      "labelKey": "modelSwitch",
+      "from": "core",
+      "startedAt": 1793527272000,
+      "endedAt": 1793527272000,
+      "outcome": "ok",
+      "mark": "switch"
+    },
+    {
+      "key": "step-75",
+      "station": "model",
+      "label": "claude-fable-5-2",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527270000,
+      "endedAt": 1793527272000,
+      "outcome": "ok"
+    },
+    {
+      "key": "toolu_19",
+      "station": "shell",
+      "label": "sleep",
+      "from": "core",
+      "startedAt": 1793527272000,
+      "tool": "Bash",
+      "endedAt": 1793527280000,
+      "outcome": "cancelled"
+    },
+    {
+      "key": "turn-79",
+      "station": "you",
+      "label": "turn interrupted",
+      "labelKey": "turnInterrupted",
+      "from": "core",
+      "startedAt": 1793527280100,
+      "endedAt": 1793527280100,
+      "outcome": "cancelled",
+      "mark": "aborted"
+    }
+  ],
+  "running": [],
+  "agents": [],
+  "route": [
+    {
+      "station": "memory",
+      "at": 1793527237000
+    },
+    {
+      "station": "plan",
+      "at": 1793527238000
+    },
+    {
+      "station": "skills",
+      "at": 1793527239000
+    },
+    {
+      "station": "network",
+      "at": 1793527240000
+    },
+    {
+      "station": "files",
+      "at": 1793527242000
+    },
+    {
+      "station": "agents",
+      "at": 1793527250000
+    },
+    {
+      "station": "shell",
+      "at": 1793527272000
+    }
+  ],
+  "model": {
+    "id": "claude-fable-5-2",
+    "steps": 1,
+    "switchedAt": 1793527272000,
+    "previous": "claude-opus-5-5"
+  },
+  "context": {
+    "percent": 2.01,
+    "tokens": 20100,
+    "window": 1000000,
+    "at": 1793527272000,
+    "source": "usage"
+  },
+  "compactions": 1,
+  "lastCompactionAt": 1793527271000,
+  "turn": {
+    "working": false,
+    "since": 1793527270000,
+    "lastPromptAt": 1793527270000,
+    "lastEnd": {
+      "at": 1793527280100,
+      "outcome": "aborted"
+    }
+  },
+  "patterns": [
+    {
+      "kind": "retry-streak",
+      "station": "shell",
+      "failures": 3,
+      "startAt": 1793527211000,
+      "endAt": 1793527230000,
+      "state": "recovered"
+    },
+    {
+      "kind": "alternation",
+      "stations": [
+        "files",
+        "shell"
+      ],
+      "cycles": 3,
+      "startAt": 1793527204000,
+      "endAt": 1793527226000,
+      "state": "closed",
+      "flavor": "edit-test"
+    }
+  ],
+  "totals": {
+    "prompts": 2,
+    "calls": 20,
+    "errors": 3,
+    "denials": 2,
+    "steps": 22,
+    "pushed": 1
+  }
+}

@@ -67,6 +67,8 @@ import {
   type SubagentActivity,
 } from '../subagentActivity';
 import { isTurnLifecycleSystemEvent } from '../turnLifecycle';
+import { isHookActivitySystemEvent } from '../hookActivity';
+import { isMemoryAttachmentSystemEvent } from '../memoryAttachment';
 import {
   agentsStoppedNoticeFromEvent,
   describeAgentsStopped,
@@ -549,8 +551,10 @@ export class EventAggregator {
       if (activity) this.applySubagentActivity(activity, event.timestamp);
       return;
     }
-    // A Codex turn boundary (opt-in parser event) is bookkeeping too.
+    // A Codex turn boundary (opt-in parser event) is bookkeeping too, and so
+    // are hook runs and pushed memory files (opt-in activity signals).
     if (isTurnLifecycleSystemEvent(event)) return;
+    if (isHookActivitySystemEvent(event) || isMemoryAttachmentSystemEvent(event)) return;
     // The user killed every running background agent. The line itself is
     // counted below as before.
     if (isAgentsKilledSystemEvent(event)) this.applyAgentsKilled(event.timestamp);
@@ -659,6 +663,13 @@ export class EventAggregator {
       // A Codex turn boundary, as above.
       const raw = event.raw as SessionEvent | undefined;
       if (raw && typeof raw === 'object' && isTurnLifecycleSystemEvent(raw)) return;
+      if (
+        raw &&
+        typeof raw === 'object' &&
+        (isHookActivitySystemEvent(raw) || isMemoryAttachmentSystemEvent(raw))
+      ) {
+        return;
+      }
     }
 
     // 1. Increment counters, capture timestamps

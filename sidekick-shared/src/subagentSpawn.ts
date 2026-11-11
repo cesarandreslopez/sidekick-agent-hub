@@ -136,6 +136,16 @@ export function parseAsyncAgentLaunch(result: unknown): AsyncAgentLaunch | null 
   return match ? { agentId: match[1] } : {};
 }
 
+/**
+ * The agent id a spawning tool's result reports (`agentId: <id>` on its own
+ * line), for a background launch or a finished foreground agent alike;
+ * `null` when the result names none. Accepts text or raw tool-result content.
+ */
+export function parseSpawnResultAgentId(result: unknown): string | null {
+  const match = AGENT_ID_LINE.exec(contentText(result).slice(0, 65_536));
+  return match ? match[1] : null;
+}
+
 // ── Task notifications ──
 
 /** Fields of a `<task-notification>` block. */

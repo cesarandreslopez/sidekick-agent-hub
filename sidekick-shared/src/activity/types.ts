@@ -136,12 +136,16 @@ export interface ActivityHookRecord extends ActivityRecordBase {
   /** Characters of context the hook added; never the text itself. */
   contextChars?: number;
   label: string;
+  /** Set when `label` is a vocabulary word. */
+  labelKey?: ActivityLabelKey;
 }
 
 /** Memory the agent did not ask for: an instruction file or a hook put it into context. */
 export interface ActivityMemoryPushedRecord extends ActivityRecordBase {
   kind: 'memoryPushed';
   label: string;
+  /** Set when `label` is a vocabulary word. */
+  labelKey?: ActivityLabelKey;
   chars?: number;
   via: ActivityMemoryVia;
 }

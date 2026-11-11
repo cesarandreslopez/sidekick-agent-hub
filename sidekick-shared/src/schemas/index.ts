@@ -221,3 +221,21 @@ export type {
   StateFileSession,
   StateFileWriter,
 } from '../stateFile';
+
+// Activity map wire shapes (0.32)
+export {
+  activityAlternationPatternSchema,
+  activityEntrySchema,
+  activityExportSchema,
+  activityInsightsSchema,
+  activityLabelKeySchema,
+  activityLabelSchema,
+  activityPatternSchema,
+  activityRecordBatchSchema,
+  activityRecordSchema,
+  activityRetryStreakPatternSchema,
+  activitySnapshotSchema,
+  activityStationIdSchema,
+  activityStationInsightSchema,
+  activityStationSnapshotSchema,
+} from './activity';

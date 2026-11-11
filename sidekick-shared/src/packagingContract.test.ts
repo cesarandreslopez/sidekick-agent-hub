@@ -250,6 +250,23 @@ describe('packaging contract', { timeout: 30_000 }, () => {
     }
   });
 
+  it('exposes the activity schemas on /schemas and the root, the activity core on /browser', () => {
+    const schemas = pkgRequire('sidekick-shared/schemas');
+    const root = pkgRequire('sidekick-shared');
+    const browser = pkgRequire('sidekick-shared/browser');
+    const activity = pkgRequire('sidekick-shared/activity');
+    expect(typeof schemas.activitySnapshotSchema?.safeParse).toBe('function');
+    expect(root.activitySnapshotSchema).toBe(schemas.activitySnapshotSchema);
+    expect(browser.activitySnapshotSchema).toBeUndefined();
+    expect(activity.activitySnapshotSchema).toBeUndefined();
+    expect(browser.createActivityRecorder).toBe(activity.createActivityRecorder);
+    expect(browser.hookActivityFromEvent).toBe(root.hookActivityFromEvent);
+    // Replay reads files: Node and the root only.
+    expect(typeof pkgRequire('sidekick-shared/node').replayActivity).toBe('function');
+    expect(browser.replayActivity).toBeUndefined();
+    expect(activity.replayActivity).toBeUndefined();
+  });
+
   it('exposes the bounded diagnosis schema on /schemas and the root, not /browser', () => {
     const schemas = pkgRequire('sidekick-shared/schemas');
     const root = pkgRequire('sidekick-shared');

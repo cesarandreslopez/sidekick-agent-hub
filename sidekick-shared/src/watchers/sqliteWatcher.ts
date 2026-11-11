@@ -8,6 +8,7 @@ import * as path from 'path';
 import { OpenCodeDatabase } from '../providers/openCodeDatabase';
 import type { DbMessage, DbPart } from '../types/opencode';
 import { normalizeToolName, detectPlanModeFromText } from '../parsers/openCodeParser';
+import type { SessionReader } from '../providers/types';
 import type { FollowEvent, SessionWatcher, SessionWatcherCallbacks } from './types';
 
 const DEBOUNCE_MS = 200;
@@ -142,12 +143,38 @@ export class SqliteSessionWatcher implements SessionWatcher {
   private readonly dbPath: string;
   private readonly sessionId: string;
   private readonly callbacks: SessionWatcherCallbacks;
+  /** Canonical events for `onSessionEvent` come from a provider reader, polled alongside. */
+  private readonly createReader?: () => SessionReader;
+  private reader: SessionReader | undefined;
 
-  constructor(dbPath: string, sessionId: string, callbacks: SessionWatcherCallbacks) {
+  /**
+   * @param createReader - The session's provider reader; required for
+   *   `callbacks.onSessionEvent` (the factory passes it).
+   */
+  constructor(
+    dbPath: string,
+    sessionId: string,
+    callbacks: SessionWatcherCallbacks,
+    createReader?: () => SessionReader,
+  ) {
     this.dbPath = dbPath;
     this.sessionId = sessionId;
     this.callbacks = callbacks;
+    this.createReader = createReader;
     this.db = new OpenCodeDatabase(path.dirname(dbPath));
+  }
+
+  /** Delivers the reader's new canonical events to `onSessionEvent`, or only consumes them. */
+  private readSessionEvents(deliver: boolean): void {
+    const onSessionEvent = this.callbacks.onSessionEvent;
+    if (!onSessionEvent || !this.createReader) return;
+    try {
+      this.reader ??= this.createReader();
+      const events = this.reader.readNew();
+      if (deliver) for (const event of events) onSessionEvent(event);
+    } catch (err) {
+      this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+    }
   }
 
   get isActive(): boolean {
@@ -182,6 +209,7 @@ export class SqliteSessionWatcher implements SessionWatcher {
       this.pollNewData();
     } else {
       // Skip to current timestamps
+      this.readSessionEvents(false);
       this.skipToEnd();
     }
 
@@ -264,6 +292,8 @@ export class SqliteSessionWatcher implements SessionWatcher {
 
   private pollNewData(): void {
     if (!this._isActive) return;
+    // Canonical events first, then the follow events derived from the same rows.
+    this.readSessionEvents(true);
     try {
       // Query incrementally by update time. Subtracting one millisecond lets us
       // see distinct rows committed at the cursor timestamp; version maps

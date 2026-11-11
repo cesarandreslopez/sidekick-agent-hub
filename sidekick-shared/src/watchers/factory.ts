@@ -21,6 +21,12 @@ export interface CreateWatcherOptions {
    * can finish background subagents. Default `false`.
    */
   includeTaskNotifications?: boolean;
+  /**
+   * With `callbacks.onSessionEvent`: also deliver the activity-signal
+   * `system` events the provider's log carries (Claude Code hook runs and
+   * pushed memory files). Default `false`.
+   */
+  includeActivitySignals?: boolean;
 }
 
 /**
@@ -75,6 +81,7 @@ export function createWatcher(options: CreateWatcherOptions): {
   const sessionPath = resolveSessionPath(provider, workspacePath, sessionId);
   const watcher = createWatcherForProvider(provider, sessionPath, callbacks, {
     includeTaskNotifications: options.includeTaskNotifications === true,
+    includeActivitySignals: options.includeActivitySignals === true,
   });
   return { watcher, sessionPath };
 }
@@ -90,14 +97,18 @@ function createWatcherForProvider(
       return new JsonlSessionWatcher(provider.id, sessionPath, callbacks, jsonlOptions);
 
     case 'codex':
-      return new ProviderReaderSessionWatcher(provider, sessionPath, callbacks);
+      return new ProviderReaderSessionWatcher(provider, sessionPath, callbacks, {
+        includeActivitySignals: jsonlOptions.includeActivitySignals,
+      });
 
     case 'opencode': {
       const dataDir = getOpenCodeDataDir();
       const dbPath = path.join(dataDir, 'opencode.db');
       // Session ID is the basename without extension
       const sid = path.basename(sessionPath, '.json');
-      return new SqliteSessionWatcher(dbPath, sid, callbacks);
+      return new SqliteSessionWatcher(dbPath, sid, callbacks, () =>
+        provider.createReader(sessionPath),
+      );
     }
 
     default:

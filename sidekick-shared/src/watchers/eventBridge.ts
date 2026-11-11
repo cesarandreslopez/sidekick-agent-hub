@@ -23,6 +23,8 @@ import {
 } from '../subagentSpawn';
 import { describeSubagentActivity, subagentActivityFromEvent } from '../subagentActivity';
 import { describeTurnLifecycle, turnLifecycleFromEvent } from '../turnLifecycle';
+import { describeHookActivity, hookActivityFromEvent } from '../hookActivity';
+import { describeMemoryAttachment, memoryAttachmentFromEvent } from '../memoryAttachment';
 
 /**
  * Converts a single SessionEvent to one or more FollowEvents.
@@ -228,6 +230,19 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
           type: 'system',
           timestamp: ts,
           summary: describeTurnLifecycle(lifecycle),
+          raw: event,
+        });
+        break;
+      }
+      // A hook run or a pushed memory file (opt-in activity signals): content-free summaries.
+      const hook = hookActivityFromEvent(event);
+      const memory = hook ? null : memoryAttachmentFromEvent(event);
+      if (hook || memory) {
+        events.push({
+          providerId,
+          type: 'system',
+          timestamp: ts,
+          summary: hook ? describeHookActivity(hook) : describeMemoryAttachment(memory!),
           raw: event,
         });
         break;

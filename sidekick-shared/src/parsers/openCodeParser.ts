@@ -43,6 +43,26 @@ const TOOL_NAME_MAP: Record<string, string> = {
 };
 
 /**
+ * Whether an OpenCode tool error is a refusal rather than a failure, by the
+ * same wording OpenCode's own TUI treats as denied: `user_reject` for the
+ * person refusing (a permission prompt or a dismissed question), `config` for
+ * a permission rule. `undefined` for any other error.
+ */
+export function openCodeRefusalSource(error: unknown): 'user_reject' | 'config' | undefined {
+  if (typeof error !== 'string') return undefined;
+  const text = error.slice(0, 4096);
+  if (text.includes('specified a rule')) return 'config';
+  if (
+    text.includes('rejected permission') ||
+    text.includes('QuestionRejectedError') ||
+    text.includes('user dismissed')
+  ) {
+    return 'user_reject';
+  }
+  return undefined;
+}
+
+/**
  * Normalizes an OpenCode tool name to PascalCase.
  *
  * Uses the known mapping table for common tools, and falls back to
@@ -533,6 +553,8 @@ function convertAssistantMessage(message: OpenCodeMessage, parts: OpenCodePart[]
       ];
 
       const resultTimestamp = part.state.time?.end ? toISOString(part.state.time.end) : timestamp;
+      const refusal =
+        part.state.status === 'error' ? openCodeRefusalSource(part.state.error) : undefined;
 
       events.push({
         type: 'user',
@@ -542,6 +564,7 @@ function convertAssistantMessage(message: OpenCodeMessage, parts: OpenCodePart[]
           content: resultContent,
         },
         timestamp: resultTimestamp,
+        ...(refusal ? { permissionDecision: { decision: 'reject', source: refusal } } : {}),
       });
     }
 

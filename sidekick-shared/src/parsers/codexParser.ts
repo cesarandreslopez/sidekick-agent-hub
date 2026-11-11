@@ -39,6 +39,7 @@ import type {
   CodexErrorEvent,
   CodexContextCompactedEvent,
   CodexPatchAppliedEvent,
+  CodexPatchApplyEndEvent,
   CodexAgentMessageItem,
   CodexItemCompletedEvent,
 } from '../types/codex';
@@ -65,6 +66,7 @@ import {
   withCodexStartMarker,
   type CodexInheritedHistoryBoundary,
 } from './codexInheritedHistory';
+import { extractPatchFilePaths } from './patchPaths';
 
 /** Pending exec command awaiting its end event. */
 interface PendingExecCommand {
@@ -250,19 +252,10 @@ function extractTextFromContent(content: CodexContentPart[] | string): string {
   return texts.join('\n');
 }
 
-/**
- * Extracts file paths from an apply_patch input string.
- * Matches lines like: `*** Add File: src/math.ts` or `*** Update File: src/index.ts`
- */
-export function extractPatchFilePaths(input: string): string[] {
-  const paths: string[] = [];
-  const re = /\*\*\* (?:Add|Update|Delete) File: (.+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(input)) !== null) {
-    paths.push(m[1].trim());
-  }
-  return paths;
-}
+export { extractPatchFilePaths };
+
+/** How a declined command or patch is recorded, in Claude Code's terms. */
+const DECLINED_BY_USER = { decision: 'reject', source: 'user_reject' } as const;
 
 /** Default cap on each piece of per-call correlation state the parser keeps. */
 export const DEFAULT_MAX_TRACKED_TOOL_CALLS = 4096;
@@ -605,6 +598,8 @@ export class CodexRolloutParser {
   private inPlanMode = false;
   private emittedToolUseIds = new Set<string>();
   private patchExpandedToolUseIds = new Map<string, string[]>();
+  /** `apply_patch` calls the person declined or that failed, until their output arrives. */
+  private patchOutcomes = new Map<string, 'declined' | 'failed'>();
   private readonly maxTrackedToolCalls: number;
   /** Byte budget for pending calls; `null` = unlimited (no accounting). */
   private readonly maxPendingBytes: number | null;
@@ -962,6 +957,7 @@ export class CodexRolloutParser {
     this.inPlanMode = false;
     this.emittedToolUseIds.clear();
     this.patchExpandedToolUseIds.clear();
+    this.patchOutcomes.clear();
     this.pendingLedger.clear();
     this.pendingBytes = 0;
     this.evictedByCount = 0;
@@ -1325,6 +1321,13 @@ export class CodexRolloutParser {
 
     const canonicalName = normalizeCodexToolName(item.name);
     const normalizedInput = normalizeCodexToolInput(canonicalName, item.name, parsedArgs);
+    if (typeof item.namespace === 'string' && item.namespace) {
+      normalizedInput._sidekickNamespace = item.namespace;
+      const server = /^mcp__(.+)$/.exec(item.namespace)?.[1];
+      if (server && normalizedInput._sidekickMcpServerName === undefined) {
+        normalizedInput._sidekickMcpServerName = server;
+      }
+    }
     rememberBounded(this.emittedToolUseIds, item.call_id, this.maxTrackedToolCalls);
     if (
       this.includeSubagentActivity &&
@@ -1431,6 +1434,8 @@ export class CodexRolloutParser {
               input: this.toolInput({
                 file_path: fp,
                 _sidekickRawToolName: 'apply_patch',
+                _sidekickPatchCallId: item.call_id,
+                _sidekickPatchFileCount: filePaths.length,
               }),
             },
           ],
@@ -1493,6 +1498,8 @@ export class CodexRolloutParser {
     const toolUseIds = this.takePending(this.patchExpandedToolUseIds, item.call_id) ?? [
       item.call_id,
     ];
+    const patchOutcome = this.patchOutcomes.get(item.call_id);
+    if (patchOutcome) this.patchOutcomes.delete(item.call_id);
     return toolUseIds.map((toolUseId) => ({
       type: 'user',
       message: {
@@ -1503,12 +1510,13 @@ export class CodexRolloutParser {
             type: 'tool_result',
             tool_use_id: toolUseId,
             content: this.toolOutput(item.output),
-            is_error: isError,
+            is_error: isError || patchOutcome !== undefined,
             duration,
           },
         ],
       },
       timestamp,
+      ...(patchOutcome === 'declined' ? { permissionDecision: DECLINED_BY_USER } : {}),
     }));
   }
 
@@ -1621,15 +1629,32 @@ export class CodexRolloutParser {
                 type: 'tool_result',
                 tool_use_id: e.call_id,
                 content: output,
-                is_error: e.exit_code !== 0,
+                is_error: e.exit_code !== 0 || e.status === 'declined',
                 duration: e.duration_ms,
               },
             ],
           },
           timestamp,
+          ...(e.status === 'declined' ? { permissionDecision: DECLINED_BY_USER } : {}),
         });
 
         return events;
+      }
+
+      case 'patch_apply_end': {
+        // Its output (custom_tool_call_output) follows: remember how it ended.
+        const e = event as CodexPatchApplyEndEvent;
+        if (typeof e.call_id !== 'string') return [];
+        const outcome =
+          e.status === 'declined' ? 'declined' : e.success === false ? 'failed' : undefined;
+        if (outcome) {
+          this.patchOutcomes.delete(e.call_id);
+          this.patchOutcomes.set(e.call_id, outcome);
+          while (this.patchOutcomes.size > this.maxTrackedToolCalls) {
+            this.patchOutcomes.delete(this.patchOutcomes.keys().next().value as string);
+          }
+        }
+        return [];
       }
 
       case 'mcp_tool_call_begin': {
@@ -1925,7 +1950,11 @@ export class CodexRolloutParser {
           content: [],
         },
         timestamp,
-        providerMetadata: { providerId: 'codex', source: 'codex-rollout' },
+        providerMetadata: {
+          providerId: 'codex',
+          source: 'codex-rollout',
+          ...(this.modelContextWindow ? { contextWindowTokens: this.modelContextWindow } : {}),
+        },
         rateLimits: normalizedRateLimits,
       },
     ];

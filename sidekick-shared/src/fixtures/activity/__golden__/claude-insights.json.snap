@@ -1,0 +1,504 @@
+{
+  "schemaVersion": 1,
+  "providerId": "claude-code",
+  "sessionId": "sess-activity",
+  "span": {
+    "startAt": 1793527200000,
+    "endAt": 1793527280100,
+    "activeMs": 41900
+  },
+  "totals": {
+    "prompts": 2,
+    "turns": 2,
+    "steps": 22,
+    "calls": 20,
+    "errors": 3,
+    "denials": 2,
+    "cancelled": 1,
+    "asks": 0,
+    "resultChars": 474,
+    "hookRuns": 3,
+    "hookMs": 680,
+    "pushed": 1,
+    "compactions": 1,
+    "subagents": 2
+  },
+  "stations": [
+    {
+      "id": "you",
+      "calls": 0,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 0,
+      "callMs": 0,
+      "shareOfBusy": 0,
+      "resultChars": 0,
+      "estTokens": 0,
+      "topLabels": []
+    },
+    {
+      "id": "model",
+      "calls": 0,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 0,
+      "callMs": 0,
+      "shareOfBusy": 0,
+      "resultChars": 0,
+      "estTokens": 0,
+      "topLabels": []
+    },
+    {
+      "id": "memory",
+      "calls": 2,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 1500,
+      "callMs": 1500,
+      "shareOfBusy": 0.03579952267303103,
+      "resultChars": 36,
+      "estTokens": 9,
+      "avgMs": 750,
+      "p95Ms": 1023,
+      "topLabels": [
+        {
+          "label": "memory/notes.md",
+          "count": 1
+        },
+        {
+          "label": "search nodes #42",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "calls": 6,
+      "errors": 0,
+      "denials": 1,
+      "cancelled": 0,
+      "busyMs": 4700,
+      "callMs": 4700,
+      "shareOfBusy": 0.11217183770883055,
+      "resultChars": 109,
+      "estTokens": 27,
+      "avgMs": 783,
+      "p95Ms": 1023,
+      "topLabels": [
+        {
+          "label": "src/math.ts",
+          "count": 3
+        },
+        {
+          "label": "Grep",
+          "count": 1
+        },
+        {
+          "label": "rm",
+          "count": 1
+        },
+        {
+          "label": "src/util.ts",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "shell",
+      "calls": 5,
+      "errors": 3,
+      "denials": 0,
+      "cancelled": 1,
+      "busyMs": 25000,
+      "callMs": 25000,
+      "shareOfBusy": 0.5966587112171837,
+      "resultChars": 100,
+      "estTokens": 25,
+      "avgMs": 5000,
+      "p95Ms": 8191,
+      "topLabels": [
+        {
+          "label": "npm test",
+          "count": 4
+        },
+        {
+          "label": "sleep",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "network",
+      "calls": 2,
+      "errors": 0,
+      "denials": 1,
+      "cancelled": 0,
+      "busyMs": 3000,
+      "callMs": 3000,
+      "shareOfBusy": 0.07159904534606205,
+      "resultChars": 74,
+      "estTokens": 19,
+      "avgMs": 1500,
+      "p95Ms": 2047,
+      "topLabels": [
+        {
+          "label": "curl api.example.net",
+          "count": 1
+        },
+        {
+          "label": "docs.example.com",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "browser",
+      "calls": 1,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 2000,
+      "callMs": 2000,
+      "shareOfBusy": 0.0477326968973747,
+      "resultChars": 18,
+      "estTokens": 5,
+      "avgMs": 2000,
+      "p95Ms": 2047,
+      "topLabels": [
+        {
+          "label": "app.example.org",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "calls": 2,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 6500,
+      "callMs": 6500,
+      "shareOfBusy": 0.15513126491646778,
+      "resultChars": 105,
+      "estTokens": 26,
+      "avgMs": 3250,
+      "p95Ms": 8191,
+      "topLabels": [
+        {
+          "label": "Explore",
+          "count": 1
+        },
+        {
+          "label": "general-purpose",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "skills",
+      "calls": 1,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 500,
+      "callMs": 500,
+      "shareOfBusy": 0.011933174224343675,
+      "resultChars": 19,
+      "estTokens": 5,
+      "avgMs": 500,
+      "p95Ms": 511,
+      "topLabels": [
+        {
+          "label": "review",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "hooks",
+      "calls": 3,
+      "errors": 0,
+      "denials": 1,
+      "cancelled": 0,
+      "busyMs": 680,
+      "callMs": 680,
+      "shareOfBusy": 0.016229116945107397,
+      "resultChars": 0,
+      "estTokens": 0,
+      "avgMs": 340,
+      "p95Ms": 1023,
+      "topLabels": [
+        {
+          "label": "PreToolUse · Bash",
+          "count": 1
+        },
+        {
+          "label": "PreToolUse · Edit",
+          "count": 1
+        },
+        {
+          "label": "SessionStart",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "plan",
+      "calls": 1,
+      "errors": 0,
+      "denials": 0,
+      "cancelled": 0,
+      "busyMs": 200,
+      "callMs": 200,
+      "shareOfBusy": 0.00477326968973747,
+      "resultChars": 13,
+      "estTokens": 3,
+      "avgMs": 200,
+      "p95Ms": 255,
+      "topLabels": [
+        {
+          "label": "todo list",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "transitions": {
+    "stations": [
+      "you",
+      "model",
+      "memory",
+      "files",
+      "shell",
+      "network",
+      "browser",
+      "agents",
+      "skills",
+      "hooks",
+      "plan"
+    ],
+    "counts": [
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        3,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        2,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ]
+    ]
+  },
+  "patterns": [
+    {
+      "kind": "retry-streak",
+      "station": "shell",
+      "failures": 3,
+      "startAt": 1793527211000,
+      "endAt": 1793527230000,
+      "state": "recovered"
+    },
+    {
+      "kind": "alternation",
+      "stations": [
+        "files",
+        "shell"
+      ],
+      "cycles": 3,
+      "startAt": 1793527204000,
+      "endAt": 1793527226000,
+      "state": "closed",
+      "flavor": "edit-test"
+    }
+  ],
+  "models": [
+    {
+      "model": "claude-opus-5-5",
+      "steps": 18,
+      "firstAt": 1793527202000,
+      "lastAt": 1793527251000
+    },
+    {
+      "model": "claude-haiku-5-5",
+      "steps": 3,
+      "firstAt": 1793527245000,
+      "lastAt": 1793527248000
+    },
+    {
+      "model": "claude-fable-5-2",
+      "steps": 1,
+      "firstAt": 1793527272000,
+      "lastAt": 1793527272000
+    }
+  ],
+  "slowest": [
+    {
+      "station": "shell",
+      "label": "sleep",
+      "durationMs": 8000,
+      "at": 1793527280000
+    },
+    {
+      "station": "agents",
+      "label": "Explore",
+      "durationMs": 6000,
+      "at": 1793527249000
+    },
+    {
+      "station": "shell",
+      "label": "npm test",
+      "durationMs": 5000,
+      "at": 1793527211000
+    },
+    {
+      "station": "shell",
+      "label": "npm test",
+      "durationMs": 4000,
+      "at": 1793527216000
+    },
+    {
+      "station": "shell",
+      "label": "npm test",
+      "durationMs": 4000,
+      "at": 1793527223000
+    }
+  ]
+}

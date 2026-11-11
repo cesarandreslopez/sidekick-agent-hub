@@ -1,0 +1,352 @@
+{
+  "schemaVersion": 1,
+  "providerId": "codex",
+  "sessionId": "rollout-activity-parent",
+  "at": 1793527235000,
+  "startedAt": 1793527200000,
+  "stations": [
+    {
+      "id": "you",
+      "count": 2,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527230100
+    },
+    {
+      "id": "model",
+      "count": 3,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527225000
+    },
+    {
+      "id": "memory",
+      "count": 0,
+      "running": 0,
+      "faults": 0,
+      "pushed": 0
+    },
+    {
+      "id": "files",
+      "count": 3,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527218000,
+      "lastFaultAt": 1793527207500
+    },
+    {
+      "id": "shell",
+      "count": 2,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527231000,
+      "lastFaultAt": 1793527206000
+    },
+    {
+      "id": "network",
+      "count": 4,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527214000
+    },
+    {
+      "id": "browser",
+      "count": 0,
+      "running": 0,
+      "faults": 0
+    },
+    {
+      "id": "agents",
+      "count": 1,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527216000
+    },
+    {
+      "id": "skills",
+      "count": 0,
+      "running": 0,
+      "faults": 0
+    },
+    {
+      "id": "hooks",
+      "count": 0,
+      "running": 0,
+      "faults": 0
+    },
+    {
+      "id": "plan",
+      "count": 1,
+      "running": 0,
+      "faults": 0,
+      "lastAt": 1793527209000
+    }
+  ],
+  "entries": [
+    {
+      "key": "prompt-1793527201200-1",
+      "station": "you",
+      "label": "new message",
+      "labelKey": "newMessage",
+      "from": "inbound",
+      "startedAt": 1793527201200,
+      "endedAt": 1793527201200,
+      "outcome": "ok",
+      "mark": "prompt"
+    },
+    {
+      "key": "call_1",
+      "station": "shell",
+      "label": "npm test",
+      "from": "core",
+      "startedAt": 1793527202000,
+      "hint": "test",
+      "tool": "Bash",
+      "endedAt": 1793527206000,
+      "outcome": "error"
+    },
+    {
+      "key": "step-4",
+      "station": "model",
+      "label": "gpt-6.1-sol",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527206100,
+      "endedAt": 1793527206500,
+      "outcome": "ok"
+    },
+    {
+      "key": "call_2",
+      "station": "files",
+      "label": "rm",
+      "from": "core",
+      "startedAt": 1793527207000,
+      "hint": "edit",
+      "tool": "Bash",
+      "endedAt": 1793527207500,
+      "outcome": "denied",
+      "deniedBy": "user"
+    },
+    {
+      "key": "call_3",
+      "station": "files",
+      "label": "src/a.ts +2",
+      "from": "core",
+      "startedAt": 1793527208000,
+      "fold": 3,
+      "hint": "edit",
+      "tool": "Edit",
+      "endedAt": 1793527208300,
+      "outcome": "ok"
+    },
+    {
+      "key": "call_4",
+      "station": "plan",
+      "label": "plan update",
+      "labelKey": "planUpdate",
+      "from": "core",
+      "startedAt": 1793527209000,
+      "tool": "UpdatePlan",
+      "endedAt": 1793527209100,
+      "outcome": "ok"
+    },
+    {
+      "key": "call_5",
+      "station": "network",
+      "label": "web search",
+      "labelKey": "webSearch",
+      "from": "core",
+      "startedAt": 1793527210000,
+      "hint": "remote",
+      "tool": "WebSearch",
+      "endedAt": 1793527211000,
+      "outcome": "ok"
+    },
+    {
+      "key": "call_6",
+      "station": "network",
+      "label": "docs: lookup",
+      "from": "core",
+      "startedAt": 1793527212000,
+      "tool": "Lookup",
+      "endedAt": 1793527212300,
+      "outcome": "ok"
+    },
+    {
+      "key": "call_7",
+      "station": "network",
+      "label": "cua repl: js",
+      "from": "core",
+      "startedAt": 1793527213000,
+      "tool": "Js",
+      "endedAt": 1793527213500,
+      "outcome": "ok"
+    },
+    {
+      "key": "call_8",
+      "station": "network",
+      "label": "web",
+      "from": "core",
+      "startedAt": 1793527214000,
+      "tool": "Exec",
+      "endedAt": 1793527215000,
+      "outcome": "ok"
+    },
+    {
+      "key": "call_9",
+      "station": "agents",
+      "label": "worker",
+      "from": "core",
+      "startedAt": 1793527216000,
+      "tool": "Spawn_agent",
+      "endedAt": 1793527216300,
+      "outcome": "ok"
+    },
+    {
+      "key": "call_9/call_c1",
+      "station": "files",
+      "label": "rg",
+      "from": "agents",
+      "agentId": "call_9",
+      "startedAt": 1793527218000,
+      "hint": "search",
+      "tool": "Bash",
+      "endedAt": 1793527218100,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-25",
+      "station": "model",
+      "label": "gpt-6-luna",
+      "labelKey": "modelStep",
+      "from": "agents",
+      "agentId": "call_9",
+      "startedAt": 1793527218200,
+      "endedAt": 1793527219000,
+      "outcome": "ok"
+    },
+    {
+      "key": "step-27",
+      "station": "model",
+      "label": "gpt-6.1-sol",
+      "labelKey": "modelStep",
+      "from": "core",
+      "startedAt": 1793527216300,
+      "endedAt": 1793527225000,
+      "outcome": "ok"
+    },
+    {
+      "key": "compaction-29",
+      "station": "model",
+      "label": "compacting context",
+      "labelKey": "compacting",
+      "from": "core",
+      "startedAt": 1793527226000,
+      "endedAt": 1793527226000,
+      "outcome": "ok",
+      "mark": "compaction"
+    },
+    {
+      "key": "turn-30",
+      "station": "you",
+      "label": "answer ready",
+      "labelKey": "answerReady",
+      "from": "core",
+      "startedAt": 1793527227500,
+      "endedAt": 1793527227500,
+      "outcome": "ok",
+      "mark": "done"
+    },
+    {
+      "key": "prompt-1793527230100-2",
+      "station": "you",
+      "label": "new message",
+      "labelKey": "newMessage",
+      "from": "inbound",
+      "startedAt": 1793527230100,
+      "endedAt": 1793527230100,
+      "outcome": "ok",
+      "mark": "prompt"
+    },
+    {
+      "key": "call_10",
+      "station": "shell",
+      "label": "sleep",
+      "from": "core",
+      "startedAt": 1793527231000,
+      "tool": "Bash",
+      "endedAt": 1793527235000,
+      "outcome": "cancelled"
+    },
+    {
+      "key": "turn-34",
+      "station": "you",
+      "label": "turn interrupted",
+      "labelKey": "turnInterrupted",
+      "from": "core",
+      "startedAt": 1793527235000,
+      "endedAt": 1793527235000,
+      "outcome": "cancelled",
+      "mark": "aborted"
+    }
+  ],
+  "running": [],
+  "agents": [],
+  "route": [
+    {
+      "station": "shell",
+      "at": 1793527202000
+    },
+    {
+      "station": "files",
+      "at": 1793527208000
+    },
+    {
+      "station": "plan",
+      "at": 1793527209000
+    },
+    {
+      "station": "network",
+      "at": 1793527214000
+    },
+    {
+      "station": "agents",
+      "at": 1793527216000
+    },
+    {
+      "station": "shell",
+      "at": 1793527231000
+    }
+  ],
+  "model": {
+    "id": "gpt-6.1-sol",
+    "steps": 2
+  },
+  "context": {
+    "percent": 3,
+    "tokens": 12000,
+    "window": 400000,
+    "at": 1793527226000,
+    "source": "usage"
+  },
+  "compactions": 1,
+  "lastCompactionAt": 1793527226000,
+  "turn": {
+    "working": false,
+    "since": 1793527230100,
+    "lastPromptAt": 1793527230100,
+    "lastEnd": {
+      "at": 1793527235000,
+      "outcome": "aborted"
+    }
+  },
+  "patterns": [],
+  "totals": {
+    "prompts": 2,
+    "calls": 11,
+    "errors": 1,
+    "denials": 1,
+    "steps": 3,
+    "pushed": 0
+  }
+}

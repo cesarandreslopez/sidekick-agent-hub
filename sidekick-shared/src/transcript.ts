@@ -9,6 +9,8 @@ import {
 import { isTaskNotificationSystemEvent, isTaskStatusSystemEvent } from './subagentSpawn';
 import { isSubagentActivitySystemEvent } from './subagentActivity';
 import { isTurnLifecycleSystemEvent } from './turnLifecycle';
+import { isHookActivitySystemEvent } from './hookActivity';
+import { isMemoryAttachmentSystemEvent } from './memoryAttachment';
 
 export type TranscriptFidelity = 'snippet' | 'full';
 
@@ -165,6 +167,7 @@ export function projectSessionTranscript(
     if (isTaskNotificationSystemEvent(event) || isTaskStatusSystemEvent(event)) return;
     // Likewise a subagent lifecycle record or a turn boundary (opt-in Codex parser events).
     if (isSubagentActivitySystemEvent(event) || isTurnLifecycleSystemEvent(event)) return;
+    if (isHookActivitySystemEvent(event) || isMemoryAttachmentSystemEvent(event)) return;
     if (nonEmpty(event.cwd)) cwd = event.cwd;
     if (nonEmpty(event.gitBranch)) gitBranch = event.gitBranch;
     const message = event.message;

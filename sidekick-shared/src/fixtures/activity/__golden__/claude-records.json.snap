@@ -1,0 +1,660 @@
+[
+  {
+    "kind": "session",
+    "at": 1793527200000,
+    "providerId": "claude-code",
+    "sessionId": "sess-activity",
+    "seq": 0
+  },
+  {
+    "kind": "hook",
+    "at": 1793527200000,
+    "hookEvent": "SessionStart",
+    "outcome": "context",
+    "contextChars": 24,
+    "label": "SessionStart",
+    "seq": 1
+  },
+  {
+    "kind": "prompt",
+    "at": 1793527201000,
+    "seq": 2
+  },
+  {
+    "kind": "memoryPushed",
+    "at": 1793527201500,
+    "label": "src/CLAUDE.md",
+    "chars": 20,
+    "via": "attachment",
+    "seq": 3
+  },
+  {
+    "kind": "step",
+    "at": 1793527202000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527201000,
+    "seq": 4
+  },
+  {
+    "kind": "context",
+    "at": 1793527202000,
+    "percent": 2.15,
+    "tokens": 21500,
+    "window": 1000000,
+    "source": "usage",
+    "seq": 5
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527202000,
+    "id": "toolu_01",
+    "station": "memory",
+    "label": "memory/notes.md",
+    "tool": "Read",
+    "hint": "read",
+    "seq": 6
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527203000,
+    "id": "toolu_01",
+    "outcome": "ok",
+    "resultChars": 22,
+    "seq": 7
+  },
+  {
+    "kind": "step",
+    "at": 1793527204000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527203000,
+    "seq": 8
+  },
+  {
+    "kind": "context",
+    "at": 1793527204000,
+    "percent": 2.021,
+    "tokens": 20210,
+    "window": 1000000,
+    "source": "usage",
+    "seq": 9
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527204000,
+    "id": "toolu_02",
+    "station": "files",
+    "label": "src/math.ts",
+    "tool": "Edit",
+    "hint": "edit",
+    "seq": 10
+  },
+  {
+    "kind": "hook",
+    "at": 1793527204600,
+    "hookEvent": "PreToolUse",
+    "toolUseId": "toolu_02",
+    "outcome": "ok",
+    "durationMs": 650,
+    "label": "PreToolUse · Edit",
+    "seq": 11
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527205000,
+    "id": "toolu_02",
+    "outcome": "ok",
+    "resultChars": 34,
+    "seq": 12
+  },
+  {
+    "kind": "step",
+    "at": 1793527206000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527205000,
+    "seq": 13
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527206000,
+    "id": "toolu_03",
+    "station": "shell",
+    "label": "npm test",
+    "tool": "Bash",
+    "hint": "test",
+    "seq": 14
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527211000,
+    "id": "toolu_03",
+    "outcome": "error",
+    "resultChars": 15,
+    "seq": 15
+  },
+  {
+    "kind": "step",
+    "at": 1793527212000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527211000,
+    "seq": 16
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527212000,
+    "id": "toolu_04",
+    "station": "shell",
+    "label": "npm test",
+    "tool": "Bash",
+    "hint": "test",
+    "seq": 17
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527216000,
+    "id": "toolu_04",
+    "outcome": "error",
+    "resultChars": 15,
+    "seq": 18
+  },
+  {
+    "kind": "step",
+    "at": 1793527217000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527216000,
+    "seq": 19
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527217000,
+    "id": "toolu_05",
+    "station": "files",
+    "label": "src/math.ts",
+    "tool": "Edit",
+    "hint": "edit",
+    "seq": 20
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527218000,
+    "id": "toolu_05",
+    "outcome": "ok",
+    "resultChars": 2,
+    "seq": 21
+  },
+  {
+    "kind": "step",
+    "at": 1793527219000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527218000,
+    "seq": 22
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527219000,
+    "id": "toolu_06",
+    "station": "shell",
+    "label": "npm test",
+    "tool": "Bash",
+    "hint": "test",
+    "seq": 23
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527223000,
+    "id": "toolu_06",
+    "outcome": "error",
+    "resultChars": 15,
+    "seq": 24
+  },
+  {
+    "kind": "step",
+    "at": 1793527224000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527223000,
+    "seq": 25
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527224000,
+    "id": "toolu_07",
+    "station": "files",
+    "label": "src/math.ts",
+    "tool": "Edit",
+    "hint": "edit",
+    "seq": 26
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527225000,
+    "id": "toolu_07",
+    "outcome": "ok",
+    "resultChars": 2,
+    "seq": 27
+  },
+  {
+    "kind": "step",
+    "at": 1793527226000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527225000,
+    "seq": 28
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527226000,
+    "id": "toolu_08",
+    "station": "shell",
+    "label": "npm test",
+    "tool": "Bash",
+    "hint": "test",
+    "seq": 29
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527230000,
+    "id": "toolu_08",
+    "outcome": "ok",
+    "resultChars": 13,
+    "seq": 30
+  },
+  {
+    "kind": "step",
+    "at": 1793527231000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527230000,
+    "seq": 31
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527231000,
+    "id": "toolu_09",
+    "station": "network",
+    "label": "docs.example.com",
+    "tool": "WebFetch",
+    "hint": "remote",
+    "seq": 32
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527233000,
+    "id": "toolu_09",
+    "outcome": "ok",
+    "resultChars": 13,
+    "seq": 33
+  },
+  {
+    "kind": "step",
+    "at": 1793527234000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527233000,
+    "seq": 34
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527234000,
+    "id": "toolu_10",
+    "station": "browser",
+    "label": "app.example.org",
+    "tool": "mcp__claude-in-chrome__navigate",
+    "seq": 35
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527236000,
+    "id": "toolu_10",
+    "outcome": "ok",
+    "resultChars": 18,
+    "seq": 36
+  },
+  {
+    "kind": "step",
+    "at": 1793527237000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527236000,
+    "seq": 37
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527237000,
+    "id": "toolu_11",
+    "station": "memory",
+    "label": "search nodes #42",
+    "tool": "mcp__memory__search_nodes",
+    "seq": 38
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527237500,
+    "id": "toolu_11",
+    "outcome": "ok",
+    "resultChars": 14,
+    "seq": 39
+  },
+  {
+    "kind": "step",
+    "at": 1793527238000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527237500,
+    "seq": 40
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527238000,
+    "id": "toolu_12",
+    "station": "plan",
+    "label": "todo list",
+    "labelKey": "todoList",
+    "tool": "TodoWrite",
+    "seq": 41
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527238200,
+    "id": "toolu_12",
+    "outcome": "ok",
+    "resultChars": 13,
+    "seq": 42
+  },
+  {
+    "kind": "step",
+    "at": 1793527239000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527238200,
+    "seq": 43
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527239000,
+    "id": "toolu_13",
+    "station": "skills",
+    "label": "review",
+    "tool": "Skill",
+    "seq": 44
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527239500,
+    "id": "toolu_13",
+    "outcome": "ok",
+    "resultChars": 19,
+    "seq": 45
+  },
+  {
+    "kind": "step",
+    "at": 1793527240000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527239500,
+    "seq": 46
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527240000,
+    "id": "toolu_14",
+    "station": "network",
+    "label": "curl api.example.net",
+    "tool": "Bash",
+    "hint": "remote",
+    "seq": 47
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527241000,
+    "id": "toolu_14",
+    "outcome": "denied",
+    "resultChars": 61,
+    "deniedBy": "user",
+    "seq": 48
+  },
+  {
+    "kind": "step",
+    "at": 1793527242000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527241000,
+    "seq": 49
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527242000,
+    "id": "toolu_15",
+    "station": "files",
+    "label": "rm",
+    "tool": "Bash",
+    "hint": "edit",
+    "seq": 50
+  },
+  {
+    "kind": "hook",
+    "at": 1793527242100,
+    "hookEvent": "PreToolUse",
+    "toolUseId": "toolu_15",
+    "outcome": "blocked",
+    "durationMs": 30,
+    "label": "PreToolUse · Bash",
+    "seq": 51
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527242200,
+    "id": "toolu_15",
+    "outcome": "denied",
+    "resultChars": 44,
+    "deniedBy": "hook",
+    "seq": 52
+  },
+  {
+    "kind": "step",
+    "at": 1793527243000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527242200,
+    "seq": 53
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527243000,
+    "id": "toolu_16",
+    "station": "agents",
+    "label": "Explore",
+    "tool": "Agent",
+    "spawn": true,
+    "seq": 54
+  },
+  {
+    "kind": "subagentStart",
+    "at": 1793527243000,
+    "agentId": "toolu_16",
+    "spawnId": "toolu_16",
+    "label": "Explore",
+    "seq": 55
+  },
+  {
+    "kind": "step",
+    "at": 1793527245000,
+    "agentId": "toolu_16",
+    "model": "claude-haiku-5-5",
+    "startedAt": 1793527244000,
+    "seq": 56
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527245000,
+    "agentId": "toolu_16",
+    "id": "toolu_s1",
+    "station": "files",
+    "label": "Grep",
+    "tool": "Grep",
+    "hint": "search",
+    "seq": 57
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527246000,
+    "agentId": "toolu_16",
+    "id": "toolu_s1",
+    "outcome": "ok",
+    "resultChars": 14,
+    "seq": 58
+  },
+  {
+    "kind": "step",
+    "at": 1793527247000,
+    "agentId": "toolu_16",
+    "model": "claude-haiku-5-5",
+    "startedAt": 1793527246000,
+    "seq": 59
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527247000,
+    "agentId": "toolu_16",
+    "id": "toolu_s2",
+    "station": "files",
+    "label": "src/util.ts",
+    "tool": "Read",
+    "hint": "read",
+    "seq": 60
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527247500,
+    "agentId": "toolu_16",
+    "id": "toolu_s2",
+    "outcome": "ok",
+    "resultChars": 13,
+    "seq": 61
+  },
+  {
+    "kind": "step",
+    "at": 1793527248000,
+    "agentId": "toolu_16",
+    "model": "claude-haiku-5-5",
+    "startedAt": 1793527247500,
+    "seq": 62
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527249000,
+    "id": "toolu_16",
+    "outcome": "ok",
+    "resultChars": 44,
+    "seq": 63
+  },
+  {
+    "kind": "subagentEnd",
+    "at": 1793527249000,
+    "agentId": "toolu_16",
+    "outcome": "ok",
+    "seq": 64
+  },
+  {
+    "kind": "step",
+    "at": 1793527250000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527249000,
+    "seq": 65
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527250000,
+    "id": "toolu_17",
+    "station": "agents",
+    "label": "general-purpose",
+    "tool": "Agent",
+    "spawn": true,
+    "seq": 66
+  },
+  {
+    "kind": "subagentStart",
+    "at": 1793527250000,
+    "agentId": "toolu_17",
+    "spawnId": "toolu_17",
+    "label": "general-purpose",
+    "seq": 67
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527250500,
+    "id": "toolu_17",
+    "outcome": "ok",
+    "resultChars": 61,
+    "seq": 68
+  },
+  {
+    "kind": "step",
+    "at": 1793527251000,
+    "model": "claude-opus-5-5",
+    "startedAt": 1793527250500,
+    "seq": 69
+  },
+  {
+    "kind": "turnEnd",
+    "at": 1793527251000,
+    "outcome": "done",
+    "seq": 70
+  },
+  {
+    "kind": "inbound",
+    "at": 1793527260000,
+    "station": "agents",
+    "label": "notification",
+    "labelKey": "notification",
+    "seq": 71
+  },
+  {
+    "kind": "subagentEnd",
+    "at": 1793527260000,
+    "agentId": "toolu_17",
+    "outcome": "ok",
+    "seq": 72
+  },
+  {
+    "kind": "prompt",
+    "at": 1793527270000,
+    "seq": 73
+  },
+  {
+    "kind": "compaction",
+    "at": 1793527271000,
+    "tokensBefore": 150000,
+    "tokensAfter": 20000,
+    "trigger": "manual",
+    "seq": 74
+  },
+  {
+    "kind": "step",
+    "at": 1793527272000,
+    "model": "claude-fable-5-2",
+    "startedAt": 1793527270000,
+    "seq": 75
+  },
+  {
+    "kind": "context",
+    "at": 1793527272000,
+    "percent": 2.01,
+    "tokens": 20100,
+    "window": 1000000,
+    "source": "usage",
+    "seq": 76
+  },
+  {
+    "kind": "toolStart",
+    "at": 1793527272000,
+    "id": "toolu_19",
+    "station": "shell",
+    "label": "sleep",
+    "tool": "Bash",
+    "seq": 77
+  },
+  {
+    "kind": "toolEnd",
+    "at": 1793527280000,
+    "id": "toolu_19",
+    "outcome": "cancelled",
+    "resultChars": 42,
+    "seq": 78
+  },
+  {
+    "kind": "turnEnd",
+    "at": 1793527280100,
+    "outcome": "aborted",
+    "seq": 79
+  }
+]

@@ -31,6 +31,7 @@ import type {
   ListSessionFilesOptions,
   SessionProviderBase,
   SessionReader,
+  SessionReaderOptions,
   SessionReaderReset,
   SessionFileInfo,
   SessionFileStats,
@@ -175,12 +176,18 @@ class ClaudeCodeReader implements SessionReader {
   constructor(
     private readonly sessionPath: string,
     usageDeduper?: ClaudeUsageDeduper,
+    options: SessionReaderOptions = {},
   ) {
     this.usageDeduper = usageDeduper ?? new ClaudeUsageDeduper();
+    const extractOptions = {
+      includeTaskNotifications: true,
+      includeActivitySignals: options.includeActivitySignals === true,
+    };
     this.parser = new JsonlParser<unknown>({
       onEvent: (raw) => {
-        // Mid-turn task notifications finish background subagents.
-        for (const event of extractSessionEvents(raw, { includeTaskNotifications: true })) {
+        // Mid-turn task notifications finish background subagents; hook and
+        // memory attachments are opt-in activity signals.
+        for (const event of extractSessionEvents(raw, extractOptions)) {
           this.events.push(this.usageDeduper.apply(normalizeClaudeUsage(event)));
         }
       },
@@ -576,8 +583,8 @@ export class ClaudeCodeProvider implements SessionProviderBase {
 
   // --- Data reading ---
 
-  createReader(sessionPath: string): SessionReader {
-    return new ClaudeCodeReader(sessionPath);
+  createReader(sessionPath: string, options?: SessionReaderOptions): SessionReader {
+    return new ClaudeCodeReader(sessionPath, undefined, options);
   }
 
   // --- Subagent support ---

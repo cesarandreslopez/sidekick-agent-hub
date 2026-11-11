@@ -6,7 +6,7 @@
  */
 
 import * as fs from 'fs';
-import type { SessionProviderBase } from '../providers/types';
+import type { SessionProviderBase, SessionReaderOptions } from '../providers/types';
 import { toFollowEvents } from './eventBridge';
 import type { SessionWatcher, SessionWatcherCallbacks } from './types';
 
@@ -24,8 +24,9 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
     private readonly provider: SessionProviderBase,
     private readonly sessionPath: string,
     private readonly callbacks: SessionWatcherCallbacks,
+    readerOptions?: SessionReaderOptions,
   ) {
-    this.reader = provider.createReader(sessionPath);
+    this.reader = provider.createReader(sessionPath, readerOptions);
   }
 
   get isActive(): boolean {
@@ -127,6 +128,7 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
       // drop what they built before receiving them.
       if (this.reader.wasTruncated()) this.callbacks.onReset?.();
       for (const event of events) {
+        this.callbacks.onSessionEvent?.(event);
         for (const followEvent of toFollowEvents(event, this.provider.id)) {
           this.callbacks.onEvent(followEvent);
         }
