@@ -5,6 +5,48 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-11-11
+
+### Added
+
+- **`sidekick-shared/activity`**, a pure entry (29 modules, no Zod or Node built-ins) for the activity map: what a coding agent is doing, station by station, live or replayed.
+  - `createActivityRecorder()` turns canonical session events from Claude Code, Codex and OpenCode into content-free, classified `ActivityRecord`s across eleven stations (`ACTIVITY_STATIONS`: you, model, memory, files, shell, network, browser, agents, skills, hooks, plan). It handles each provider's quirks: Claude Code's per-block lines, OpenCode's end-only timing, Codex multi-file patches and code-mode cells, duplicate results, and synthetic calls that never get a result. `classifyActivityTool()` / `classifyActivityShell()` classify by tool and command name (wrappers unwrapped, `$(…)` included); `stationOverrides`, `memory` and `browserServers` options adapt it.
+  - Labels carry names, never content: `cleanActivityLabel()`, `activityPathLabel()` (last two path parts), `activityHostLabel()` (host only, never userinfo, path or query). `labels: 'names'` is the default; `'descriptive'` adds the agent's own short descriptions; `'none'` uses a fixed, translatable vocabulary (`DEFAULT_ACTIVITY_STRINGS`, `resolveActivityStrings()`).
+  - One reducer for live updates, replay and scrubbing: `createActivityState()`, `applyActivityRecord(s)()`, `cloneActivityState()`, `restoreActivityState()`; recorder `export()` / `import()` for checkpoints.
+  - Views: `snapshotActivity()` (stations, running calls, route, subagents, model, context, turn, patterns) and `summarizeActivity()` (full-session busy time, errors, denials, cancellations, context weight and p95 per station, a transitions matrix, retry streaks and alternations, models, slowest calls).
+  - `createActivityTimeline()` (checkpointed `snapshotAt()` in under a millisecond, `markers()`), `buildActivitySnapshot()`, `normalizeActivityRecords()`, `exportActivity()`.
+  - Renderers: `renderActivityMapSvg()` (deterministic SVG; `dark` / `light` / `auto` / `css-vars` themes; `full` / `reduced` / `none` motion with animation offsets computed from `now`, so redraws never restart a pulse; `highlight`, `layout`, `speed`, `clockOffsetMs`), `layoutActivityMapText()` (tone-tagged terminal rows, ring or list), `foldActivityFeed()`, `describeActivityNow()`, `describeActivityInsights()`, `describeActivityPattern()`, palettes and `listActivityCssVariables()` / `activityMapStyles()`.
+- `replayActivity()` on `/node` and the root replays a session file into records, a timeline, a snapshot and insights, merging Claude Code subagent transcripts and Codex child rollouts.
+- Wire schemas on `/schemas`: `activityRecordSchema`, `activityRecordBatchSchema`, `activitySnapshotSchema`, `activityInsightsSchema`, `activityExportSchema` (`schemaVersion: 1`; labels validated free of control and bidirectional characters).
+- **Session events keep more.**
+  - `includeActivitySignals` on `extractSessionEvents()`, `createReader()` and `createWatcher()` turns Claude Code hook attachments (`hook_success`, `hook_additional_context`, errors, system messages) and `nested_memory` attachments into `system` events with content-free fields (`hookActivityFromEvent()`, `memoryAttachmentFromEvent()` and their `is…` / `describe…` helpers). A hook's command, output and added context are never kept. `EventAggregator`, transcripts, session context and follow events skip these events.
+  - `SessionEvent` keeps `agentId`, `permissionDecision` (Claude Code permission decisions; Codex declined commands and patches; OpenCode rejections via `openCodeRefusalSource()`), `providerMetadata.contextWindowTokens` (Codex) and `compaction.trigger`. Claude Code `compact_boundary` events carry `compaction` token counts.
+  - `SessionWatcherCallbacks.onSessionEvent` delivers every canonical event, including the replay at start, before the follow events derived from it.
+  - `readSessionReportInputs()` returns `activity { snapshot, insights }`, and `generateHtmlReport(…, { activity })` draws an activity section (CSP-safe).
+  - `parseSpawnResultAgentId()`, `isInjectedPromptText()`, and the shared shell helpers behind prompt signals.
+- **Models:** Claude Fable 5.2 ($8/$40, $0.20 cache reads) and the Mythos family (`claude-mythos-5-2`, `-5-1`, `-5`, `-preview`; parsed, aliased as `mythos`, ordered with Fable); GPT-6 Cyber, Rosalind and Astra Law, GPT-5.6 and GPT-5.5 Cyber, o4-mini; `ParsedModelId.specialty`.
+- **Long-context pricing:** `ModelPricing.tiers` and `resolvePricingTier()` (root, `/browser`, `/pricing`). A request whose prompt (uncached input plus cache reads and writes) is strictly above a tier's threshold is priced at that tier's rates. Usage carries `requestPromptTokens` (set for single requests; `singleRequest` on usage inputs, `priceProviderUsage({ singleRequest })`), and costs report `pricingTier`. Claude Code corrections carry their whole call's prompt size; totals that merge requests stay at base rates. LiteLLM `*_above_<N>k_tokens` prices are normalized into tiers.
+- **Request tuning:** `anthropicRequestTuning(modelId, { effort, maxTokens })` and `openAiReasoningEffort(modelId, effort)` return request settings each model accepts (thinking off where allowed, effort otherwise; never sampling parameters or thinking budgets).
+
+### Changed
+
+- GPT-5.6, GPT-6 and GPT-6.1 context windows are 922K (maximum input), matching the LiteLLM catalog; offline lookups no longer return 1.05M.
+- The pricing catalog cache gains `normalizerVersion: 2`; a cache without it is refreshed when online and still used offline or when the download fails.
+- `classifyTool()` maps `ApplyPatch` to `file_edit`, `Subtask` to `subagent`, `Lsp` to `search` and `TaskGet` to `planning`.
+- `zod` floor raised to 4.6.7.
+
+### Fixed
+
+- `claude-fable-5-2` inherited Fable 5's prices by prefix ($10/$50, $1.00 cache reads).
+- `compareModelIds()` was not transitive once a GPT specialty id (`gpt-6-rosalind`) was present, so sorting depended on input order.
+- Dotted `claude-opus-4.8` / `4.7` / `4.6` and `claude-sonnet-4.6` resolved to a 200K context window.
+- `anthropic/claude-opus-5-5` had no offline price.
+- The HTML report's light theme had no styles.
+
+### Security
+
+- `zod` 4.6.7 (memory exhaustion while validating oversized constrained collections).
+
 ## [0.31.0] - 2026-11-06
 
 ### Fixed

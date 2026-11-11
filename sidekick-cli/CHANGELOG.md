@@ -5,6 +5,36 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-11-11
+
+### Added
+
+- **`sidekick map`**, the activity map of a session. Every tool call is drawn on one of eleven stations (you, model, memory, files, shell, network, browser, agents, skills, hooks, plan) around the agent, with the context window as a ring, faults, orbiting subagents and the agent's route, for Claude Code, Codex and OpenCode.
+  - `--follow` draws it live, full screen, in any terminal split. It waits for a session to start and follows newer sessions unless `--session` is given. Keys: `f` feed, `i` insights, `p`/`Space` pause, `←`/`→` step, `l` live, `q` quit.
+  - `--format text|svg|json` exports a session at any moment with `--at` (`end`, `start`, `+15m`, `-5m`, `50%`, `HH:MM[:SS]`, an ISO time); `--theme`, `--motion`, `--labels`, `--subagents`, `--core-name`, `-o`.
+  - Insights: each station's calls, busy time, errors, denials and context weight; retry streaks and back-and-forth loops such as edit ↔ test.
+- Dashboard panel **9**, **Map**, with Map and Insights tabs.
+- `report` (and the dashboard's `r` key) includes the activity map, a station table and the detected patterns.
+- MCP: `get_activity_map` returns the active session's activity snapshot and insights, optionally with the SVG.
+- Claude Fable 5.2, the Mythos models, GPT-6 Cyber / Rosalind / Astra Law, GPT-5.6 / GPT-5.5 Cyber and o4-mini are priced; long prompts on GPT-5.4 and later (above 272K tokens) and Claude Haiku 5.5 (above 100K) are priced at their long-context rates, per request, in usage reports, billing blocks, `dump` and `report`.
+
+### Changed
+
+- Session summaries use Claude Haiku 5.5 with thinking off, and OpenAI summaries pick a reasoning effort each model accepts.
+- GPT-5.6, GPT-6 and GPT-6.1 context gauges use the models' 922K maximum input.
+- The dashboard checkpoint moves to revision 6 and now carries the activity log, so each session replays once after upgrading.
+- `--output-file` is refused for `map --follow`; `map` exports accept it.
+- MCP SDK 1.32.2 and Zod 4.
+
+### Fixed
+
+- `report --theme light` rendered the dark theme.
+- Claude Fable 5.2 was priced as Fable 5; dotted Claude Opus 4.x and Sonnet 4.6 ids showed a 200K context window.
+
+### Security
+
+- `@modelcontextprotocol/sdk` 1.32.2 and its HTTP dependencies (OAuth credential and request-handling advisories) and Zod 4.6.7 (memory-exhaustion advisory) in the bundle.
+
 ## [0.31.0] - 2026-11-06
 
 ### Fixed

@@ -5,6 +5,36 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-11-11
+
+### Added
+
+- **Activity Map view.** A new view next to the Mind Map draws what the agent is doing: every tool call pulses from the agent to one of eleven stations (you, model, memory, files, shell, network, browser, agents, skills, hooks, plan), with the context window as a ring, faults until your next prompt, orbiting subagents, the agent's route, and marks for answers, model switches and compactions. It follows the current session live, including what was read before VS Code started, for Claude Code, Codex and OpenCode.
+  - **Open Activity Map** opens it large in an editor tab with insights (each station's calls, busy time, errors, denials and context weight; retry streaks and edit ↔ test loops) and a replay bar: play and pause, 1×/10×/60×, a scrubber with prompt, fault, compaction and model-switch markers, and **Live**. It can also replay a past session.
+  - Hover a station for its numbers and top labels; click it to filter the feed and highlight it.
+  - **Export Activity Map…** saves the map as SVG or the session's activity as JSON.
+  - Settings: `sidekick.activityMap.motion` (follows VS Code's reduce-motion setting by default), `layout`, `coreName`, `labels` (`descriptive` by default), `memory` and `stationOverrides`.
+- The HTML session report includes the activity map, a station table and the detected patterns.
+- Claude Fable 5.2 and the Mythos models are labelled and priced; a literal `fable` model setting selects Claude Fable 5.2 on the Claude API.
+- Long prompts are priced at their long-context rates (GPT-5.4 and later above 272K tokens, Claude Haiku 5.5 above 100K), per request, in the dashboard's cost rows.
+
+### Changed
+
+- **Tier defaults:** `fast` is Claude Haiku 5.5 and `balanced` Claude Sonnet 5.5 on the Claude API and OpenCode; Codex `balanced` is GPT-6.1 Sol. Each request gets per-model thinking and effort settings so inline completions and commit messages stay fast (thinking off where the model allows it, low effort otherwise); review and transform use medium effort. Codex inference passes `model_reasoning_effort`, and Claude Max uses the Agent SDK's effort option.
+- GPT-5.6, GPT-6 and GPT-6.1 context gauges use the models' 922K maximum input.
+- The session checkpoint moves to revision 6 and now carries the activity log, so each session replays once after upgrading.
+- Claude Code hook outcomes and pushed memory are read from session logs for the map; they do not appear in the timeline, event stream or message counts.
+- Claude Agent SDK 0.2.141 and OpenCode SDK 1.19.5.
+
+### Fixed
+
+- Claude Fable 5.2 costs used Fable 5 rates; dotted Claude Opus 4.x and Sonnet 4.6 ids showed a 200K context window.
+- A Claude API request the model refused returned an empty completion; the refusal is now reported.
+
+### Security
+
+- `dompurify` 3.4.17 (XSS advisories in HTML sanitizing for webviews).
+
 ## [0.31.0] - 2026-11-06
 
 ### Fixed

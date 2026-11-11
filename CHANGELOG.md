@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-11-11
+
+### Added
+
+- **Activity Map.** A live and replayable map of what a coding agent is doing, for Claude Code, Codex and OpenCode. Every tool call pulses from the agent to one of eleven stations (you, model, memory, files, shell, network, browser, agents, skills, hooks, plan). Spokes wear in with use, the context window is a ring around the core, errors and denials stay on their station until the next prompt, subagents orbit, the main loop's route is drawn, and answers, model switches and compactions each leave a mark. Insights show each station's busy time, errors, denials and context weight (the tool output it fed into the context window), and detect retry streaks and back-and-forth loops such as edit ↔ test.
+  - **VS Code:** an **Activity Map** view next to the Mind Map, and **Open Activity Map** for a large editor tab with insights and a replay bar (play, 1×/10×/60×, a scrubber with prompt, fault, compaction and model-switch markers). **Export Activity Map…** saves SVG or JSON. Settings under `sidekick.activityMap.*`: motion, layout, core name, labels, memory sources and station overrides.
+  - **CLI:** `sidekick map --follow` draws the live map in any terminal split; `sidekick map --format text|svg|json` exports any moment of a session with `--at` (`+15m`, `-5m`, `50%`, a time of day, an ISO time); the dashboard gains panel **9** with Map and Insights tabs.
+  - The **HTML session report** (CLI `report`, the dashboard's `r` key, and VS Code) includes the map, a station table and the detected patterns.
+  - **MCP:** `sidekick mcp` adds `get_activity_map`, the active session's snapshot and insights, optionally with the SVG.
+  - **`sidekick-shared/activity`:** pure, content-free records, reducer, timeline, insights and SVG and terminal renderers; `replayActivity()` on `/node`; wire schemas on `/schemas`. Labels carry names (a file's last two path parts, a host, a command's name), never content.
+- **Session events keep more.** Claude Code hook outcomes and pushed memory (opt-in `includeActivitySignals`), permission decisions, Codex declined commands and patches, subagent ids, Claude Code compaction token counts and Codex context windows now reach `SessionEvent`; watchers gain `onSessionEvent`.
+- **Models.** Claude Fable 5.2 and the Mythos family (5.2, 5.1, 5, preview) are parsed, priced and ordered. GPT-6 Cyber, Rosalind and Astra Law, GPT-5.6 and GPT-5.5 Cyber, and o4-mini are priced. A literal `fable` model setting selects Claude Fable 5.2 on the Claude API.
+- **Long-context prices.** A request whose prompt (input plus cache reads and writes) exceeds 272K tokens on GPT-5.4 and later, or 100K on Claude Haiku 5.5, is priced at the long-context rates. Tiers apply per request, so a long session is charged more only for its long requests. The LiteLLM catalog's `*_above_<N>k_tokens` prices are read.
+
+### Changed
+
+- **Tier defaults.** On the Claude API and OpenCode, `fast` is Claude Haiku 5.5 and `balanced` Claude Sonnet 5.5 (`powerful` stays Opus 5.5); on Codex, `balanced` is GPT-6.1 Sol. Claude Max keeps the `haiku` / `sonnet` / `opus` aliases. Requests get per-model thinking and effort settings: inline completions and commit messages turn thinking off where the model allows it and use low effort otherwise, review and transform use medium effort, Codex inference passes `model_reasoning_effort`, and Claude Max uses the Agent SDK's effort option. The CLI's summaries use Claude Haiku 5.5.
+- GPT-5.6, GPT-6 and GPT-6.1 context windows are 922K tokens (the API's maximum input), as the LiteLLM catalog already reported online, so offline gauges for these models read slightly fuller. Context windows Codex reports still take precedence.
+- The pricing catalog cache is refreshed once after upgrading; offline, the previous cache keeps working without long-context tiers.
+- VS Code and CLI dashboard checkpoints move to revision 6 (they now carry the activity log), so each session is replayed once after upgrading.
+- `classifyTool()` maps `ApplyPatch` to `file_edit`, `Subtask` to `subagent`, `Lsp` to `search` and `TaskGet` to `planning`.
+- Dependencies: Claude Agent SDK 0.2.141, OpenCode SDK 1.19.5, MCP SDK 1.32.2; the CLI moves to Zod 4.
+
+### Fixed
+
+- Claude Fable 5.2 was priced as Fable 5 ($10/$50 per million tokens with $1.00 cache reads); it is $8/$40 with $0.20 cache reads.
+- Model sorting could depend on input order once GPT-6 specialty models (`gpt-6-rosalind`) were present; the comparison is now transitive.
+- Dotted Claude ids (`claude-opus-4.8`, `claude-opus-4.7`, `claude-opus-4.6`, `claude-sonnet-4.6`) showed a 200K context window instead of 1M.
+- `anthropic/claude-opus-5-5`, the OpenCode `powerful` default, was unpriced offline.
+- `sidekick report --theme light` rendered the dark theme.
+- A Claude API request the model refused returned an empty completion; the refusal is now reported.
+
+### Security
+
+- `dompurify` 3.4.17 in the VS Code webviews (XSS advisories), `@modelcontextprotocol/sdk` 1.32.2 and its HTTP dependencies in the CLI bundle, and `zod` 4.6.7 or later in `sidekick-shared` and the CLI (memory-exhaustion advisory). `npm audit` reports no high or critical advisories in any package.
+
 ## [0.31.0] - 2026-11-06
 
 ### Fixed
