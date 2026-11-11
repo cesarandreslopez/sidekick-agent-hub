@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.32.0: the Activity Map** — a new **Activity Map** view beside the Mind Map draws what your agent is doing: every tool call pulses from the agent to one of eleven stations (files, shell, network, memory, browser, agents, skills, hooks, plan, model, you), with the context window as a ring, faults until your next prompt, orbiting subagents and the agent's route. **Pop out** opens it large with a replay bar to scrub and replay the session at 1×/10×/60×, and insights show where the time, errors and context went, including retry streaks and edit ↔ test loops. Export it as SVG or JSON; the HTML report includes it. Model tiers move to Claude Haiku 5.5 / Sonnet 5.5 and GPT-6.1 Sol with per-model thinking and effort settings so completions stay fast, Claude Fable 5.2 and the Mythos models are priced, and long prompts are priced at their long-context rates.
 - **0.31.0: live billing block, Codex retry, smaller extension** — the dashboard billing block keeps up with a session that is still being written. Codex flex- and policy-capacity failures offer **Retry**, and Codex's approval-denial limit explains itself without one. The extension bundle is about 145 KB smaller.
 - **0.30.3: usage credits balance vs spend limit** — the dashboard's quota card used to show `Extra usage: $0.00 of $40.00 used`, where $40 is the monthly spend limit, not your balance. It now shows `Usage credits: $100.00 available` (the prepaid balance) and `Spend limit: $0.00 of $40.00 used this month` as separate notes.
 - **0.30.1: update notifications** — the extension tells you when a newer version is published. It asks the Marketplace in VS Code and Open VSX in Cursor, VSCodium and other editors, 30 seconds after startup and then twice a day. The notification offers **Update**, **Release Notes**, and **Skip This Version**. **Sidekick: Check for Updates** checks on demand, and `sidekick.updateCheck.enabled` turns the automatic check off. The `sidekick` CLI now announces its own updates after one-shot commands.
@@ -125,6 +126,10 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Mind map](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/mind-map.png)
 
+- **[Activity Map](https://cesarandreslopez.github.io/sidekick-agent-hub/features/activity-map/)** — what the agent is doing, station by station: tool calls pulse to files, shell, network, memory, agents, hooks and more, with context fill, faults, subagents and the agent's route; pop out to replay and scrub any session, with insights on where the time, errors and context went
+
+![Activity map](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/activity-map.png)
+
 - **[Kanban Board](https://cesarandreslopez.github.io/sidekick-agent-hub/features/kanban-board/)** — task and subagent tracking with real-time updates; subagent cards say when an agent finished without a report, ended, or was stopped
 
 ![Kanban board](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/kanban-board.png)
@@ -183,7 +188,7 @@ sidekick dashboard
 
 ![Sidekick CLI Dashboard](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif)
 
-Browse sessions, tasks, decisions, knowledge notes, live event streams, and charts in a full-screen TUI. Eight panels including an Events panel for real-time session activity and a Charts panel with tool frequency, event distribution, activity heatmap, and pattern analysis. Press `?` for keybindings. Standalone commands (`sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff`, `sidekick search`, `sidekick history`, `sidekick context`, `sidekick extract`, `sidekick quota`, `sidekick accounts`, `sidekick status`, `sidekick peak`, `sidekick today`, `sidekick doctor`, `sidekick statusline`, `sidekick blocks`, `sidekick daily`/`weekly`/`monthly`/`sessions`, `sidekick import`, `sidekick report`, `sidekick dump`, `sidekick mcp`) run one-shot queries without the TUI. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
+Browse sessions, tasks, decisions, knowledge notes, live event streams, charts, and the activity map in a full-screen TUI. Nine panels including an Events panel for real-time session activity, a Charts panel with tool frequency, event distribution, activity heatmap, and pattern analysis, and a Map panel with the live activity map and its insights. `sidekick map --follow` draws the map alone in any terminal split. Press `?` for keybindings. Standalone commands (`sidekick tasks`, `sidekick decisions`, `sidekick notes`, `sidekick stats`, `sidekick handoff`, `sidekick search`, `sidekick history`, `sidekick context`, `sidekick extract`, `sidekick quota`, `sidekick accounts`, `sidekick status`, `sidekick peak`, `sidekick today`, `sidekick doctor`, `sidekick statusline`, `sidekick blocks`, `sidekick daily`/`weekly`/`monthly`/`sessions`, `sidekick import`, `sidekick report`, `sidekick dump`, `sidekick map`, `sidekick mcp`) run one-shot queries without the TUI. See the [CLI Dashboard docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/cli/) for the full guide.
 
 ## [Key Settings](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/settings/)
 
@@ -210,8 +215,10 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, and char
 | `sidekick.peakHours.enabled`                      | `true`         | Show Claude peak-hours indicator in the dashboard and status bar (`claude-max` provider with Claude Code sessions)                                              |
 | `sidekick.peakHours.notifyOnTransition`           | `false`        | One-time toast when peak hours start or end (opt-in)                                                                                                            |
 | `sidekick.updateCheck.enabled`                    | `true`         | Notify when a newer Sidekick Agent Hub extension is published (checked after startup and twice a day)                                                           |
+| `sidekick.activityMap.motion`                     | `auto`         | Activity Map animation: `auto` follows VS Code's reduce-motion setting; `full`, `reduced`, or `none`                                                            |
+| `sidekick.activityMap.labels`                     | `descriptive`  | Activity Map labels: `descriptive` adds the agent's short command descriptions; `names` or `none` for less                                                      |
 
-Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — **Claude Opus 5.5** (`powerful`), **Sonnet 5** (`balanced`), and **Haiku 4.5** (`fast`) on Anthropic providers, and **GPT-6 Astra** (`powerful`), **GPT-6 Sol** (`balanced`), and **GPT-6 Luna** (`fast`) on Codex — with 1M-token context windows where available. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
+Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`), a legacy name (`haiku`/`sonnet`/`opus`), or a full model ID. Tiers resolve to current flagships — **Claude Opus 5.5** (`powerful`), **Sonnet 5.5** (`balanced`), and **Haiku 5.5** (`fast`) on Anthropic providers, and **GPT-6 Astra** (`powerful`), **GPT-6.1 Sol** (`balanced`), and **GPT-6 Luna** (`fast`) on Codex — with 1M-token context windows where available. Each request gets per-model thinking and effort settings (thinking off or low effort for completions and commit messages), and a literal `fable` selects Claude Fable 5.2. See [Model Resolution](https://cesarandreslopez.github.io/sidekick-agent-hub/configuration/model-resolution/) for details.
 
 ## Commands
 
@@ -238,6 +245,8 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Register Current Login        | —                     | Save the account you are signed in to right now                                                                                            |
 | Remove Account                | —                     | Remove a saved account and its credentials                                                                                                 |
 | Open Session Dashboard        | —                     | Open session analytics                                                                                                                     |
+| Open Activity Map             | Activity Map view     | Open the activity map large in an editor tab, with insights and a replay bar                                                               |
+| Export Activity Map…          | Activity Map view     | Save the map as SVG or the session's activity as JSON                                                                                      |
 | Extract Session Assets        | —                     | Pick URLs, file paths, commands, or plans from recent sessions                                                                             |
 | Search Across Sessions        | —                     | Full-text search over every session                                                                                                        |
 | View Session Conversation     | —                     | Read the current session's transcript with search                                                                                          |

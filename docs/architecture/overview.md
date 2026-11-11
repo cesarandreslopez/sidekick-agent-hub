@@ -2,7 +2,7 @@
 
 ## Build System (esbuild)
 
-The VS Code extension build produces six esbuild bundles. The dashboard's
+The VS Code extension build produces seven esbuild bundles. The dashboard's
 script is bundled from `src/webview/dashboard/` and receives its initial data
 through an embedded JSON block, so the document `DashboardViewProvider`
 renders contains no inline executable script.
@@ -14,6 +14,7 @@ flowchart LR
         EXP["src/webview/explain.ts"]
         ERR["src/webview/error.ts"]
         DASH["src/webview/dashboard/index.ts"]
+        ACT["src/webview/activityMap/index.ts"]
         CHART["src/webview/chartjs-vendor.ts"]
         D3["src/webview/d3-vendor.ts"]
     end
@@ -22,11 +23,12 @@ flowchart LR
     EXP -->|IIFE · Browser| O2["out/webview/explain.js"]
     ERR -->|IIFE · Browser| O3["out/webview/error.js"]
     DASH -->|IIFE · Browser| O6["out/webview/dashboard.js"]
+    ACT -->|IIFE · Browser| O7["out/webview/activityMap.js"]
     CHART -->|IIFE · Browser| O4["out/webview/chartjs-vendor.js"]
     D3 -->|IIFE · Browser| O5["out/webview/d3-vendor.js"]
 ```
 
-Only `vscode` is externalized from the extension-host bundle. Other extension dependencies (including `@anthropic-ai/claude-agent-sdk`, `@opencode-ai/sdk`, and `sidekick-shared`) are bundled by esbuild. Chart.js and D3.js are bundled into local browser vendor files so the dashboard and mind map work offline.
+Only `vscode` is externalized from the extension-host bundle. Other extension dependencies (including `@anthropic-ai/claude-agent-sdk`, `@opencode-ai/sdk`, and `sidekick-shared`) are bundled by esbuild. Chart.js and D3.js are bundled into local browser vendor files so the dashboard and mind map work offline. The Activity Map webview imports only `sidekick-shared/activity` (the recorder is tree-shaken out; about 63 KB minified) and draws the shared SVG themed through CSS variables.
 
 ## Entry Point
 

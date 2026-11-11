@@ -78,7 +78,20 @@ See [Model Resolution](model-resolution.md) for details on how tiers map to mode
 | `sidekick.enableSessionMonitoring` | `true`  | Enable CLI agent session monitoring (requires a window reload)     |
 | `sidekick.sessionProvider`         | `auto`  | Which agent to monitor: `auto`, `claude-code`, `opencode`, `codex` |
 
-`sidekick.enableSessionMonitoring` is read once at activation, so changing it prompts you to reload the window. While it is `false`, the Agent Hub container keeps the Session Analytics view — which shows a placeholder with an **Enable session monitoring** button — and the Accounts view, and hides Mind Map, Kanban Board, Plans, Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream.
+`sidekick.enableSessionMonitoring` is read once at activation, so changing it prompts you to reload the window. While it is `false`, the Agent Hub container keeps the Session Analytics view — which shows a placeholder with an **Enable session monitoring** button — and the Accounts view, and hides Mind Map, Activity Map, Kanban Board, Plans, Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream.
+
+## Activity Map
+
+| Setting                                 | Default       | Description                                                                                                                    |
+| --------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `sidekick.activityMap.motion`           | `auto`        | `auto` follows VS Code's reduce-motion setting and the OS; `full`, `reduced` (fades only) or `none`                            |
+| `sidekick.activityMap.layout`           | `you-top`     | `you-top`, or `you-bottom` to put the network and browser at the top                                                           |
+| `sidekick.activityMap.coreName`         | `""`          | What the centre says, up to ten characters; empty shows the agent's name                                                       |
+| `sidekick.activityMap.labels`           | `descriptive` | `descriptive` adds the short description the agent wrote for a command; `names` shows names only; `none` uses fixed words only |
+| `sidekick.activityMap.memory`           | `{}`          | Extra memory sources: `paths` (path fragments), `mcpServers`, `commands`                                                       |
+| `sidekick.activityMap.stationOverrides` | `{}`          | Map a tool name or `mcp__server__*` to a station (`files`, `network`, `memory`, …)                                             |
+
+Classification settings (`labels`, `memory`, `stationOverrides`) apply to activity read after the change. See [Activity Map](../features/activity-map.md).
 
 ## Commit Messages
 

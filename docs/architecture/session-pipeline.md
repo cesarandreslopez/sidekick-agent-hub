@@ -47,6 +47,8 @@ The `SessionMonitor` class:
 
 Claude Code and Codex dashboards save a matching aggregation snapshot and complete-line reader position after delivered batches. Restores validate the aggregation schema and dashboard format; incompatible snapshots trigger replay. Codex seeking reconstructs parser context, and partial UTF-8 records remain buffered until complete. CLI snapshots require complete history: live-only sessions never overwrite a replay checkpoint, and session switches reset eligibility.
 
+Since 0.32 both dashboards also keep the session's [activity map](../features/activity-map.md) log: the shared activity recorder runs on every normalized event (replayed or live), and its state and records are saved in the same checkpoint (VS Code and CLI checkpoint revision 6), because a resumed reader never sees the bytes it skips. A checkpoint without them, or one whose activity log was trimmed, is refused and the session replays once. Claude Code readers in both dashboards are created with `includeActivitySignals`, so hook outcomes and pushed memory reach the recorder as `system` events that the aggregator and the dashboards' own timelines skip.
+
 OpenCode dashboard snapshots are bypassed because a SQLite timestamp alone cannot restore row-version deduplication. Reopening with history enabled performs a full replay; explicit CLI live-only mode still follows only new activity. VS Code stop/resume preserves the monitor's subscriptions and selected folder.
 
 ### Detection Systems

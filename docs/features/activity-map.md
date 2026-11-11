@@ -4,6 +4,8 @@ A live and replayable map of what your coding agent is doing. The agent sits at 
 
 It works the same for Claude Code, Codex and OpenCode, from their session logs. That means you can also replay any past session and scrub through it.
 
+![Activity Map](../images/activity-map.png)
+
 ## Stations
 
 | Station     | Lights up for                                                                                                                                                                                             |
@@ -60,7 +62,7 @@ Settings (`sidekick.activityMap.*`):
 | Setting            | Default       | Meaning                                                                                                   |
 | ------------------ | ------------- | --------------------------------------------------------------------------------------------------------- |
 | `motion`           | `auto`        | `auto` follows VS Code's reduce-motion setting and the OS; `full`, `reduced` (fades only) or `none`       |
-| `layout`           | `auto`        | `you-top`, or `you-bottom` (the network and browser at the top)                                           |
+| `layout`           | `you-top`     | `you-top`, or `you-bottom` (the network and browser at the top)                                           |
 | `coreName`         | (provider)    | what the core says, up to ten characters                                                                  |
 | `labels`           | `descriptive` | `descriptive` shows the short description the agent wrote for a command; `names` shows names only; `none` |
 | `memory`           | —             | extra memory `paths`, `mcpServers` and `commands`                                                         |
