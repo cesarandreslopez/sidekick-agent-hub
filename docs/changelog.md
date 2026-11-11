@@ -5,6 +5,13 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.1] - 2026-11-11
+
+### Fixed
+
+- **Long-context prices in usage reports.** `sidekick daily`/`weekly`/`monthly`/`sessions`, `sidekick blocks`, the per-prompt costs of `sidekick dump --prompts`, the CLI and VS Code billing blocks, and `collectUsageEvents()` in `sidekick-shared` priced any usage event whose prompt passed a long-context threshold at the long-context rates, even when the event spans several model calls. This hit Codex token counts that carry only the running total (mostly older rollouts): the difference of two totals, or the total itself after the counter restarted, could pass 272K tokens on GPT-5.4 and later and be billed at the higher rates. Only one call's prompt selects a tier now, as in the dashboards since 0.32.0.
+- The usage cache moves to version 4 (`*.v4.json`), so the first run after upgrading reads each session once. A `collectUsageEvents()` cursor stored by 0.32.0 returns every session once more, with `pricingChanged`, so callers that keep events receive the corrected costs.
+
 ## [0.32.0] - 2026-11-11
 
 ### Added

@@ -5,6 +5,14 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.1] - 2026-11-11
+
+### Fixed
+
+- **`collectUsageEvents()` tiers only single calls.** Cached usage events were priced with `requestPromptTokens` set to the event's own prompt for every event, so a Codex token count without `last_token_usage` (a difference of running totals, or the total after a restart, which `resolveCodexCallUsage()` does not mark `single`) could pass 272K over several calls and get long-context rates. Cached events now keep the prompt size only when the usage is one call's (`requestPromptTokens` from the parser), and a merged Claude Code correction takes its whole call's size. Events without it bill at base rates.
+- `USAGE_CACHE_VERSION` is 4 (`*.v4.json`); the first collection after upgrading re-reads each session once.
+- `UsageEventsCursor` gains `cacheVersion`. A cursor whose `pricing` is set but whose `cacheVersion` differs from `USAGE_CACHE_VERSION` (every cursor from 0.32.0) gets every session again, with `pricingChanged`; `parseUsageEventsCursor()` keeps the field and rejects a non-integer one.
+
 ## [0.32.0] - 2026-11-11
 
 ### Added

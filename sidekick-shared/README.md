@@ -9,6 +9,7 @@ Types, parsers, providers, readers, formatters, aggregation, search, reporting, 
 
 ## Recent additions
 
+- **0.32.1: `collectUsageEvents()` tiers only single calls** — cached usage events keep the prompt size only when they are one call's, so a Codex difference of running totals (or a restarted total) is priced at base rates instead of passing 272K (GPT-5.4 and later) across several calls. `USAGE_CACHE_VERSION` is 4 (`*.v4.json`), and `UsageEventsCursor.cacheVersion` makes a cursor from 0.32.0 return every session once more, with `pricingChanged`.
 - **0.32.0: the activity map, long-context pricing, and new models**
   - **Activity map:** the `sidekick-shared/activity` entry (pure, 29 modules, no Zod or Node built-ins). `createActivityRecorder()` turns canonical session events from Claude Code, Codex and OpenCode into content-free, classified activity records across eleven stations (you, model, memory, files, shell, network, browser, agents, skills, hooks, plan). One reducer (`createActivityState()`, `applyActivityRecords()`) folds them live or replayed; `createActivityTimeline()` scrubs to any moment; `snapshotActivity()` and `summarizeActivity()` give the drawing view and full-session insights (busy time, errors, denials, context weight per station, retry streaks and alternation loops); `renderActivityMapSvg()` draws a deterministic, themeable SVG and `layoutActivityMapText()` a terminal layout. `replayActivity()` on `/node` replays a session file with its subagents; the wire schemas (`activityRecordSchema`, `activitySnapshotSchema`, `activityInsightsSchema`, `activityExportSchema`) are on `/schemas`. Labels carry names, never content.
   - **Session events keep more:** Claude Code hook outcomes and pushed memory become opt-in `system` events (`includeActivitySignals` on `extractSessionEvents()`, `createReader()` and `createWatcher()`; `hookActivityFromEvent()`, `memoryAttachmentFromEvent()`); `agentId`, `permissionDecision` (Claude Code permission decisions, Codex declined commands), `providerMetadata.contextWindowTokens` and Claude Code compaction token counts are kept. Watchers gain `onSessionEvent`. `readSessionReportInputs()` returns `activity`, and the HTML report draws it.
@@ -738,7 +739,7 @@ for (const event of events) {
 }
 ```
 
-The cache is versioned (`USAGE_CACHE_VERSION` 3, files named `*.v3.json`), so the first collection after upgrading re-reads each session once.
+The cache is versioned (`USAGE_CACHE_VERSION` 4, files named `*.v4.json`), so the first collection after upgrading re-reads each session once. A cursor stored by another cache version returns every session once more, with `pricingChanged`.
 
 ### Detect the active session provider
 

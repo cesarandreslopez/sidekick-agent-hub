@@ -5,6 +5,12 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.1] - 2026-11-11
+
+### Fixed
+
+- The dashboard's billing block no longer bills a Codex token count that spans several calls at long-context rates. Rollouts whose token counts carry only the running total (mostly older ones) could pass 272K tokens on GPT-5.4 and later across several calls; only one call's prompt selects a tier now. The usage cache moves to version 4, so each session is read once after upgrading.
+
 ## [0.32.0] - 2026-11-11
 
 ### Added
