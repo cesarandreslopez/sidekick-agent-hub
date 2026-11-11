@@ -139,6 +139,7 @@ export {
   isTaskStatusSystemEvent,
   parseAgentsStoppedNotice,
   parseCodexSpawnLaunch,
+  parseSpawnResultAgentId,
   parseTaskNotification,
   taskNotificationFromEvent,
   taskStatusFromAttachment,
@@ -447,6 +448,27 @@ export {
   turnLifecycleFromEvent,
 } from './turnLifecycle';
 export type { TurnLifecycle, TurnLifecycleKind } from './turnLifecycle';
+
+// Hook runs and pushed memory files as content-free system events (0.32)
+export {
+  HOOK_ACTIVITY_BLOCK_TYPE,
+  HOOK_ACTIVITY_ORIGIN_KIND,
+  describeHookActivity,
+  hookActivityFromAttachment,
+  hookActivityFromEvent,
+  hookProgramName,
+  isHookActivitySystemEvent,
+} from './hookActivity';
+export type { HookActivity, HookActivityOutcome } from './hookActivity';
+export {
+  MEMORY_ATTACHMENT_BLOCK_TYPE,
+  MEMORY_ATTACHMENT_ORIGIN_KIND,
+  describeMemoryAttachment,
+  isMemoryAttachmentSystemEvent,
+  memoryAttachmentFromAttachment,
+  memoryAttachmentFromEvent,
+} from './memoryAttachment';
+export type { MemoryAttachment } from './memoryAttachment';
 // Turn state: working / waiting / idle / ended (0.31)
 export {
   DEFAULT_TURN_STATE_IDLE_MS,
@@ -469,6 +491,7 @@ export {
   HUMAN_CODEX_SOURCES,
   humanPromptText,
   isHumanPrompt,
+  isInjectedPromptText,
 } from './humanPrompt';
 export type { HumanPromptProvider } from './humanPrompt';
 // Prompt-ordinal scheme (0.31)

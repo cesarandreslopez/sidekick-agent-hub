@@ -122,6 +122,7 @@ export {
   HUMAN_CODEX_SOURCES,
   humanPromptText,
   isHumanPrompt,
+  isInjectedPromptText,
 } from './humanPrompt';
 export type { HumanPromptProvider } from './humanPrompt';
 // Prompt-ordinal scheme (0.31)
@@ -134,6 +135,12 @@ export {
 } from './sessionStats';
 export { readSessionReportInputs } from './report/sessionReportInputs';
 export type { SessionReportInputs } from './report/sessionReportInputs';
+export { replayActivity } from './activityReplay';
+export type {
+  ActivityReplay,
+  ActivityReplaySubagent,
+  ReplayActivityOptions,
+} from './activityReplay';
 export { fingerprintString, sessionFingerprintParts } from './sessionFingerprint';
 export {
   STATE_FILE_NAME,
@@ -465,6 +472,7 @@ export type {
   SearchHit,
   ProjectFolderInfo,
   SessionReader,
+  SessionReaderOptions,
   SessionReaderReset,
   SessionProviderOptions,
   ProviderOperationStatus,
@@ -523,6 +531,7 @@ export type { RawSessionEvent, JsonlParserCallbacks, JsonlParserOptions } from '
 // Parsers — OpenCode
 export {
   normalizeToolName,
+  openCodeRefusalSource,
   normalizeToolInput,
   detectPlanModeFromText,
   convertOpenCodeMessage,
@@ -586,6 +595,27 @@ export {
   turnLifecycleFromEvent,
 } from './turnLifecycle';
 export type { TurnLifecycle, TurnLifecycleKind } from './turnLifecycle';
+
+// Hook runs and pushed memory files as content-free system events (0.32)
+export {
+  HOOK_ACTIVITY_BLOCK_TYPE,
+  HOOK_ACTIVITY_ORIGIN_KIND,
+  describeHookActivity,
+  hookActivityFromAttachment,
+  hookActivityFromEvent,
+  hookProgramName,
+  isHookActivitySystemEvent,
+} from './hookActivity';
+export type { HookActivity, HookActivityOutcome } from './hookActivity';
+export {
+  MEMORY_ATTACHMENT_BLOCK_TYPE,
+  MEMORY_ATTACHMENT_ORIGIN_KIND,
+  describeMemoryAttachment,
+  isMemoryAttachmentSystemEvent,
+  memoryAttachmentFromAttachment,
+  memoryAttachmentFromEvent,
+} from './memoryAttachment';
+export type { MemoryAttachment } from './memoryAttachment';
 // Turn state: working / waiting / idle / ended (0.31)
 export {
   DEFAULT_TURN_STATE_IDLE_MS,
@@ -743,6 +773,7 @@ export {
   isTaskStatusSystemEvent,
   parseAgentsStoppedNotice,
   parseCodexSpawnLaunch,
+  parseSpawnResultAgentId,
   parseTaskNotification,
   taskNotificationFromEvent,
   taskStatusFromAttachment,
@@ -1488,6 +1519,23 @@ export {
   extractSessionEvents,
 } from './schemas/sessionEvent';
 export type { ExtractSessionEventsOptions } from './schemas/sessionEvent';
+// Activity map wire schemas (0.32)
+export {
+  activityAlternationPatternSchema,
+  activityEntrySchema,
+  activityExportSchema,
+  activityInsightsSchema,
+  activityLabelKeySchema,
+  activityLabelSchema,
+  activityPatternSchema,
+  activityRecordBatchSchema,
+  activityRecordSchema,
+  activityRetryStreakPatternSchema,
+  activitySnapshotSchema,
+  activityStationIdSchema,
+  activityStationInsightSchema,
+  activityStationSnapshotSchema,
+} from './schemas/activity';
 
 // Schemas — Zod runtime validation for quota / provider quota / peak hours
 export {

@@ -134,6 +134,20 @@ const contractGroups = {
     'readSessionPreviewAsync',
     'parseMcpToolName',
   ],
+  activity: [
+    'createActivityRecorder',
+    'createActivityState',
+    'applyActivityRecord',
+    'snapshotActivity',
+    'summarizeActivity',
+    'createActivityTimeline',
+    'buildActivitySnapshot',
+    'exportActivity',
+    'classifyActivityTool',
+    'replayActivity',
+    'hookActivityFromEvent',
+    'memoryAttachmentFromEvent',
+  ],
 } as const;
 
 describe('public API consumer contracts', () => {
