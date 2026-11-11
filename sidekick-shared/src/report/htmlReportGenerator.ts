@@ -26,6 +26,11 @@ import {
   formatDuration,
 } from './htmlHelpers';
 import { SIDEKICK_LOGO_BASE64 } from './logo';
+import { describeActivityInsights, describeActivityPattern } from '../activity/describe';
+import { formatActivityCount, formatActivityDuration } from '../activity/render/format';
+import { ACTIVITY_DARK_PALETTE, ACTIVITY_LIGHT_PALETTE } from '../activity/render/palette';
+import { renderActivityMapSvg } from '../activity/render/svg';
+import { DEFAULT_ACTIVITY_STRINGS } from '../activity/strings';
 
 /**
  * Generate a complete, self-contained HTML report.
@@ -58,6 +63,7 @@ ${generateHeader(metrics, sessionFileName, duration)}
 ${generateStatsCards(metrics, tokens, duration)}
 ${generateModelBreakdown(metrics)}
 ${generateToolBreakdown(metrics)}
+${generateActivitySection(options, theme)}
 ${generateTranscriptControls()}
 ${generateTranscript(transcript, includeThinking, includeToolDetail)}
 ${generateBackToTop()}
@@ -91,6 +97,30 @@ function generateStyles(): string {
   --thinking-border: #4b3d65;
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+[data-theme="light"] {
+  --bg-primary: #f7f5fb;
+  --bg-secondary: #eee9f8;
+  --bg-card: #ffffff;
+  --bg-code: #f4f1fa;
+  --text-primary: #1d1730;
+  --text-secondary: #4d4466;
+  --text-muted: #7d7396;
+  --accent-purple: #6a47d6;
+  --accent-purple-dim: #a08bea;
+  --accent-blue: #2d6bd4;
+  --accent-orange: #a86200;
+  --accent-green: #2f8a3c;
+  --accent-red: #d42f48;
+  --border-color: #ddd5eb;
+  --border-subtle: #ece7f4;
+  --user-border: #6a47d6;
+  --assistant-border: #2d6bd4;
+  --system-border: #7d7396;
+  --tool-border: #a86200;
+  --thinking-border: #c8bde0;
+  --shadow: 0 2px 8px rgba(40,20,80,0.08);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -401,6 +431,26 @@ tr:hover td { background: rgba(155,109,255,0.05); }
 .hl-number { color: #d19a66; }
 .hl-comment { color: #5c6370; font-style: italic; }
 .hl-key { color: #61afef; }
+[data-theme="light"] .hl-keyword { color: #8a3fb8; }
+[data-theme="light"] .hl-string { color: #3f7a1e; }
+[data-theme="light"] .hl-number { color: #a65a12; }
+[data-theme="light"] .hl-comment { color: #7d7396; }
+[data-theme="light"] .hl-key { color: #2d6bd4; }
+
+/* Activity map */
+.activity-figure {
+  margin: 0 0 14px;
+  padding: 12px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.activity-figure svg { display: block; width: 100%; max-width: 640px; height: auto; margin: 0 auto; }
+.activity-figure figcaption { margin-top: 8px; color: var(--text-secondary); font-size: 13px; text-align: center; }
+.activity-swatch { margin-right: 8px; vertical-align: -1px; }
+.activity-bad { color: var(--accent-red); }
+.activity-summary { margin: 12px 0 0; color: var(--text-secondary); font-size: 13px; }
+.activity-patterns { margin: 8px 0 0 20px; color: var(--text-secondary); font-size: 13px; }
 
 /* Back to top */
 .back-to-top {
@@ -570,6 +620,63 @@ function generateToolBreakdown(metrics: AggregatedMetrics): string {
 <thead><tr><th>Tool</th><th>Total</th><th>Failed</th><th>Avg Duration</th></tr></thead>
 <tbody>${rows}</tbody>
 </table>
+</div>`;
+}
+
+/**
+ * A still frame of the activity map, where the work went per station, and
+ * any detected patterns. CSP-safe for hosts that nonce only bare `<style>`
+ * and `<script>` tags: no `style=` attributes, no inline handlers, and the
+ * SVG paints with presentation attributes only.
+ */
+function generateActivitySection(options: HtmlReportOptions, theme: 'dark' | 'light'): string {
+  const activity = options.activity;
+  if (!activity) return '';
+  const { snapshot, insights } = activity;
+  const svg = renderActivityMapSvg(snapshot, {
+    now: snapshot.at,
+    theme,
+    motion: 'none',
+    size: 'responsive',
+    coreName: activity.coreName,
+    insights,
+    idPrefix: 'report-activity-map',
+  });
+  const palette = theme === 'light' ? ACTIVITY_LIGHT_PALETTE : ACTIVITY_DARK_PALETTE;
+  const strings = DEFAULT_ACTIVITY_STRINGS;
+  const summary = describeActivityInsights(insights).split('\n');
+  const rows = insights.stations
+    .filter((s) => s.calls > 0)
+    .sort((a, b) => b.busyMs - a.busyMs || b.calls - a.calls || a.id.localeCompare(b.id))
+    .map((s) => {
+      const swatch = `<svg class="activity-swatch" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="${palette.stations[s.id]}"/></svg>`;
+      const bad = (n: number) => (n > 0 ? `<span class="activity-bad">${n}</span>` : '0');
+      const top = s.topLabels
+        .slice(0, 3)
+        .map((l) => `<code>${escapeHtml(l.label)}</code>${l.count > 1 ? ` ×${l.count}` : ''}`)
+        .join(', ');
+      return `<tr><td>${swatch}${escapeHtml(strings.stations[s.id])}</td><td>${s.calls}</td><td>${s.busyMs > 0 ? formatActivityDuration(s.busyMs) : '-'}</td><td>${bad(s.errors)}</td><td>${bad(s.denials)}</td><td>${s.estTokens > 0 ? `~${formatActivityCount(s.estTokens)}` : '-'}</td><td>${top || '-'}</td></tr>`;
+    })
+    .join('\n');
+  const patterns =
+    insights.patterns.length > 0
+      ? `<ul class="activity-patterns">${insights.patterns
+          .map((p) => `<li>${escapeHtml(describeActivityPattern(p))}</li>`)
+          .join('')}</ul>`
+      : '';
+  return `<div class="section" id="activity-map">
+<div class="section-title">Activity Map</div>
+<figure class="activity-figure">${svg}<figcaption>${escapeHtml(summary[0] ?? '')}</figcaption></figure>
+${
+  rows === ''
+    ? ''
+    : `<table>
+<thead><tr><th>Station</th><th>Calls</th><th>Busy</th><th>Errors</th><th>Denied</th><th>Context</th><th>Top</th></tr></thead>
+<tbody>${rows}</tbody>
+</table>`
+}
+${summary.length > 1 ? `<p class="activity-summary">${summary.slice(1).map(escapeHtml).join('<br>')}</p>` : ''}
+${patterns}
 </div>`;
 }
 

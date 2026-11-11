@@ -1,0 +1,14 @@
+list
+CLAUDE opus 5.5  █████████░░░ 74%
+○ You     ▮▮▮▮········    3
+● Model   ▮▮▮▮▮▮▮▮▮···   18
+● Memory  ▮▮▮▮▮▮······    3 ↓2
+◐ Files   ▮▮▮▮▮▮▮▮▮▮▮▮   42 200ms
+◐ Shell   ▮▮▮▮▮▮▮▮▮▮▮·   27 ✕3 ×2 1m15s
+○ Network ▮▮▮▮▮▮······    6 ✕1
+· Browser ············    0
+◐ Agents  ▮▮▮▮········    2 40.0s
+○ Skills  ▮▮··········    1
+○ Hooks   ▮▮▮▮▮·······    4
+○ Plan    ▮▮▮▮········    3
+↝ You → Files → Shell → Network → Files…

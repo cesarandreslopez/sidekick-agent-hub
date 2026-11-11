@@ -1,0 +1,9 @@
+93 calls at 10 stations over 6m32s · 3 prompts, 18 model steps · 3 errors, 1 denied.
+Busiest: Shell 4m12s (64%), Files 2m01s (31%), Agents 40.0s (10%).
+Most context: Files ~12k tokens, Shell ~8.1k tokens, Network ~1.0k tokens.
+Faults: Shell 3 errors; Network 1 denied.
+Pattern: Shell failed 3× in a row.
+Pattern: edit ↔ test loop ×4.
+Models: sonnet 5.5 (4 steps), opus 5.5 (14 steps).
+Slowest: Shell npm test 1m15s.
+2 subagents · 31 hook runs (4.2s) · 2 memory pushes · 1 compaction.

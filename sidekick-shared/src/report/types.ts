@@ -50,4 +50,15 @@ export interface HtmlReportOptions {
    * reported beside the main thread and added to the session total.
    */
   subagents?: readonly import('../types/sessionEvent').SubagentStats[];
+  /**
+   * The session's activity map: a still frame of the map at `snapshot.at`,
+   * where the work went per station, and any detected patterns. The section
+   * is left out when absent.
+   */
+  activity?: {
+    snapshot: import('../activity/types').ActivitySnapshot;
+    insights: import('../activity/types').ActivityInsights;
+    /** Text in the map's core (default by provider). */
+    coreName?: string;
+  };
 }

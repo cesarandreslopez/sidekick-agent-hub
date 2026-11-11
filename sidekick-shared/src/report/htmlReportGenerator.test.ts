@@ -4,6 +4,7 @@ import { parseTranscriptFromEvents } from './transcriptParser';
 import { escapeHtml, simpleMarkdownToHtml, highlightCodeBlock } from './htmlHelpers';
 import type { AggregatedMetrics } from '../aggregation/types';
 import type { TranscriptEntry } from './types';
+import { busyInsights, busySnapshot, hostileSnapshot } from '../testing/activityFixtures.setup';
 
 function makeMetrics(overrides: Partial<AggregatedMetrics> = {}): AggregatedMetrics {
   return {
@@ -365,5 +366,80 @@ describe('highlightCodeBlock', () => {
     const result = highlightCodeBlock('<div>test</div>', 'xml');
     expect(result).toContain('&lt;div&gt;');
     expect(result).not.toContain('hl-keyword');
+  });
+});
+
+describe('generateHtmlReport activity section', () => {
+  const activity = { snapshot: busySnapshot(), insights: busyInsights() };
+  const section = (html: string): string => {
+    const start = html.indexOf('<div class="section" id="activity-map">');
+    const end = html.indexOf(
+      '<div class="section">\n<div class="section-title">Conversation Transcript',
+    );
+    expect(start).toBeGreaterThan(-1);
+    return html.slice(start, end);
+  };
+
+  it('is left out without activity', () => {
+    const html = generateHtmlReport(makeMetrics(), []);
+    expect(html).not.toContain('id="activity-map"');
+    expect(html).not.toContain('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 460"');
+  });
+
+  it('shows a still map, the stations by busy time, the patterns and a summary', () => {
+    const html = generateHtmlReport(makeMetrics(), [], { activity });
+    const part = section(html);
+    expect(part).toContain('<div class="section-title">Activity Map</div>');
+    expect(part).toContain('<figure class="activity-figure"><svg');
+    expect(part).not.toMatch(/<animate/);
+    expect(part).toContain('<figcaption>93 calls at 10 stations over 6m32s');
+    const order = [...part.matchAll(/<\/svg>([A-Z][a-z]+)<\/td>/g)].map((m) => m[1]);
+    expect(order.slice(0, 3)).toEqual(['Shell', 'Files', 'Network']);
+    expect(part).toContain('<span class="activity-bad">3</span>');
+    expect(part).toContain('<li>Shell failed 3× in a row</li>');
+    expect(part).toContain('<li>edit ↔ test loop ×4</li>');
+    expect(part).toContain('<code>npm test</code> ×12');
+    // The section comes right after the tool breakdown.
+    expect(html.indexOf('Tool Breakdown')).toBeLessThan(html.indexOf('id="activity-map"'));
+  });
+
+  it('is CSP-safe: no inline styles, handlers or scripts, presentation colors only', () => {
+    const part = section(generateHtmlReport(makeMetrics(), [], { activity }));
+    expect(part).not.toMatch(/\sstyle=/);
+    expect(part).not.toMatch(/\son[a-z]+=/i);
+    expect(part).not.toMatch(/<script/);
+    expect(part).not.toMatch(/<style(?!>)/);
+    expect(part).not.toMatch(/<style>/);
+  });
+
+  it('matches the map to the report theme and colors the light theme', () => {
+    const dark = generateHtmlReport(makeMetrics(), [], { activity });
+    expect(section(dark)).toContain('data-theme="dark"');
+    const light = generateHtmlReport(makeMetrics(), [], { activity, theme: 'light' });
+    expect(section(light)).toContain('data-theme="light"');
+    expect(section(light)).toContain('fill="#f8f6fc"');
+    expect(light).toContain('[data-theme="light"] {');
+    expect(light).toContain('--bg-primary: #f7f5fb;');
+  });
+
+  it('escapes hostile labels', () => {
+    const part = section(
+      generateHtmlReport(makeMetrics(), [], {
+        activity: {
+          snapshot: hostileSnapshot(),
+          insights: {
+            ...busyInsights(),
+            stations: busyInsights().stations.map((s) => ({
+              ...s,
+              topLabels: s.topLabels.map((l) => ({ ...l, label: '<img src=x onerror=alert(1)>' })),
+            })),
+          },
+          coreName: '<b>x</b>',
+        },
+      }),
+    );
+    expect(part).not.toContain('<img');
+    expect(part).not.toContain('<b>x');
+    expect(part).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
 });
