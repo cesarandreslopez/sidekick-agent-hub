@@ -359,7 +359,7 @@ export class SessionSummaryService {
   ): Promise<string> {
     const prompt = buildNarrativePrompt(summary);
     const model = resolveModel('fast', authService.getProviderId(), 'inlineModel');
-    return authService.complete(prompt, { model, maxTokens: 1024, ...options });
+    return authService.complete(prompt, { model, maxTokens: 1024, effort: 'low', ...options });
   }
 
   // ── Private helpers ──

@@ -17,6 +17,7 @@ import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
 import { truncateDiffIntelligently } from '../utils/tokenEstimator';
 import { getPreCommitReviewPrompt, parseReviewResponse, ReviewIssue } from '../utils/prompts';
+import { featureEffort } from '../types/inferenceProvider';
 
 /**
  * Result from pre-commit review operation.
@@ -134,6 +135,7 @@ export class PreCommitReviewService implements vscode.Disposable {
         task: (signal: AbortSignal) =>
           this.authService.complete(prompt, {
             model,
+            effort: featureEffort('reviewModel'),
             maxTokens: 2000,
             signal,
           }),

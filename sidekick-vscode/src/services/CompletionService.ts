@@ -19,6 +19,7 @@ import { resolveModel } from './ModelResolver';
 import { getSystemPrompt, getUserPrompt, cleanCompletion, PROSE_LANGUAGES } from '../utils/prompts';
 import { log } from './Logger';
 import { getTimeoutManager, DEFAULT_TIMEOUTS } from './TimeoutManager';
+import { featureEffort } from '../types/inferenceProvider';
 
 /**
  * Service for managing code completion requests.
@@ -189,6 +190,7 @@ export class CompletionService implements vscode.Disposable {
       // Make API call
       const completion = await this.authService.complete(prompt, {
         model,
+        effort: featureEffort('inlineModel'),
         maxTokens: 200,
         timeout: timeoutMs,
         signal: controller.signal,

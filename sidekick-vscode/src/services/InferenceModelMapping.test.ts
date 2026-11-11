@@ -16,7 +16,18 @@ describe('inference client model mapping', () => {
     expect(client.mapModel('custom-claude-compatible-model')).toBe(
       'custom-claude-compatible-model',
     );
-    expect(client.mapModel(undefined)).toBe('claude-haiku-4-5');
+    expect(client.mapModel(undefined)).toBe('claude-haiku-5-5');
+  });
+
+  it('maps the API client aliases to the tier defaults, and fable to Fable 5.2', () => {
+    const client = Object.create(ApiKeyClient.prototype) as unknown as {
+      mapModel(model?: string): string;
+    };
+
+    expect(client.mapModel('haiku')).toBe('claude-haiku-5-5');
+    expect(client.mapModel('sonnet')).toBe('claude-sonnet-5-5');
+    expect(client.mapModel('opus')).toBe('claude-opus-5-5');
+    expect(client.mapModel('fable')).toBe('claude-fable-5-2');
   });
 
   it('passes literal model IDs through the Max client', () => {

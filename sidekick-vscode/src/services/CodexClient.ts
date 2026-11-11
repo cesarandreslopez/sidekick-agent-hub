@@ -143,6 +143,13 @@ export class CodexClient implements ClaudeClient {
     if (options?.model) {
       args.push('--model', options.model);
     }
+    // The feature's reasoning effort, as a config override (the official
+    // Codex SDK passes it the same way). `low` is the floor every current
+    // model accepts: GPT-6.1 Sol and Astra reject `none`.
+    if (options?.effort) {
+      const effort = options.effort === 'medium' ? 'medium' : 'low';
+      args.push('-c', `model_reasoning_effort="${effort}"`);
+    }
 
     const env = codexEnv();
 

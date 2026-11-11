@@ -12,6 +12,7 @@ import { AuthService } from './AuthService';
 import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
 import type { ContentType, ComplexityLevel } from '../types/explain';
+import { featureEffort } from '../types/inferenceProvider';
 
 /**
  * ExplanationService - Adaptive explanation generation.
@@ -76,6 +77,7 @@ export class ExplanationService {
       task: (taskSignal: AbortSignal) =>
         this.authService.complete(prompt, {
           model,
+          effort: featureEffort('explanationModel'),
           maxTokens: 2000,
           signal: taskSignal,
         }),

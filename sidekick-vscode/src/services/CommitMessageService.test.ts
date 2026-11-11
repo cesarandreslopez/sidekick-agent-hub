@@ -101,3 +101,23 @@ describe('CommitMessageService failure cause', () => {
     expect(cancelled).not.toHaveProperty('cause');
   });
 });
+
+describe('CommitMessageService effort', () => {
+  beforeEach(() => {
+    executeWithTimeout.mockReset();
+    executeWithTimeout.mockImplementation(runTask);
+  });
+
+  it('asks the provider for minimal reasoning', async () => {
+    const complete = vi.fn(async () => 'feat: x');
+    const service = new CommitMessageService(
+      { getChangesForCommit: async () => ({ type: 'staged', diff: DIFF }) } as never,
+      { getProviderId: () => 'codex', getProviderDisplayName: () => 'Codex', complete } as never,
+    );
+    await service.generateCommitMessage();
+    expect(complete).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ effort: 'minimal' }),
+    );
+  });
+});

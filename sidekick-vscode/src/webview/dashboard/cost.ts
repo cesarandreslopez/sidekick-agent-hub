@@ -52,18 +52,22 @@ function capitalize(value: string): string {
 }
 
 /**
- * Short model label: `Opus 4.5`, `GPT-6.1 Sol`, `GPT-5.1-codex-max`; anything
- * else (`o3-mini`, unknown ids) is shown as is. Rows arrive keyed by
- * `canonicalModelId` (no dates, `[1m]`, or deployment prefixes), so the id is
- * parsed directly.
+ * Short model label: `Opus 4.5`, `Mythos 5.2`, `GPT-6.1 Sol`, `GPT-6 Astra
+ * Law`, `GPT-6 Cyber`, `GPT-5.1-codex-max`; anything else (`o3-mini`, unknown
+ * ids) is shown as is. Rows arrive keyed by `canonicalModelId` (no dates,
+ * `[1m]`, or deployment prefixes), so the id is parsed directly.
  */
 export function modelLabel(modelId: string): string {
   const parsed = parseModelId(modelId);
   if (parsed?.provider === 'anthropic') return `${capitalize(parsed.family)} ${parsed.version}`;
   if (parsed?.family === 'gpt') {
-    const version = parsed.variant
-      ? parsed.version.replace(`-${parsed.variant}`, ` ${capitalize(parsed.variant)}`)
-      : parsed.version;
+    let version = parsed.version;
+    if (parsed.variant) {
+      version = version.replace(`-${parsed.variant}`, ` ${capitalize(parsed.variant)}`);
+    }
+    if (parsed.specialty) {
+      version = version.replace(`-${parsed.specialty}`, ` ${capitalize(parsed.specialty)}`);
+    }
     return `GPT-${version}`;
   }
   return modelId;

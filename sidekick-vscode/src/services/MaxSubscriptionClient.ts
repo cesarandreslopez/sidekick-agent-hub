@@ -230,6 +230,10 @@ export class MaxSubscriptionClient implements ClaudeClient {
           cwd,
           abortController,
           model: this.mapModel(options?.model),
+          // The feature's effort, as Claude Code's own level (`minimal` has
+          // no off switch here, so it asks for `low`). Unset keeps Claude
+          // Code's default.
+          ...(options?.effort ? { effort: options.effort === 'medium' ? 'medium' : 'low' } : {}),
           maxTurns: 1,
           allowedTools: [],
           permissionMode: 'bypassPermissions',

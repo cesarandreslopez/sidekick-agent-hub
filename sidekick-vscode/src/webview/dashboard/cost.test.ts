@@ -58,6 +58,15 @@ describe('modelLabel', () => {
     expect(modelLabel('o3-mini')).toBe('o3-mini');
   });
 
+  it('names Fable 5.2, the Mythos models and GPT specialties', () => {
+    expect(modelLabel('claude-fable-5-2')).toBe('Fable 5.2');
+    expect(modelLabel('claude-mythos-5-2')).toBe('Mythos 5.2');
+    expect(modelLabel('claude-mythos-preview')).toBe('Mythos preview');
+    expect(modelLabel('gpt-6-cyber')).toBe('GPT-6 Cyber');
+    expect(modelLabel('gpt-6-astra-law')).toBe('GPT-6 Astra Law');
+    expect(modelLabel('gpt-5.6-cyber')).toBe('GPT-5.6 Cyber');
+  });
+
   it('shows unknown ids as is', () => {
     expect(modelLabel('deepseek-coder')).toBe('deepseek-coder');
   });

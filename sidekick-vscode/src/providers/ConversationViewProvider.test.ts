@@ -30,6 +30,12 @@ describe('ConversationViewProvider model tags', () => {
     expect(label('gpt-6')).toBe('gpt-6');
     expect(label('claude-opus-4-6')).toBe('Opus');
   });
+
+  it('names Mythos and keeps GPT specialties', () => {
+    expect(label('claude-mythos-5-2')).toBe('Mythos');
+    expect(label('gpt-6-cyber')).toBe('gpt-6-cyber');
+    expect(label('gpt-6-astra-law')).toBe('gpt-6-astra-law');
+  });
 });
 
 describe('conversationChunksFromSessionEvents', () => {
