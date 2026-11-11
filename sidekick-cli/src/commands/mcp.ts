@@ -8,10 +8,15 @@ import {
   OpenCodeProvider,
   buildSessionContextSnapshot,
   composeContext,
+  describeActivityInsights,
+  describeActivityNow,
   detectProvider,
+  exportActivity,
   readDecisions,
   readNotes,
   readTasks,
+  renderActivityMapSvg,
+  replayActivity,
   resolveProjectIdentity,
   resolveQuota,
 } from 'sidekick-shared';
@@ -79,6 +84,41 @@ async function activeSessionFacts(cwd: string, providerId: ProviderId) {
 }
 
 /**
+ * The active session's activity map: content-free records (names only, never
+ * prompts, file contents, command lines or URLs beyond the host), replayed
+ * into a snapshot and full-session insights.
+ */
+export function activityMapFact(cwd: string, providerId: ProviderId, includeSvg = false) {
+  const provider = createProvider(providerId);
+  try {
+    const sessionPath = provider.findActiveSession(cwd);
+    if (!sessionPath) return null;
+    const replay = replayActivity({ provider, sessionPath, labels: 'names' });
+    const data = exportActivity({
+      snapshot: replay.snapshot,
+      insights: replay.insights,
+      providerId: replay.providerId,
+      sessionId: replay.sessionId,
+    });
+    const summary = [
+      describeActivityNow(replay.snapshot, { now: replay.snapshot.at }),
+      describeActivityInsights(replay.insights),
+    ].join('\n');
+    const svg = includeSvg
+      ? renderActivityMapSvg(replay.snapshot, {
+          now: replay.snapshot.at,
+          theme: 'dark',
+          motion: 'none',
+          insights: replay.insights,
+        })
+      : undefined;
+    return { data, summary, ...(svg ? { svg } : {}) };
+  } finally {
+    provider.dispose();
+  }
+}
+
+/**
  * Same policy as `sidekick quota`: Codex queries ask the API first; the other
  * providers may reuse fresh snapshots. OpenCode sessions map to z.ai.
  */
@@ -139,6 +179,29 @@ export function createMcpFactsServer(options: McpFactsOptions): McpServer {
     async () => {
       const facts = await activeSessionFacts(cwd, providerId);
       return result(facts?.snapshot ?? null);
+    },
+  );
+  server.registerTool(
+    'get_activity_map',
+    {
+      description:
+        'Get the active session’s activity map: where its work went, station by station ' +
+        '(files, shell, network, memory, agents, skills, hooks, plan, …), with time, errors, ' +
+        'denials and context weight per station and detected patterns such as retry streaks ' +
+        'or edit/test loops. Labels carry names only, never content. includeSvg adds the map as SVG.',
+      inputSchema: z.object({ includeSvg: z.boolean().optional() }),
+      annotations: { ...readOnly, title: 'Get activity map' },
+    },
+    async ({ includeSvg }) => {
+      const fact = activityMapFact(cwd, providerId, includeSvg === true);
+      if (!fact) return result(null);
+      return {
+        content: [
+          { type: 'text' as const, text: fact.summary },
+          ...(fact.svg ? [{ type: 'text' as const, text: fact.svg }] : []),
+        ],
+        structuredContent: { data: fact.data },
+      };
     },
   );
   server.registerTool(

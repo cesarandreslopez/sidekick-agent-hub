@@ -6,13 +6,26 @@ import * as os from 'os';
 import * as path from 'path';
 import type { CodexProvider, ResolveQuotaOptions } from 'sidekick-shared';
 
-const { mockResolveQuota } = vi.hoisted(() => ({ mockResolveQuota: vi.fn() }));
-
-// Only the quota resolver is stubbed; every other fact reads the real stores.
-vi.mock('sidekick-shared', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('sidekick-shared')>()),
-  resolveQuota: (...args: unknown[]) => mockResolveQuota(...args),
+const { mockResolveQuota, activeSession } = vi.hoisted(() => ({
+  mockResolveQuota: vi.fn(),
+  activeSession: { path: null as string | null },
 }));
+
+// The quota resolver is stubbed, and the Claude provider's active session can
+// be pointed at a fixture; every other fact reads the real stores.
+vi.mock('sidekick-shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('sidekick-shared')>();
+  class FixtureClaudeCodeProvider extends actual.ClaudeCodeProvider {
+    override findActiveSession(): string | null {
+      return activeSession.path;
+    }
+  }
+  return {
+    ...actual,
+    ClaudeCodeProvider: FixtureClaudeCodeProvider,
+    resolveQuota: (...args: unknown[]) => mockResolveQuota(...args),
+  };
+});
 
 import { createMcpFactsServer } from './mcp';
 
@@ -139,7 +152,44 @@ describe('Sidekick MCP facts server', () => {
     }
   });
 
-  it('advertises only the seven read-only facts tools', async () => {
+  it('returns the activity map with names-only labels, and the SVG on request', async () => {
+    activeSession.path = path.resolve(
+      __dirname,
+      '../../../sidekick-shared/src/fixtures/activity/claude-code/sess-activity.jsonl',
+    );
+    try {
+      const client = await connect('claude-code');
+      const response = await client.callTool({ name: 'get_activity_map', arguments: {} });
+      expect(response.isError).not.toBe(true);
+      const data = (response.structuredContent as { data: unknown }).data;
+      const shared = await vi.importActual<typeof import('sidekick-shared')>('sidekick-shared');
+      expect(shared.activityExportSchema.safeParse(data).success).toBe(true);
+      const content = response.content as Array<{ type: string; text: string }>;
+      expect(content).toHaveLength(1);
+      expect(content[0].text).toMatch(/calls at \d+ stations/);
+      // The fixture hides a canary in every content position.
+      expect(JSON.stringify(response)).not.toContain('SKCANARY');
+
+      const withSvg = await client.callTool({
+        name: 'get_activity_map',
+        arguments: { includeSvg: true },
+      });
+      const parts = withSvg.content as Array<{ type: string; text: string }>;
+      expect(parts).toHaveLength(2);
+      expect(parts[1].text.startsWith('<svg')).toBe(true);
+      expect(parts[1].text).not.toContain('<animate');
+    } finally {
+      activeSession.path = null;
+    }
+  });
+
+  it('returns null for the activity map when no session is active', async () => {
+    const client = await connect('claude-code');
+    const response = await client.callTool({ name: 'get_activity_map', arguments: {} });
+    expect((response.structuredContent as { data: unknown }).data).toBeNull();
+  });
+
+  it('advertises only the eight read-only facts tools', async () => {
     const server = createMcpFactsServer({ cwd: process.cwd(), providerId: 'claude-code' });
     const client = new Client({ name: 'sidekick-mcp-test', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -153,6 +203,7 @@ describe('Sidekick MCP facts server', () => {
       'get_quota_status',
       'get_burn_rate',
       'get_context_pressure',
+      'get_activity_map',
       'get_tasks',
       'get_decisions',
       'get_notes',

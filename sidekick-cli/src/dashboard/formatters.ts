@@ -26,9 +26,27 @@ export function formatDuration(ms: number): string {
   });
 }
 
-/** Strip blessed-style tags like `{cyan-fg}` or `{/bold}` from text. */
+/**
+ * Strip blessed-style tags like `{cyan-fg}` or `{/bold}` from text. The
+ * escapes `{open}` and `{close}` (see {@link escapeBlessed}) become the
+ * literal braces they stand for.
+ */
 export function stripBlessedTags(text: string): string {
-  return text.replace(/\{[^}]*\}/g, '');
+  return text.replace(/\{(\/?)([^}]*)\}/g, (_match, slash: string, name: string) => {
+    if (!slash && name === 'open') return '{';
+    if (!slash && name === 'close') return '}';
+    return '';
+  });
+}
+
+/**
+ * Escape text for a blessed-tagged string: `{` and `}` become `{open}` and
+ * `{close}`, which the tag parser renders as literal braces. Anything built
+ * from data (labels, file names, command names) must pass through this, or a
+ * `{red-fg}` inside it would be read as a tag.
+ */
+export function escapeBlessed(text: string): string {
+  return text.replace(/[{}]/g, (brace) => (brace === '{' ? '{open}' : '{close}'));
 }
 
 /** Return the visible (non-tag) length of text containing blessed tags. */

@@ -19,6 +19,7 @@ import { DecisionsPanel } from './DecisionsPanel';
 import { PlansPanel } from './PlansPanel';
 import { EventStreamPanel } from './EventStreamPanel';
 import { ChartsPanel } from './ChartsPanel';
+import { MapPanel } from './MapPanel';
 
 /**
  * Shadowable tier-5 globals. A panel binding on one of these wins, which is
@@ -39,6 +40,7 @@ function allPanels(): SidePanel[] {
     new PlansPanel(),
     new EventStreamPanel(),
     new ChartsPanel(),
+    new MapPanel(),
   ];
 }
 

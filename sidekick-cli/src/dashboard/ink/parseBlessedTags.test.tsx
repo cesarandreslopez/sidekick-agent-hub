@@ -112,6 +112,14 @@ describe('parseBlessedTags', () => {
     const s = serialize(parseBlessedTags('{cyan-fg}before{/missing} after{/cyan-fg}'));
     expect(s).toMatch(/color="cyan"[^>]*> after/);
   });
+
+  it('renders the {open} and {close} escapes as literal braces in the current style', () => {
+    const s = serialize(parseBlessedTags('{red-fg}{open}red-fg{close} stays text{/red-fg}'));
+    expect(s).toMatch(/color="red"[^>]*>\{/);
+    expect(s).toContain('red-fg');
+    expect(s).toMatch(/color="red"[^>]*>\}/);
+    expect(s).not.toMatch(/color="red-fg"/);
+  });
 });
 
 describe('parseBlessedLines', () => {

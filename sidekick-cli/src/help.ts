@@ -6,6 +6,7 @@
 export const ROOT_EXAMPLES = `
 Examples:
   $ sidekick dashboard                      Live TUI dashboard for this project
+  $ sidekick map --follow                   Live activity map, for a split beside the agent
   $ sidekick quota --all                    Quota for every detected provider
   $ sidekick quota history --weeks 8        Utilization heatmap for this workspace
   $ sidekick search "database migration"    Full-text search across sessions
@@ -14,6 +15,17 @@ Examples:
   $ sidekick history                        Recent prompts across Codex sessions
   $ sidekick dump --list                    List session IDs available for dumping
   $ sidekick tasks --status pending --json  Pending tasks as JSON (global --json works everywhere)
+`;
+
+export const MAP_EXAMPLES = `
+Examples:
+  $ sidekick map                            Activity map of the latest session
+  $ sidekick map --follow                   Live map in this terminal (run it in a split)
+  $ sidekick map --at 50%                   The map halfway through the session
+  $ sidekick map --at -10m                  Ten minutes before the session's end
+  $ sidekick map --format svg -o map.svg    An SVG image (--motion full to animate)
+  $ sidekick map --format json              Snapshot and insights for scripts
+  $ sidekick --provider codex map           A Codex session
 `;
 
 export const QUOTA_EXAMPLES = `

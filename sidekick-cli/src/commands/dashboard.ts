@@ -45,6 +45,7 @@ import type {
   PersistedPlan,
   PersistedPlanStep,
   ProviderId,
+  SessionEvent,
   SessionProviderBase,
 } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
@@ -66,12 +67,18 @@ import { DecisionsPanel } from '../dashboard/panels/DecisionsPanel';
 import { PlansPanel } from '../dashboard/panels/PlansPanel';
 import { EventStreamPanel } from '../dashboard/panels/EventStreamPanel';
 import { ChartsPanel } from '../dashboard/panels/ChartsPanel';
+import { MapPanel } from '../dashboard/panels/MapPanel';
 import type { SidePanel } from '../dashboard/panels/types';
 import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
 import { Dashboard } from '../dashboard/ink/Dashboard';
 import { disableMouse } from '../dashboard/ink/mouse';
 import { checkInteractivePreflight, currentTerminalCapabilities } from './interactivePreflight';
-import { readCliConfig, readDashboardConfig, updateDashboardConfig } from '../utils/cliConfig';
+import {
+  readActivityMapConfig,
+  readCliConfig,
+  readDashboardConfig,
+  updateDashboardConfig,
+} from '../utils/cliConfig';
 import { PROVIDER_NAMES, accountDisplayName, summarizeSwitch } from './accounts/format';
 import { staticDataFingerprint } from '../dashboard/staticDataFingerprint';
 import { initialDataStatus, type DataStatus } from '../dashboard/ink/dataStatus';
@@ -357,6 +364,12 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Create dashboard state and panels
   const state = new DashboardState();
+  const activityConfig = readActivityMapConfig();
+  // Local display: the agent's short descriptions make the best labels.
+  state.configureActivity(activeProvider.id, {
+    ...activityConfig.recorder,
+    labels: activityConfig.recorder.labels ?? 'descriptive',
+  });
   const sessionsPanel = new SessionsPanel(workspacePath, activeProvider.id);
   const panels: SidePanel[] = [
     sessionsPanel,
@@ -367,6 +380,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     new PlansPanel(),
     new EventStreamPanel(),
     new ChartsPanel(),
+    // scheduleRender is hoisted; it does nothing until the first render.
+    new MapPanel(() => scheduleRender(), {
+      ...(activityConfig.coreName ? { coreName: activityConfig.coreName } : {}),
+    }),
   ];
 
   // Wire up narrative completion callback to trigger re-render
@@ -434,7 +451,13 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         sessionId: newSessionId,
         // Mid-turn task notifications finish background subagents.
         includeTaskNotifications: true,
+        // Hooks and pushed memory reach the activity map.
+        includeActivitySignals: true,
         callbacks: {
+          onSessionEvent: (event: SessionEvent) => {
+            if (stopped) return;
+            if (state.observeSessionEvent(event)) scheduleRender();
+          },
           onEvent: (event: FollowEvent) => {
             if (stopped) return;
             state.processEvent(event);
@@ -567,9 +590,13 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   const generateReport = () => {
     if (!sessionPath) return;
     // One read of the session feeds both the metrics and the transcript.
-    const { metrics, transcript, subagents } = readSessionReportInputs(activeProvider, sessionPath);
+    const { metrics, transcript, subagents, activity } = readSessionReportInputs(
+      activeProvider,
+      sessionPath,
+    );
     const html = generateHtmlReport(metrics, transcript, {
       subagents,
+      ...(activity ? { activity } : {}),
       sessionFileName: path.basename(sessionPath),
       includeThinking: true,
       includeToolDetail: true,
@@ -921,7 +948,13 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       sessionId,
       // Mid-turn task notifications finish background subagents.
       includeTaskNotifications: true,
+      // Hooks and pushed memory reach the activity map.
+      includeActivitySignals: true,
       callbacks: {
+        onSessionEvent: (event: SessionEvent) => {
+          if (stopped) return;
+          if (state.observeSessionEvent(event)) scheduleRender();
+        },
         onEvent: (event: FollowEvent) => {
           if (stopped) return;
           state.processEvent(event);

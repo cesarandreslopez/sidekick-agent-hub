@@ -42,6 +42,8 @@ export interface KeyBinding {
 export interface DetailRenderContext {
   /** Usable content columns of the detail pane for the current layout mode. */
   width: number;
+  /** Visible content rows of the detail pane (renderers that fill the pane size to it). */
+  height?: number;
 }
 
 /** A tab in the detail pane for a selected item. */
@@ -68,7 +70,7 @@ export interface SidePanel {
   readonly id: string;
   /** Display title shown in tab bar. */
   readonly title: string;
-  /** Number key shortcut (1-5). */
+  /** Number key shortcut (1-9). */
   readonly shortcutKey: number;
   /** Detail tabs for the selected item. */
   readonly detailTabs: DetailTab[];
