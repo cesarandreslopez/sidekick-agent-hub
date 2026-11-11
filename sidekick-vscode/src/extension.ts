@@ -83,6 +83,7 @@ import {
   migrateLegacyProjectStores,
   renderHandoffUrlTemplate,
   runDoctor,
+  waitForPendingAtomicWrites,
 } from 'sidekick-shared';
 import { TempFilesTreeProvider } from './providers/TempFilesTreeProvider';
 import { KnowledgeNoteTreeProvider } from './providers/KnowledgeNoteTreeProvider';
@@ -2780,7 +2781,16 @@ export async function activate(context: vscode.ExtensionContext) {
  * Called when the extension is deactivated.
  * Cleanup handled via context.subscriptions (AuthService, CompletionService).
  */
-export function deactivate(): void {
+/** How long shutdown waits for store writes; VS Code allows deactivate a few seconds. */
+const DEACTIVATE_WRITE_BUDGET_MS = 3_000;
+
+export async function deactivate(): Promise<void> {
   // Cleanup handled via context.subscriptions (AuthService, CompletionService)
   disposeDashboardTerminal();
+  // Ending the session here rather than at subscription disposal starts its
+  // history writes (error history, snapshot) while VS Code still waits for
+  // this promise; a write cut off mid-way leaves a temp file behind. `stop()`
+  // is idempotent, so the later dispose does not end the session again.
+  sessionMonitor?.stop();
+  await waitForPendingAtomicWrites(DEACTIVATE_WRITE_BUDGET_MS);
 }

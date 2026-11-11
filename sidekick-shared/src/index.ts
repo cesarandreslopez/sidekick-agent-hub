@@ -450,6 +450,7 @@ export {
   atomicWriteFileSync,
   updateJsonStoreAtomic,
   updateJsonStoreAtomicSync,
+  waitForPendingAtomicWrites,
   withFileLockSync,
 } from './writers/atomic';
 export { addTask, completeTask } from './writers/tasks';

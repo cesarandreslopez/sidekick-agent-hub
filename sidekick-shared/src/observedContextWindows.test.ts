@@ -66,6 +66,19 @@ describe('observedContextWindows', () => {
     expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(258_400);
   });
 
+  it('does not rewrite the store when a new process records a window it already holds', async () => {
+    await recordObservedContextWindow('gpt-5.6-sol', 258_400, { cacheDir });
+    const storePath = getObservedContextWindowPath(cacheDir);
+    const past = new Date(Date.UTC(2020, 0, 1));
+    await fs.utimes(storePath, past, past);
+
+    // A fresh process: its write dedupe starts empty.
+    _clearObservedContextWindowWriteCache();
+    await recordObservedContextWindow('gpt-5.6-sol', 258_400, { cacheDir });
+    expect((await fs.stat(storePath)).mtimeMs).toBe(past.getTime());
+    expect(await fs.readdir(path.dirname(storePath))).toEqual([path.basename(storePath)]);
+  });
+
   it('outranks the catalog once loaded', async () => {
     _setCatalogContextWindows({ 'gpt-5.6-sol': 1_050_000 });
     expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(1_050_000);

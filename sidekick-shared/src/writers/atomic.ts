@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getConfigDir } from '../paths';
 
 interface OwnedLock {
   handle: fs.promises.FileHandle;
@@ -112,13 +113,132 @@ function syncDirectorySync(directory: string): void {
   }
 }
 
-export async function atomicWriteJson(filePath: string, value: unknown): Promise<void> {
+/**
+ * Atomic writes still in flight in this process. A process that exits while
+ * one is between creating its temp file and the rename leaves the temp file
+ * behind, so a host about to exit waits with {@link waitForPendingAtomicWrites}.
+ */
+const pendingWrites = new Set<Promise<unknown>>();
+
+function trackWrite<T>(write: Promise<T>): Promise<T> {
+  pendingWrites.add(write);
+  const settle = () => {
+    pendingWrites.delete(write);
+  };
+  write.then(settle, settle);
+  return write;
+}
+
+/**
+ * Waits until no atomic write of this process is in flight, including writes
+ * started while waiting, or until `timeoutMs` passes. Call it before a
+ * long-lived host exits (VS Code's `deactivate`): fire-and-forget writes such
+ * as session-end history otherwise die half-done. Resolves `true` when every
+ * write settled and `false` on timeout; never rejects.
+ */
+export async function waitForPendingAtomicWrites(timeoutMs = 3_000): Promise<boolean> {
+  const deadline = Date.now() + Math.max(0, timeoutMs);
+  // Writes that disposers start right after the caller's turn register first.
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  while (pendingWrites.size > 0) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = await Promise.race([
+      Promise.allSettled([...pendingWrites]).then(() => false),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(true), remaining);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (timedOut) return pendingWrites.size === 0;
+  }
+  return true;
+}
+
+/** The temp file of an atomic write: `<file>.<pid>.<16 hex>.tmp`. */
+const ATOMIC_TEMP_FILE = /^.+\.\d+\.[0-9a-f]{16}\.tmp$/;
+
+/** A temp file older than this belongs to no write in progress. */
+export const STALE_ATOMIC_TEMP_MS = 24 * 60 * 60 * 1000;
+
+/** Directories already swept by this process; each is swept once. */
+const sweptDirectories = new Set<string>();
+
+/**
+ * Whether `directory` should be swept now: once per process, and only inside
+ * Sidekick's config directory, so another program's files in a directory we
+ * also write to (a Claude or Codex home) are never touched.
+ */
+function claimSweep(directory: string): boolean {
+  if (sweptDirectories.has(directory)) return false;
+  sweptDirectories.add(directory);
+  try {
+    const relative = path.relative(path.resolve(getConfigDir()), path.resolve(directory));
+    return !relative.startsWith('..') && !path.isAbsolute(relative);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Removes temp files that an interrupted write left in `directory` more than
+ * {@link STALE_ATOMIC_TEMP_MS} ago. Best-effort; never throws.
+ */
+async function sweepStaleTempFiles(directory: string): Promise<void> {
+  if (!claimSweep(directory)) return;
+  try {
+    const now = Date.now();
+    for (const name of await fs.promises.readdir(directory)) {
+      if (!ATOMIC_TEMP_FILE.test(name)) continue;
+      const file = path.join(directory, name);
+      try {
+        const stat = await fs.promises.lstat(file);
+        if (stat.isFile() && now - stat.mtimeMs > STALE_ATOMIC_TEMP_MS) {
+          await fs.promises.rm(file, { force: true });
+        }
+      } catch {
+        // Removed meanwhile or unreadable; leave it.
+      }
+    }
+  } catch {
+    // An unreadable directory only keeps its leftovers.
+  }
+}
+
+/** Synchronous mirror of {@link sweepStaleTempFiles}. */
+function sweepStaleTempFilesSync(directory: string): void {
+  if (!claimSweep(directory)) return;
+  try {
+    const now = Date.now();
+    for (const name of fs.readdirSync(directory)) {
+      if (!ATOMIC_TEMP_FILE.test(name)) continue;
+      const file = path.join(directory, name);
+      try {
+        const stat = fs.lstatSync(file);
+        if (stat.isFile() && now - stat.mtimeMs > STALE_ATOMIC_TEMP_MS) {
+          fs.rmSync(file, { force: true });
+        }
+      } catch {
+        // Removed meanwhile or unreadable; leave it.
+      }
+    }
+  } catch {
+    // An unreadable directory only keeps its leftovers.
+  }
+}
+
+export function atomicWriteJson(filePath: string, value: unknown): Promise<void> {
+  return trackWrite(writeFileAtomic(filePath, JSON.stringify(value, null, 2)));
+}
+
+async function writeFileAtomic(filePath: string, content: string): Promise<void> {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
   const tempPath = `${filePath}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
   let handle: fs.promises.FileHandle | undefined;
   try {
     handle = await fs.promises.open(tempPath, 'wx', 0o600);
-    await handle.writeFile(JSON.stringify(value, null, 2), 'utf8');
+    await handle.writeFile(content, 'utf8');
     await handle.sync();
     await handle.close();
     handle = undefined;
@@ -129,6 +249,7 @@ export async function atomicWriteJson(filePath: string, value: unknown): Promise
     await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
     throw error;
   }
+  await sweepStaleTempFiles(path.dirname(filePath));
 }
 
 export function atomicWriteJsonSync(filePath: string, value: unknown): void {
@@ -153,10 +274,22 @@ export function atomicWriteFileSync(filePath: string, content: string, mode = 0o
     fs.rmSync(tempPath, { force: true });
     throw error;
   }
+  sweepStaleTempFilesSync(path.dirname(filePath));
 }
 
-/** Serializes read-modify-write cycles across Sidekick processes. */
-export async function updateJsonStoreAtomic<T>(
+/**
+ * Serializes read-modify-write cycles across Sidekick processes. When the
+ * update leaves the store exactly as it is on disk, nothing is written.
+ */
+export function updateJsonStoreAtomic<T>(
+  filePath: string,
+  createEmpty: () => T,
+  update: (latest: T) => T | Promise<T>,
+): Promise<T> {
+  return trackWrite(updateJsonStore(filePath, createEmpty, update));
+}
+
+async function updateJsonStore<T>(
   filePath: string,
   createEmpty: () => T,
   update: (latest: T) => T | Promise<T>,
@@ -181,7 +314,11 @@ export async function updateJsonStoreAtomic<T>(
       }
     }
     const next = await update(latest);
-    await atomicWriteJson(filePath, next);
+    // Compared as written, so an update that mutated `latest` in place still
+    // counts as a change. An unchanged store is not rewritten (no lock-held
+    // fsyncs, no temp file a dying process could strand).
+    const content = JSON.stringify(next, null, 2);
+    if (content !== raw) await trackWrite(writeFileAtomic(filePath, content));
     return next;
   } finally {
     await releaseLock(lockPath, lock);
@@ -352,7 +489,7 @@ function acquireLockSync(lockPath: string): string {
   }
 }
 
-/** Synchronous mirror of {@link updateJsonStoreAtomic}. */
+/** Synchronous mirror of {@link updateJsonStoreAtomic}; an unchanged store is not rewritten. */
 export function updateJsonStoreAtomicSync<T>(
   filePath: string,
   createEmpty: () => T,
@@ -376,7 +513,8 @@ export function updateJsonStoreAtomicSync<T>(
       }
     }
     const next = update(latest);
-    atomicWriteJsonSync(filePath, next);
+    const content = JSON.stringify(next, null, 2);
+    if (content !== raw) atomicWriteFileSync(filePath, content);
     return next;
   });
 }

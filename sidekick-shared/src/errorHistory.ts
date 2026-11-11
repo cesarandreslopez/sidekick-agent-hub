@@ -51,12 +51,29 @@ export async function appendErrorHistory(
   await updateJsonStoreAtomic(filePath, emptyStore, (store) => ({
     ...store,
     schemaVersion: ERROR_HISTORY_SCHEMA_VERSION,
-    sessions: [...(Array.isArray(store.sessions) ? store.sessions : []), record].slice(
-      -MAX_ERROR_HISTORY_SESSIONS,
-    ),
+    sessions: latestPerSession([
+      ...(Array.isArray(store.sessions) ? store.sessions : []),
+      record,
+    ]).slice(-MAX_ERROR_HISTORY_SESSIONS),
     lastSaved: record.endedAt,
   }));
   return record;
+}
+
+/**
+ * One record per session: the last one written. A session's record carries
+ * its whole rollup so far, and a monitor ends a session again each time it
+ * switches back to it (and on every shutdown), so earlier records are subsets
+ * of the latest. Order follows each session's latest record.
+ */
+function latestPerSession(sessions: ErrorHistorySessionRecord[]): ErrorHistorySessionRecord[] {
+  const latest = new Map<string, ErrorHistorySessionRecord>();
+  for (const session of sessions) {
+    const key = `${session.providerId}\u0000${session.sessionId}`;
+    latest.delete(key);
+    latest.set(key, session);
+  }
+  return [...latest.values()];
 }
 
 export async function readErrorHistory(
@@ -80,7 +97,8 @@ export async function getTopFailingTools(
   const cutoff = now.getTime() - Math.max(1, days) * 24 * 60 * 60 * 1000;
   const store = await readErrorHistory(filePath);
   const tools = new Map<string, TopFailingTool>();
-  for (const session of store.sessions) {
+  // Stores written before records were kept one per session hold repeats.
+  for (const session of latestPerSession(store.sessions)) {
     const endedAt = Date.parse(session.endedAt);
     if (!Number.isFinite(endedAt) || endedAt < cutoff) continue;
     for (const failure of session.failures) {

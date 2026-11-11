@@ -306,7 +306,7 @@ export {
   compareCodexAuthFreshness,
 } from './codexAuth';
 export type { CodexAuthIdentity, CodexAuthJsonFile } from './codexAuth';
-export { atomicWriteJson, atomicWriteJsonSync } from './writers/atomic';
+export { atomicWriteJson, atomicWriteJsonSync, waitForPendingAtomicWrites } from './writers/atomic';
 export { parseClaudeAuthStatus, parseCodexLoginStatus } from './authStatus';
 export type { ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
