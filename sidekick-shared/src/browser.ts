@@ -192,6 +192,7 @@ export {
   parseModelId,
   getModelPricing,
   resolveModelPricing,
+  resolvePricingTier,
   getModelInfo,
   calculateCost,
   calculateCostWithPricing,
@@ -213,6 +214,7 @@ export {
 
 export type {
   ModelPricing,
+  ModelPricingTier,
   ResolveModelPricingOptions,
   RegisterModelPricingOptions,
   PricingCatalogInfo,
@@ -232,6 +234,13 @@ export type {
   ModelPricingSource,
   ResolvedModelPricing,
 } from './modelInfo';
+export { anthropicRequestTuning, openAiReasoningEffort } from './inferenceTuning';
+export type {
+  AnthropicRequestBody,
+  AnthropicRequestTuning,
+  InferenceEffort,
+  OpenAiReasoningEffort,
+} from './inferenceTuning';
 
 export {
   exportResolvedModelCatalog,

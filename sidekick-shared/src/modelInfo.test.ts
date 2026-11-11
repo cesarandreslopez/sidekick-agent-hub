@@ -17,6 +17,7 @@ import {
   registerModelPricing,
   clearRegisteredModelPricing,
   resolveModelPricing,
+  resolvePricingTier,
   getPricingCatalogInfo,
   costSourceFromPricingProvenance,
   mergeCostComponents,
@@ -258,15 +259,34 @@ describe('getModelPricing', () => {
       outputCostPerMillion: 10.0,
       cacheWriteCostPerMillion: 2.5,
       cacheReadCostPerMillion: 0.2,
+      tiers: [
+        {
+          aboveInputTokens: 272_000,
+          inputCostPerMillion: 4,
+          outputCostPerMillion: 15,
+          cacheWriteCostPerMillion: 5,
+          cacheReadCostPerMillion: 0.4,
+        },
+      ],
     });
     expect(getModelPricing('gpt-6-luna')).toEqual({
       inputCostPerMillion: 0.1,
       outputCostPerMillion: 0.5,
       cacheWriteCostPerMillion: 0.125,
       cacheReadCostPerMillion: 0.01,
+      tiers: [
+        {
+          aboveInputTokens: 272_000,
+          inputCostPerMillion: 0.2,
+          outputCostPerMillion: 0.75,
+          cacheWriteCostPerMillion: 0.25,
+          cacheReadCostPerMillion: 0.02,
+        },
+      ],
     });
-    expect(getModelInfo('gpt-6-sol').contextWindow).toBe(1_050_000);
-    expect(getModelInfo('gpt-6-luna').contextWindow).toBe(1_050_000);
+    // Maximum input (1.05M total minus the 128K output cap), as the catalog reports.
+    expect(getModelInfo('gpt-6-sol').contextWindow).toBe(922_000);
+    expect(getModelInfo('gpt-6-luna').contextWindow).toBe(922_000);
   });
 
   it('prices Opus 5.5 on its own rates rather than the Opus 5 prefix', () => {
@@ -324,16 +344,25 @@ describe('getModelPricing', () => {
 
     // gpt-5.6-sol must NOT inherit the cheaper `gpt-5` prefix entry.
     const sol = getModelPricing('gpt-5.6-sol');
-    expect(sol).toEqual({
+    expect(sol).toMatchObject({
       inputCostPerMillion: 4.0,
       outputCostPerMillion: 20.0,
       cacheWriteCostPerMillion: 5.0,
       cacheReadCostPerMillion: 0.4,
     });
+    expect(sol!.tiers).toEqual([
+      {
+        aboveInputTokens: 272_000,
+        inputCostPerMillion: 8,
+        outputCostPerMillion: 30,
+        cacheWriteCostPerMillion: 10,
+        cacheReadCostPerMillion: 0.8,
+      },
+    ]);
     expect(getModelPricing('gpt-5.6')).toEqual(sol);
 
     const terra = getModelPricing('gpt-5.6-terra');
-    expect(terra).toEqual({
+    expect(terra).toMatchObject({
       inputCostPerMillion: 2.0,
       outputCostPerMillion: 12.0,
       cacheWriteCostPerMillion: 2.5,
@@ -494,7 +523,7 @@ describe('getModelInfo', () => {
       provider: 'openai',
       family: 'gpt',
       version: '6-astra',
-      contextWindow: 1_050_000,
+      contextWindow: 922_000,
       pricing: {
         inputCostPerMillion: 10,
         outputCostPerMillion: 50,
@@ -1408,5 +1437,161 @@ describe('formatCost compatibility', () => {
     expect(shortModelName('gpt-5.4-20260301')).toBe('GPT-5.4');
     expect(shortModelName('openai/gpt-5.3-codex')).toBe('Codex');
     expect(shortModelName('mystery-model')).toBe('mystery-model');
+  });
+});
+
+describe('Mythos and GPT specialty models (0.32)', () => {
+  it('parses the Mythos family, its preview, and Fable 5.2', () => {
+    expect(parseModelId('claude-mythos-5-2')).toEqual({
+      provider: 'anthropic',
+      family: 'mythos',
+      version: '5.2',
+    });
+    expect(parseModelId('claude-mythos-5.1-20260901')).toMatchObject({
+      family: 'mythos',
+      version: '5.1',
+    });
+    expect(parseModelId('claude-mythos-preview')).toEqual({
+      provider: 'anthropic',
+      family: 'mythos',
+      version: 'preview',
+    });
+    expect(parseModelId('claude-fable-5-2-20261101')).toMatchObject({
+      family: 'fable',
+      version: '5.2',
+    });
+    expect(shortModelName('claude-mythos-5-2')).toBe('Mythos');
+    expect(isMovingModelAlias('mythos')).toBe(true);
+    expect(isMovingModelAlias('Mythos[1m]')).toBe(true);
+  });
+
+  it('reports GPT specialties without disturbing the tier variant', () => {
+    expect(parseModelId('gpt-6-cyber')).toEqual({
+      provider: 'openai',
+      family: 'gpt',
+      version: '6-cyber',
+      specialty: 'cyber',
+    });
+    expect(parseModelId('gpt-6-astra-law')).toEqual({
+      provider: 'openai',
+      family: 'gpt',
+      version: '6-astra-law',
+      variant: 'astra',
+      specialty: 'law',
+    });
+    expect(parseModelId('gpt-6-rosalind')).toMatchObject({ specialty: 'rosalind' });
+    expect(parseModelId('gpt-5.6-cyber')).toMatchObject({ specialty: 'cyber' });
+    for (const id of ['gpt-6', 'gpt-6-sol', 'gpt-5.4-mini', 'gpt-6-lawyer', 'claude-opus-5-5']) {
+      expect(Object.prototype.hasOwnProperty.call(parseModelId(id), 'specialty'), id).toBe(false);
+    }
+  });
+
+  it('lists Fable and Mythos together, newest version first, previews last', () => {
+    expect(
+      sortModelIds([
+        'claude-opus-5-5',
+        'claude-mythos-preview',
+        'claude-mythos-5-1',
+        'claude-fable-5-1',
+        'claude-mythos-5-2',
+        'claude-fable-5-2',
+      ]),
+    ).toEqual([
+      'claude-fable-5-2',
+      'claude-mythos-5-2',
+      'claude-fable-5-1',
+      'claude-mythos-5-1',
+      'claude-mythos-preview',
+      'claude-opus-5-5',
+    ]);
+  });
+
+  it('orders GPT ids of one version transitively, whatever the input order', () => {
+    const expected = [
+      'gpt-6',
+      'gpt-6-astra',
+      'gpt-6-astra-law',
+      'gpt-6-sol',
+      'gpt-6-luna',
+      'gpt-6-mini',
+      'gpt-6-cyber',
+      'gpt-6-rosalind',
+    ];
+    const orders = [
+      ['gpt-6-luna', 'gpt-6-rosalind', 'gpt-6-sol', 'gpt-6-cyber', 'gpt-6-astra-law', 'gpt-6'],
+      ['gpt-6-rosalind', 'gpt-6-luna', 'gpt-6', 'gpt-6-sol', 'gpt-6-astra-law', 'gpt-6-cyber'],
+      ['gpt-6-sol', 'gpt-6-cyber', 'gpt-6-luna', 'gpt-6-astra-law', 'gpt-6-rosalind', 'gpt-6'],
+    ].map((order) => [...order, 'gpt-6-astra', 'gpt-6-mini']);
+    for (const order of [...orders, ...orders.map((order) => [...order].reverse())]) {
+      expect(sortModelIds(order)).toEqual(expected);
+    }
+    // No cycle: the luna < rosalind < sol < luna loop the old tie-break allowed.
+    for (const a of expected) {
+      for (const b of expected) {
+        for (const c of expected) {
+          if (compareModelIds(a, b) < 0 && compareModelIds(b, c) < 0) {
+            expect(compareModelIds(a, c), `${a} < ${b} < ${c}`).toBeLessThan(0);
+          }
+        }
+      }
+    }
+  });
+});
+
+describe('long-context pricing tiers', () => {
+  const tier = (aboveInputTokens: number, input: number, output: number) => ({
+    aboveInputTokens,
+    inputCostPerMillion: input,
+    outputCostPerMillion: output,
+    cacheWriteCostPerMillion: input,
+    cacheReadCostPerMillion: input / 10,
+  });
+  const tiered = (): ModelPricing => ({
+    ...rates(1, 5),
+    tiers: [tier(256_000, 4, 10), tier(32_000, 2, 7.5)],
+  });
+
+  it('selects the highest threshold strictly below the prompt size', () => {
+    const pricing = tiered();
+    expect(resolvePricingTier(pricing, undefined)).toBeNull();
+    expect(resolvePricingTier(pricing, Number.NaN)).toBeNull();
+    expect(resolvePricingTier(pricing, 32_000)).toBeNull();
+    expect(resolvePricingTier(pricing, 32_001)?.aboveInputTokens).toBe(32_000);
+    expect(resolvePricingTier(pricing, 256_000)?.aboveInputTokens).toBe(32_000);
+    expect(resolvePricingTier(pricing, 256_001)?.aboveInputTokens).toBe(256_000);
+    expect(resolvePricingTier(rates(1), 1_000_000)).toBeNull();
+    expect(resolvePricingTier(null, 1_000_000)).toBeNull();
+  });
+
+  it('registers tiers sorted and detached, and skips malformed ones', () => {
+    const source = tiered();
+    registerModelPricing({ 'my-model': source });
+    const resolved = resolveModelPricing('my-model').pricing!;
+    expect(resolved.tiers!.map((entry) => entry.aboveInputTokens)).toEqual([32_000, 256_000]);
+    (source.tiers as Array<{ inputCostPerMillion: number }>)[0].inputCostPerMillion = 99;
+    expect(resolveModelPricing('my-model').pricing!.tiers![1].inputCostPerMillion).toBe(4);
+
+    registerModelPricing({
+      'bad-threshold': { ...rates(1), tiers: [tier(0, 2, 7.5)] },
+      'bad-rate': { ...rates(1), tiers: [tier(32_000, 2, -1)] },
+      'not-a-list': { ...rates(1), tiers: 'cheap' as unknown as ModelPricing['tiers'] },
+    });
+    for (const id of ['bad-threshold', 'bad-rate', 'not-a-list']) {
+      expect(resolveModelPricing(id).provenance.source, id).not.toBe('registered');
+    }
+  });
+
+  it('changes the pricing digest when only a tier changes', () => {
+    registerModelPricing({ 'digest-model': { ...rates(1), tiers: [tier(32_000, 2, 7.5)] } });
+    const before = getPricingCatalogInfo().digest;
+    registerModelPricing({ 'digest-model': { ...rates(1), tiers: [tier(32_000, 2, 8)] } });
+    expect(getPricingCatalogInfo().digest).not.toBe(before);
+  });
+
+  it('copies catalog overrides defensively, tiers included', () => {
+    const catalog: ModelPricing = { ...rates(3), tiers: [tier(32_000, 2, 7.5)] };
+    _setPricingOverrides({ 'catalog-model': catalog });
+    (catalog.tiers as Array<{ outputCostPerMillion: number }>)[0].outputCostPerMillion = 1_000;
+    expect(_getPricingOverrides()['catalog-model'].tiers![0].outputCostPerMillion).toBe(7.5);
   });
 });

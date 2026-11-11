@@ -22,6 +22,7 @@ import {
   getCommitMessageUserPrompt,
   cleanCommitMessage,
 } from '../utils/prompts';
+import { featureEffort } from '../types/inferenceProvider';
 
 /**
  * Result from commit message generation.
@@ -173,6 +174,7 @@ export class CommitMessageService implements vscode.Disposable {
         task: (taskSignal: AbortSignal) =>
           this.authService.complete(fullPrompt, {
             model,
+            effort: featureEffort('commitMessageModel'),
             maxTokens: 100,
             signal: taskSignal,
           }),

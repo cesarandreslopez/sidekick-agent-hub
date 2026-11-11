@@ -142,12 +142,12 @@ describe('getModelContextWindowSize', () => {
       expect(getModelContextWindowSize('claude-sonnet-5')).toBe(1_000_000);
     });
 
-    it('returns published maxima for Astra and the GPT-5.5/5.6 line', () => {
-      expect(getModelContextWindowSize('gpt-6-astra')).toBe(1_050_000);
+    it('returns published maxima for Astra and the GPT-5.5/5.6 line (maximum input for 5.6 and 6)', () => {
+      expect(getModelContextWindowSize('gpt-6-astra')).toBe(922_000);
       expect(getModelContextWindowSize('gpt-5.5')).toBe(1_050_000);
-      expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(1_050_000);
-      expect(getModelContextWindowSize('gpt-5.6-terra')).toBe(1_050_000);
-      expect(getModelContextWindowSize('gpt-5.6-luna')).toBe(1_050_000);
+      expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(922_000);
+      expect(getModelContextWindowSize('gpt-5.6-terra')).toBe(922_000);
+      expect(getModelContextWindowSize('gpt-5.6-luna')).toBe(922_000);
     });
   });
 

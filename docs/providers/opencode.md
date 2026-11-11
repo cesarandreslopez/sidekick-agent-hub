@@ -13,6 +13,7 @@ Uses your configured OpenCode provider and model for inference.
 
 - Uses `@opencode-ai/sdk` to connect to the local OpenCode server
 - Sidekick resolves model tiers to explicit `provider/model` IDs and sends them with each request. An explicit `provider/model` setting overrides OpenCode's default; a bare model ID is not sent, so OpenCode uses its configured default.
+- The tier defaults are `anthropic/claude-haiku-5-5`, `anthropic/claude-sonnet-5-5` and `anthropic/claude-opus-5-5`. Sidekick sends no reasoning settings to OpenCode, so OpenCode's own provider settings apply.
 
 ## Session Monitoring
 

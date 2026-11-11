@@ -143,7 +143,7 @@ describe('resolved model catalog', () => {
     expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(258_400);
     expect(getModelPricing('gpt-5.6-sol')).toMatchObject({ inputCostPerMillion: 4 });
     // The alias still resolves ids without their own data to the canonical id.
-    expect(getModelContextWindowSize('gpt-5.6')).toBe(1_050_000);
+    expect(getModelContextWindowSize('gpt-5.6')).toBe(922_000);
   });
 
   it('keeps overrides recorded while an alias already exists', () => {

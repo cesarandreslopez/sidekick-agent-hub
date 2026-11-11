@@ -55,7 +55,9 @@ All model settings accept: `auto` (recommended), a tier (`fast`/`balanced`/`powe
 | `sidekick.reviewModel`        | `auto`  | balanced  |
 | `sidekick.prDescriptionModel` | `auto`  | balanced  |
 
-See [Model Resolution](model-resolution.md) for details on how tiers map to models.
+A literal `fable` also works: Claude Max passes it to Claude Code, and the Claude API client maps it to `claude-fable-5-2`. Each feature also asks for an effort (minimal for inline completions and commit messages, medium for code review and transforms, low otherwise), which the client turns into the settings the resolved model accepts.
+
+See [Model Resolution](model-resolution.md) for details on how tiers map to models and how requests are tuned.
 
 ## Inline Completions
 

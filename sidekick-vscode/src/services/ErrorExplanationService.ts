@@ -15,6 +15,7 @@ import type { ErrorContext, ErrorExplanation, FixSuggestion } from '../types/err
 import type { ComplexityLevel } from '../types/explain';
 import { getErrorExplanationPrompt, getErrorFixPrompt } from '../utils/prompts';
 import { isFixRefusal } from '../utils/fixResponse';
+import { featureEffort } from '../types/inferenceProvider';
 
 /**
  * ErrorExplanationService - AI-powered error explanations and fixes.
@@ -73,6 +74,7 @@ export class ErrorExplanationService {
       task: (taskSignal: AbortSignal) =>
         this.authService.complete(prompt, {
           model,
+          effort: featureEffort('errorModel'),
           maxTokens: 2000,
           signal: taskSignal,
         }),
@@ -134,6 +136,7 @@ export class ErrorExplanationService {
       task: (taskSignal: AbortSignal) =>
         this.authService.complete(prompt, {
           model,
+          effort: featureEffort('errorModel'),
           maxTokens: 2000,
           signal: taskSignal,
         }),

@@ -109,7 +109,7 @@ import {
   cleanTransformResponse,
 } from './utils/prompts';
 import { resolveModel } from './services/ModelResolver';
-import { PROVIDER_DISPLAY_NAMES } from './types/inferenceProvider';
+import { featureEffort, PROVIDER_DISPLAY_NAMES } from './types/inferenceProvider';
 import { getNonce } from './utils/nonce';
 import type { AccountProviderId, SyncReport } from 'sidekick-shared';
 import {
@@ -2414,6 +2414,7 @@ export async function activate(context: vscode.ExtensionContext) {
             task: (signal: AbortSignal) =>
               authService!.complete(prompt, {
                 model,
+                effort: featureEffort('transformModel'),
                 maxTokens: 4096,
                 signal,
               }),

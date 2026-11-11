@@ -20,12 +20,12 @@ describe('ModelResolver', () => {
     });
 
     it('resolves "auto" for opencode provider', () => {
-      expect(resolveModel('auto', 'opencode', 'inlineModel')).toBe('anthropic/claude-haiku-4-5');
+      expect(resolveModel('auto', 'opencode', 'inlineModel')).toBe('anthropic/claude-haiku-5-5');
     });
 
     it('resolves "auto" for codex provider', () => {
       expect(resolveModel('auto', 'codex', 'inlineModel')).toBe('gpt-6-luna');
-      expect(resolveModel('auto', 'codex', 'reviewModel')).toBe('gpt-6-sol');
+      expect(resolveModel('auto', 'codex', 'reviewModel')).toBe('gpt-6.1-sol');
       expect(resolveModel('auto', 'codex', 'transformModel')).toBe('gpt-6-astra');
     });
   });
@@ -36,7 +36,7 @@ describe('ModelResolver', () => {
     });
 
     it('maps sonnet -> balanced -> provider model (claude-api)', () => {
-      expect(resolveModel('sonnet', 'claude-api', 'inlineModel')).toBe('claude-sonnet-5');
+      expect(resolveModel('sonnet', 'claude-api', 'inlineModel')).toBe('claude-sonnet-5-5');
     });
 
     it('maps opus -> powerful -> provider model (claude-api)', () => {
@@ -44,7 +44,7 @@ describe('ModelResolver', () => {
     });
 
     it('maps haiku -> fast -> provider model (opencode)', () => {
-      expect(resolveModel('haiku', 'opencode', 'inlineModel')).toBe('anthropic/claude-haiku-4-5');
+      expect(resolveModel('haiku', 'opencode', 'inlineModel')).toBe('anthropic/claude-haiku-5-5');
     });
 
     it('maps opus -> powerful -> provider model (codex)', () => {
@@ -53,7 +53,7 @@ describe('ModelResolver', () => {
 
     it('maps legacy fast and balanced names to the corresponding Codex tiers', () => {
       expect(resolveModel('haiku', 'codex', 'reviewModel')).toBe('gpt-6-luna');
-      expect(resolveModel('sonnet', 'codex', 'inlineModel')).toBe('gpt-6-sol');
+      expect(resolveModel('sonnet', 'codex', 'inlineModel')).toBe('gpt-6.1-sol');
     });
   });
 
@@ -63,7 +63,7 @@ describe('ModelResolver', () => {
     });
 
     it('resolves balanced tier for claude-api', () => {
-      expect(resolveModel('balanced', 'claude-api', 'inlineModel')).toBe('claude-sonnet-5');
+      expect(resolveModel('balanced', 'claude-api', 'inlineModel')).toBe('claude-sonnet-5-5');
     });
 
     it('resolves powerful tier for codex', () => {
@@ -72,7 +72,7 @@ describe('ModelResolver', () => {
 
     it('honors explicit fast and balanced Codex tiers over the feature default', () => {
       expect(resolveModel('fast', 'codex', 'transformModel')).toBe('gpt-6-luna');
-      expect(resolveModel('balanced', 'codex', 'transformModel')).toBe('gpt-6-sol');
+      expect(resolveModel('balanced', 'codex', 'transformModel')).toBe('gpt-6.1-sol');
     });
   });
 
@@ -81,6 +81,12 @@ describe('ModelResolver', () => {
       expect(resolveModel('gpt-6-astra', 'codex', 'inlineModel')).toBe('gpt-6-astra');
       expect(resolveModel('claude-fable-5-1', 'claude-api', 'inlineModel')).toBe(
         'claude-fable-5-1',
+      );
+      expect(resolveModel('claude-fable-5-2', 'claude-api', 'reviewModel')).toBe(
+        'claude-fable-5-2',
+      );
+      expect(resolveModel('claude-mythos-5-2', 'claude-api', 'reviewModel')).toBe(
+        'claude-mythos-5-2',
       );
     });
 

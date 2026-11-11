@@ -398,3 +398,67 @@ describe('ModelPricingService', () => {
     });
   });
 });
+
+describe('long-context price tiers in session buckets', () => {
+  const entry = () => ({
+    calls: 0,
+    tokens: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+  });
+  const call = (prompt: number, output: number) =>
+    normalizeProviderUsage({
+      semantics: 'openai',
+      inputTokens: prompt,
+      outputTokens: output,
+      singleRequest: true,
+    });
+
+  it('prices only the calls above 272K at the long-context rate', () => {
+    const row = entry();
+    // Two short calls and one long one; merged, the input totals 500K.
+    addUsageToPricing(row, 'gpt-6.1-sol', call(100_000, 1_000));
+    addUsageToPricing(row, 'gpt-6.1-sol', call(100_000, 1_000));
+    addUsageToPricing(row, 'gpt-6.1-sol', call(300_000, 1_000));
+    expect(row.pricing?.['gpt-6.1-sol'].inputTokens).toBe(200_000);
+    expect(row.pricing?.['gpt-6.1-sol'].longContext?.['272000']).toMatchObject({
+      inputTokens: 300_000,
+      outputTokens: 1_000,
+    });
+    const priced = priceModelUsage('gpt-6.1-sol', row);
+    // Base: 0.2M × $2 + 2K × $10/M; tier: 0.3M × $4 + 1K × $15/M.
+    expect(priced.cost).toBeCloseTo(0.4 + 0.02 + 1.2 + 0.015, 9);
+    expect(priced.priced).toBe(true);
+  });
+
+  it('keeps pricing rows recorded without tier buckets at base rates', () => {
+    const legacy = {
+      ...entry(),
+      pricing: {
+        'gpt-6.1-sol': {
+          inputTokens: 500_000,
+          outputTokens: 3_000,
+          cacheWriteTokens: 0,
+          cacheReadTokens: 0,
+          separateReasoningTokens: 0,
+          reportedCostUsd: 0,
+          reportedTokens: 0,
+        },
+      },
+    };
+    expect(priceModelUsage('gpt-6.1-sol', legacy).cost).toBeCloseTo(1 + 0.03, 9);
+  });
+
+  it('never tiers usage that is not a single request', () => {
+    const row = entry();
+    addUsageToPricing(
+      row,
+      'claude-haiku-5-5',
+      normalizeProviderUsage({ semantics: 'anthropic', inputTokens: 500_000, outputTokens: 0 }),
+    );
+    expect(row.pricing?.['claude-haiku-5-5'].longContext).toBeUndefined();
+    expect(priceModelUsage('claude-haiku-5-5', row).cost).toBeCloseTo(0.05, 9);
+  });
+});

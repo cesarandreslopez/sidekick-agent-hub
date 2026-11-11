@@ -577,3 +577,143 @@ describe('pricing basis after hydration', { timeout: 30_000 }, () => {
     expect(getPricingCatalogInfo().digest).not.toBe(withRegistered.digest);
   });
 });
+
+describe('long-context tiers in the LiteLLM catalog', { timeout: 30_000 }, () => {
+  const TIERED = {
+    'gpt-6-astra': {
+      input_cost_per_token: 0.00001,
+      output_cost_per_token: 0.00005,
+      cache_read_input_token_cost: 0.000001,
+      cache_creation_input_token_cost: 0.0000125,
+      input_cost_per_token_above_272k_tokens: 0.00002,
+      output_cost_per_token_above_272k_tokens: 0.000075,
+      cache_read_input_token_cost_above_272k_tokens: 0.000002,
+      // Service-tier, batch and long-cache variants are not tiers.
+      input_cost_per_token_above_272k_tokens_priority: 0.00004,
+      input_cost_per_token_above_272k_tokens_batches: 0.00001,
+      cache_creation_input_token_cost_above_12hr_above_272k_tokens: 0.00005,
+      cache_creation_input_token_cost_above_1hr: 0.00002,
+    },
+    'openai/gpt-6-astra': {
+      input_cost_per_token: 0.00001,
+      output_cost_per_token: 0.00005,
+      input_cost_per_token_above_272k_tokens: 0.00002,
+    },
+    'two-tier-model': {
+      input_cost_per_token: 0.000001,
+      output_cost_per_token: 0.000004,
+      input_cost_per_token_above_256k_tokens: 0.000004,
+      input_cost_per_token_above_32k_tokens: 0.000002,
+      output_cost_per_token_above_32k_tokens: 0.000006,
+    },
+    'odd-model': {
+      input_cost_per_token: 0.000001,
+      output_cost_per_token: 0.000002,
+      input_cost_per_token_above_0k_tokens: 0.000003,
+      output_cost_per_token_above_100k_tokens: 'free',
+    },
+  };
+
+  let cacheDir: string;
+  beforeEach(async () => {
+    cacheDir = await makeTempDir();
+    _clearPricingOverrides();
+    _clearCatalogContextWindows();
+  });
+  afterEach(async () => {
+    _clearPricingOverrides();
+    _clearCatalogContextWindows();
+    await fs.rm(cacheDir, { recursive: true, force: true });
+  });
+
+  it('reads the four standard rates above a threshold, carrying unlisted ones', () => {
+    const out = normalizeLiteLlmCatalog(TIERED);
+    expect(out['gpt-6-astra'].tiers).toEqual([
+      {
+        aboveInputTokens: 272_000,
+        inputCostPerMillion: 20,
+        outputCostPerMillion: 75,
+        // Not listed above 272K: the base write rate carries over.
+        cacheWriteCostPerMillion: 12.5,
+        cacheReadCostPerMillion: 2,
+      },
+    ]);
+    // The raw provider key keeps its own (sparser) tier.
+    expect(out['openai/gpt-6-astra'].tiers?.[0]).toMatchObject({
+      inputCostPerMillion: 20,
+      outputCostPerMillion: 50,
+    });
+  });
+
+  it('orders several thresholds ascending and fills each from the one below', () => {
+    const tiers = normalizeLiteLlmCatalog(TIERED)['two-tier-model'].tiers!;
+    expect(tiers.map((tier) => tier.aboveInputTokens)).toEqual([32_000, 256_000]);
+    expect(tiers[0]).toMatchObject({ inputCostPerMillion: 2, outputCostPerMillion: 6 });
+    // Output is unlisted at 256K, so the 32K tier's rate carries over.
+    expect(tiers[1]).toMatchObject({ inputCostPerMillion: 4, outputCostPerMillion: 6 });
+  });
+
+  it('ignores zero thresholds and non-numeric tier rates', () => {
+    expect(normalizeLiteLlmCatalog(TIERED)['odd-model'].tiers).toBeUndefined();
+  });
+
+  it('treats a cache from the previous normalizer as stale and refetches it online', async () => {
+    await fs.writeFile(
+      path.join(cacheDir, 'pricing-catalog.json'),
+      JSON.stringify({
+        fetchedAt: new Date().toISOString(),
+        url: 'test',
+        overrides: {
+          'gpt-6-astra': {
+            inputCostPerMillion: 10,
+            outputCostPerMillion: 50,
+            cacheWriteCostPerMillion: 12.5,
+            cacheReadCostPerMillion: 1,
+          },
+        },
+      }),
+    );
+    const fetchSpy = vi.fn(mockFetchOk(TIERED));
+    const result = await hydratePricingCatalog({ cacheDir, fetchImpl: fetchSpy });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(result.source).toBe('network');
+    expect(getModelPricing('gpt-6-astra')!.tiers).toHaveLength(1);
+    const cached = JSON.parse(
+      await fs.readFile(path.join(cacheDir, 'pricing-catalog.json'), 'utf8'),
+    );
+    expect(cached.normalizerVersion).toBe(2);
+
+    // A second run trusts the new cache.
+    fetchSpy.mockClear();
+    expect((await hydratePricingCatalog({ cacheDir, fetchImpl: fetchSpy })).source).toBe('cache');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('still uses a previous-normalizer cache offline or when the fetch fails', async () => {
+    const previous = {
+      fetchedAt: new Date().toISOString(),
+      url: 'test',
+      overrides: {
+        'gpt-6-astra': {
+          inputCostPerMillion: 11,
+          outputCostPerMillion: 50,
+          cacheWriteCostPerMillion: 12.5,
+          cacheReadCostPerMillion: 1,
+        },
+      },
+    };
+    await fs.writeFile(path.join(cacheDir, 'pricing-catalog.json'), JSON.stringify(previous));
+    const offline = await hydratePricingCatalog({ cacheDir, offline: true });
+    expect(offline.source).toBe('cache');
+    expect(getPricingCatalogInfo().source).toBe('litellm');
+    expect(getModelPricing('gpt-6-astra')!.inputCostPerMillion).toBe(11);
+
+    _clearPricingOverrides();
+    const failed = await hydratePricingCatalog({
+      cacheDir,
+      fetchImpl: mockFetchFails(new Error('offline')),
+    });
+    expect(failed.source).toBe('cache');
+    expect(getModelPricing('gpt-6-astra')!.inputCostPerMillion).toBe(11);
+  });
+});

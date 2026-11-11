@@ -21,7 +21,12 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
 import { _setCatalogContextWindows } from './modelContext';
-import { _setPricingOverrides, getPricingCatalogInfo, type ModelPricing } from './modelInfo';
+import {
+  _setPricingOverrides,
+  getPricingCatalogInfo,
+  type ModelPricing,
+  type ModelPricingTier,
+} from './modelInfo';
 import { setOwnValue } from './ownKey';
 import { getConfigDir } from './paths';
 import { atomicWriteJson } from './writers/atomic';
@@ -74,6 +79,13 @@ export interface HydrateResult {
 interface CacheFile {
   fetchedAt: string;
   url: string;
+  /**
+   * Version of the normalizer that produced `overrides`. A cache from another
+   * version (or none, before 0.32) is never treated as fresh, so an online
+   * host re-fetches it at once; offline, or when the fetch fails, it is still
+   * used as it is.
+   */
+  normalizerVersion?: number;
   overrides: Record<string, ModelPricing>;
   /**
    * Optional so caches written before context-window hydration stay valid.
@@ -106,6 +118,8 @@ export const LITELLM_CATALOG_URL =
 const CACHE_FILE_NAME = 'pricing-catalog.json';
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 3_000;
+/** 2: long-context tiers (`*_above_<N>k_tokens`). */
+const PRICING_NORMALIZER_VERSION = 2;
 
 // ── Public API ──
 
@@ -137,11 +151,14 @@ export async function hydratePricingCatalog(options: HydrateOptions = {}): Promi
   const cachePath = path.join(cacheDir, CACHE_FILE_NAME);
   const now = Date.now();
 
-  // 1. Fresh cache? (Offline callers take any cache, however old.)
+  // 1. Fresh cache? (Offline callers take any cache, however old.) A cache
+  // written by another normalizer version is never fresh: its prices lack
+  // what this version reads (long-context tiers), so refresh it now.
   const cached = await readCache(cachePath);
-  const cacheFresh = cached !== null && now - Date.parse(cached.fetchedAt) < ttlMs;
+  const withinTtl = cached !== null && now - Date.parse(cached.fetchedAt) < ttlMs;
+  const cacheFresh = withinTtl && cached?.normalizerVersion === PRICING_NORMALIZER_VERSION;
   if (cached && (offline || cacheFresh)) {
-    return applyCacheFile(cached, 'cache', cacheFresh ? 'litellm' : 'stale-cache');
+    return applyCacheFile(cached, 'cache', withinTtl ? 'litellm' : 'stale-cache');
   }
 
   // 2. Try network.
@@ -151,6 +168,7 @@ export async function hydratePricingCatalog(options: HydrateOptions = {}): Promi
       const payload: CacheFile = {
         fetchedAt: new Date(now).toISOString(),
         url,
+        normalizerVersion: PRICING_NORMALIZER_VERSION,
         overrides: normalizeLiteLlmCatalog(fetched),
         contextWindows: normalizeLiteLlmContextWindows(fetched),
       };
@@ -159,9 +177,9 @@ export async function hydratePricingCatalog(options: HydrateOptions = {}): Promi
     }
   }
 
-  // 3. Fall back to stale cache if present.
+  // 3. Fall back to the cache if present (stale, or from another normalizer).
   if (cached) {
-    return applyCacheFile(cached, 'cache', 'stale-cache');
+    return applyCacheFile(cached, 'cache', withinTtl ? 'litellm' : 'stale-cache');
   }
 
   // 4. Nothing we can do — stay on static tables.
@@ -298,12 +316,62 @@ function liteLlmEntryToPricing(entry: LiteLlmEntry): ModelPricing | null {
       ? entry.cache_creation_input_token_cost
       : 0;
 
-  return {
+  const pricing: ModelPricing = {
     inputCostPerMillion: input * 1_000_000,
     outputCostPerMillion: output * 1_000_000,
     cacheWriteCostPerMillion: cacheWrite * 1_000_000,
     cacheReadCostPerMillion: cacheRead * 1_000_000,
   };
+  const tiers = liteLlmEntryToTiers(entry, pricing);
+  if (tiers.length > 0) pricing.tiers = tiers;
+  return pricing;
+}
+
+// The four standard rates, above a prompt size. Anchored, so the service-tier,
+// batch and long-cache variants (`…_tokens_priority`, `…_tokens_batches`,
+// `…_above_1hr_above_100k_tokens`, …) and audio/image keys never match.
+const LITELLM_TIER_KEY_RE =
+  /^(input_cost_per_token|output_cost_per_token|cache_read_input_token_cost|cache_creation_input_token_cost)_above_([0-9]+)(k?)_tokens$/;
+
+const TIER_FIELD: Record<string, keyof Omit<ModelPricingTier, 'aboveInputTokens'>> = {
+  input_cost_per_token: 'inputCostPerMillion',
+  output_cost_per_token: 'outputCostPerMillion',
+  cache_read_input_token_cost: 'cacheReadCostPerMillion',
+  cache_creation_input_token_cost: 'cacheWriteCostPerMillion',
+};
+
+/**
+ * Long-context tiers from `*_above_<N>k_tokens` keys, ascending. Each tier is
+ * filled cumulatively: a rate the entry does not list for a threshold keeps
+ * the rate in force below it, as LiteLLM's own cost calculator does.
+ */
+function liteLlmEntryToTiers(entry: LiteLlmEntry, base: ModelPricing): ModelPricingTier[] {
+  const byThreshold = new Map<number, Partial<ModelPricingTier>>();
+  for (const [key, value] of Object.entries(entry)) {
+    const match = LITELLM_TIER_KEY_RE.exec(key);
+    if (!match) continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) continue;
+    const threshold = Number(match[2]) * (match[3] === 'k' ? 1_000 : 1);
+    if (!Number.isFinite(threshold) || threshold <= 0) continue;
+    const tier = byThreshold.get(threshold) ?? {};
+    tier[TIER_FIELD[match[1]]] = value * 1_000_000;
+    byThreshold.set(threshold, tier);
+  }
+  const tiers: ModelPricingTier[] = [];
+  let previous: Omit<ModelPricingTier, 'aboveInputTokens'> = base;
+  for (const threshold of [...byThreshold.keys()].sort((a, b) => a - b)) {
+    const rates = byThreshold.get(threshold)!;
+    const tier: ModelPricingTier = {
+      aboveInputTokens: threshold,
+      inputCostPerMillion: rates.inputCostPerMillion ?? previous.inputCostPerMillion,
+      outputCostPerMillion: rates.outputCostPerMillion ?? previous.outputCostPerMillion,
+      cacheWriteCostPerMillion: rates.cacheWriteCostPerMillion ?? previous.cacheWriteCostPerMillion,
+      cacheReadCostPerMillion: rates.cacheReadCostPerMillion ?? previous.cacheReadCostPerMillion,
+    };
+    tiers.push(tier);
+    previous = tier;
+  }
+  return tiers;
 }
 
 function stripProviderPrefix(key: string): string | null {

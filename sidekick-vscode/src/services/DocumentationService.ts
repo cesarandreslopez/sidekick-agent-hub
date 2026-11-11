@@ -17,6 +17,7 @@ import {
   cleanDocResponse,
 } from '../utils/prompts';
 import { log, logError } from './Logger';
+import { featureEffort } from '../types/inferenceProvider';
 
 /**
  * Result from documentation generation.
@@ -141,6 +142,7 @@ export class DocumentationService implements vscode.Disposable {
         task: (taskSignal: AbortSignal) =>
           this.authService.complete(fullPrompt, {
             model,
+            effort: featureEffort('docModel'),
             maxTokens: 1024,
             signal: taskSignal,
           }),

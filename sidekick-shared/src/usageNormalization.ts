@@ -2,6 +2,7 @@ import {
   costSourceFromPricingProvenance,
   getModelPricing,
   resolveModelPricing,
+  resolvePricingTier,
   type CostSource,
   type ModelPricing,
   type ModelPricingProvenance,
@@ -30,6 +31,19 @@ interface ProviderUsageBase {
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   reasoningTokens?: number;
+  /**
+   * The counters describe one request (one API call). Its prompt size —
+   * uncached input plus cache reads and writes — is then recorded as
+   * `requestPromptTokens` and selects a long-context pricing tier. Leave
+   * unset for totals that merge several requests.
+   */
+  singleRequest?: boolean;
+  /**
+   * The prompt size of the single request this usage was billed under, when
+   * the counters alone do not show it (a correction carrying only a delta).
+   * Wins over `singleRequest`.
+   */
+  requestPromptTokens?: number;
 }
 
 /** Anthropic input and cache categories are additive. */
@@ -66,6 +80,13 @@ export interface NormalizedUsage {
   cacheInclusiveInputTokens: number;
   billableOutputTokens: number;
   totalTokens: number;
+  /**
+   * Prompt size (uncached input + cache reads + cache writes) of the single
+   * request this usage was billed under. It selects a long-context pricing
+   * tier. Absent on totals that combine several requests, which always bill
+   * at base rates.
+   */
+  requestPromptTokens?: number;
   model?: string;
   reportedCostUsd?: number;
   provenance: UsageNormalizationProvenance;
@@ -88,6 +109,11 @@ export interface NormalizedUsageCost {
   source: PricingProvenance;
   modelId?: string;
   usage: NormalizedUsage;
+  /**
+   * `aboveInputTokens` of the long-context tier the request billed under;
+   * set only when one applied.
+   */
+  pricingTier?: number;
 }
 
 function tokenCount(value: number | undefined): number {
@@ -116,6 +142,12 @@ export function normalizeProviderUsage(input: ProviderUsageInput): NormalizedUsa
     : rawInput;
   const reasoningIncludedInOutput = input.reasoningIncludedInOutput ?? input.semantics === 'openai';
   const cacheInclusiveInputTokens = uncachedInputTokens + cacheReadTokens + cacheWriteTokens;
+  const requestPromptTokens =
+    input.requestPromptTokens !== undefined && tokenCount(input.requestPromptTokens) > 0
+      ? tokenCount(input.requestPromptTokens)
+      : input.singleRequest
+        ? cacheInclusiveInputTokens
+        : undefined;
   const billableOutputTokens = outputTokens + (reasoningIncludedInOutput ? 0 : reasoningTokens);
   const totalTokens = cacheInclusiveInputTokens + billableOutputTokens;
   const semantics: UsageSemantics = isOpenAI
@@ -134,6 +166,7 @@ export function normalizeProviderUsage(input: ProviderUsageInput): NormalizedUsa
     cacheInclusiveInputTokens,
     billableOutputTokens,
     totalTokens,
+    ...(requestPromptTokens !== undefined ? { requestPromptTokens } : {}),
     ...(input.model ? { model: input.model } : {}),
     ...(reportedCost(input.reportedCostUsd) !== undefined
       ? { reportedCostUsd: reportedCost(input.reportedCostUsd) }
@@ -165,29 +198,39 @@ export function extractNormalizedUsage(event: SessionEvent): NormalizedUsage | n
     reasoningTokens: usage.reasoning_tokens,
     reasoningIncludedInOutput: providerId === 'codex' || providerId === 'openai',
     reportedCostUsd: usage.reported_cost,
+    // An event's usage is one request's.
+    singleRequest: true,
   });
 }
 
 /**
  * USD for disjoint usage at `pricing`'s rates, or null when the result is not
- * a finite nonnegative number.
+ * a finite nonnegative number. A single request's prompt size
+ * (`requestPromptTokens`) selects a long-context tier, whose rates then apply
+ * to every category; `tier` reports its threshold.
  *
  * OpenAI-style providers fold cache writes into input and the catalogs carry
  * no separate write rate for them (0), so under `openai-inclusive-cache`
  * semantics a write with no positive write rate is billed as ordinary input.
  */
-function usageCostAtRates(usage: NormalizedUsage, pricing: ModelPricing): number | null {
+function usageCostAtRates(
+  usage: NormalizedUsage,
+  pricing: ModelPricing,
+): { costUsd: number | null; tier?: number } {
+  const tier = resolvePricingTier(pricing, usage.requestPromptTokens);
+  const rates = tier ?? pricing;
   const cacheWriteRate =
     usage.provenance?.semantics === 'openai-inclusive-cache' &&
-    !(pricing.cacheWriteCostPerMillion > 0)
-      ? pricing.inputCostPerMillion
-      : pricing.cacheWriteCostPerMillion;
+    !(rates.cacheWriteCostPerMillion > 0)
+      ? rates.inputCostPerMillion
+      : rates.cacheWriteCostPerMillion;
   const costUsd =
-    (usage.uncachedInputTokens / 1_000_000) * pricing.inputCostPerMillion +
-    (usage.cacheReadTokens / 1_000_000) * pricing.cacheReadCostPerMillion +
+    (usage.uncachedInputTokens / 1_000_000) * rates.inputCostPerMillion +
+    (usage.cacheReadTokens / 1_000_000) * rates.cacheReadCostPerMillion +
     (usage.cacheWriteTokens / 1_000_000) * cacheWriteRate +
-    (usage.billableOutputTokens / 1_000_000) * pricing.outputCostPerMillion;
-  return Number.isFinite(costUsd) && costUsd >= 0 ? costUsd : null;
+    (usage.billableOutputTokens / 1_000_000) * rates.outputCostPerMillion;
+  if (!(Number.isFinite(costUsd) && costUsd >= 0)) return { costUsd: null };
+  return tier ? { costUsd, tier: tier.aboveInputTokens } : { costUsd };
 }
 
 /** Price normalized, disjoint usage without double-counting reasoning tokens. */
@@ -202,15 +245,16 @@ export function calculateNormalizedUsageCost(input: NormalizedUsageCostInput): N
   const pricing = explicit ? input.pricing : modelId ? getModelPricing(modelId) : null;
   if (!pricing) return { costUsd: null, source: 'unpriced', modelId, usage };
 
-  const costUsd = usageCostAtRates(usage, pricing);
-  if (costUsd === null) {
+  const priced = usageCostAtRates(usage, pricing);
+  if (priced.costUsd === null) {
     return { costUsd: null, source: 'unpriced', modelId, usage };
   }
   return {
-    costUsd,
+    costUsd: priced.costUsd,
     source: explicit ? 'explicit-pricing' : 'model-catalog',
     modelId,
     usage,
+    ...(priced.tier !== undefined ? { pricingTier: priced.tier } : {}),
   };
 }
 
@@ -245,6 +289,10 @@ export interface RawUsageExtras {
   source?: string;
   model?: string;
   reportedCostUsd?: number | null;
+  /** The usage is one request's; its prompt size selects a long-context tier. */
+  singleRequest?: boolean;
+  /** Explicit prompt size of the request (wins over `singleRequest`). */
+  requestPromptTokens?: number;
 }
 
 /** An own property of a plain object, or undefined; never throws. */
@@ -283,6 +331,10 @@ export function normalizeRawProviderUsage(
     source: extras?.source ?? `${format}-raw-usage`,
     ...(extras?.model ? { model: extras.model } : {}),
     ...(extras?.reportedCostUsd !== undefined ? { reportedCostUsd: extras.reportedCostUsd } : {}),
+    ...(extras?.singleRequest ? { singleRequest: true } : {}),
+    ...(extras?.requestPromptTokens !== undefined
+      ? { requestPromptTokens: extras.requestPromptTokens }
+      : {}),
   };
   switch (format) {
     case 'anthropic': {
@@ -346,6 +398,14 @@ export interface PriceProviderUsageInput {
   pricing?: ModelPricing | null;
   /** A provider-reported cost; when finite and nonnegative it wins. */
   reportedCostUsd?: number | null;
+  /**
+   * `usage` is one request's, so its prompt size selects a long-context
+   * pricing tier. Defaults to true for `anthropic` and `openai` (an API
+   * response's usage) and false for `codex`, whose usage objects include
+   * running totals (`exec --json` `turn.completed`); pass true for a rollout's
+   * `last_token_usage`.
+   */
+  singleRequest?: boolean;
 }
 
 export interface ProviderUsagePrice {
@@ -357,6 +417,8 @@ export interface ProviderUsagePrice {
   pricingMatch?: ModelPricingProvenance;
   modelId?: string;
   normalized: NormalizedUsage;
+  /** `aboveInputTokens` of the long-context tier applied, when one was. */
+  pricingTier?: number;
 }
 
 /**
@@ -373,11 +435,13 @@ export function priceProviderUsage(input: PriceProviderUsageInput): ProviderUsag
   const normalized = normalizeRawProviderUsage(input.provider, input.usage, {
     ...(modelId ? { model: modelId } : {}),
     reportedCostUsd: input.reportedCostUsd,
+    singleRequest: input.singleRequest ?? input.provider !== 'codex',
   });
   const result = (
     costUsd: number | null,
     provenance: PricingProvenance,
     pricingMatch?: ModelPricingProvenance,
+    pricingTier?: number,
   ): ProviderUsagePrice => ({
     costUsd,
     source: costSourceFromPricingProvenance(provenance),
@@ -385,19 +449,22 @@ export function priceProviderUsage(input: PriceProviderUsageInput): ProviderUsag
     ...(pricingMatch ? { pricingMatch } : {}),
     ...(modelId ? { modelId } : {}),
     normalized,
+    ...(pricingTier !== undefined ? { pricingTier } : {}),
   });
 
   if (normalized.reportedCostUsd !== undefined) {
     return result(normalized.reportedCostUsd, 'provider-reported');
   }
   if (input.pricing !== undefined) {
-    const costUsd = input.pricing ? usageCostAtRates(normalized, input.pricing) : null;
-    return costUsd === null ? result(null, 'unpriced') : result(costUsd, 'explicit-pricing');
+    const priced = input.pricing ? usageCostAtRates(normalized, input.pricing) : null;
+    return !priced || priced.costUsd === null
+      ? result(null, 'unpriced')
+      : result(priced.costUsd, 'explicit-pricing', undefined, priced.tier);
   }
   if (!modelId) return result(null, 'unpriced');
   const resolved = resolveModelPricing(modelId);
-  const costUsd = resolved.pricing ? usageCostAtRates(normalized, resolved.pricing) : null;
-  return costUsd === null
+  const priced = resolved.pricing ? usageCostAtRates(normalized, resolved.pricing) : null;
+  return !priced || priced.costUsd === null
     ? result(null, 'unpriced', resolved.provenance)
-    : result(costUsd, 'model-catalog', resolved.provenance);
+    : result(priced.costUsd, 'model-catalog', resolved.provenance, priced.tier);
 }

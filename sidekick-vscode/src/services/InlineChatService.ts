@@ -17,6 +17,7 @@ import {
   getInlineChatUserPrompt,
   parseInlineChatResponse,
 } from '../utils/prompts';
+import { featureEffort } from '../types/inferenceProvider';
 
 /**
  * InlineChatService - Handles inline chat AI requests.
@@ -73,6 +74,7 @@ export class InlineChatService {
       task: (signal: AbortSignal) =>
         this.authService.complete(fullPrompt, {
           model,
+          effort: featureEffort('inlineChatModel'),
           maxTokens: 2000,
           signal,
         }),

@@ -802,14 +802,16 @@ export class ConversationViewProvider implements vscode.Disposable {
    */
   private getShortModelName(model: string): string {
     if (model.includes('fable')) return 'Fable';
+    if (model.includes('mythos')) return 'Mythos';
     if (model.includes('opus')) return 'Opus';
     if (model.includes('sonnet')) return 'Sonnet';
     if (model.includes('haiku')) return 'Haiku';
-    // GPT tiers share a version (gpt-6-sol, gpt-6-terra): keep the tier.
+    // GPT tiers and specialties share a version (gpt-6-sol, gpt-6-cyber,
+    // gpt-6-astra-law): keep both.
     const id = canonicalModelId(model);
     const base = id.split('-').slice(0, 2).join('-');
-    const variant = parseModelId(id)?.variant;
-    return variant ? `${base}-${variant}` : base;
+    const parsed = parseModelId(id);
+    return [base, parsed?.variant, parsed?.specialty].filter(Boolean).join('-');
   }
 
   dispose(): void {

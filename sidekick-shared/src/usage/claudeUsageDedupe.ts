@@ -55,6 +55,8 @@ export function normalizeClaudeUsage(event: SessionEvent): SessionEvent {
         reasoningTokens: usage.reasoning_tokens,
         reasoningIncludedInOutput: false,
         reportedCostUsd: usage.reported_cost,
+        // One line's usage is one API response's.
+        singleRequest: true,
       }),
     },
     providerMetadata: {
@@ -164,13 +166,14 @@ export class ClaudeUsageDeduper {
       output: Math.max(0, current.output - previous.output),
       reasoning: Math.max(0, current.reasoning - previous.reasoning),
     };
-    this.remember(id, {
+    const counted: Buckets = {
       input: previous.input + delta.input,
       cacheRead: previous.cacheRead + delta.cacheRead,
       cacheWrite: previous.cacheWrite + delta.cacheWrite,
       output: previous.output + delta.output,
       reasoning: previous.reasoning + delta.reasoning,
-    });
+    };
+    this.remember(id, counted);
 
     if (
       !delta.input &&
@@ -195,6 +198,9 @@ export class ClaudeUsageDeduper {
       cacheInclusiveInputTokens,
       billableOutputTokens,
       totalTokens: cacheInclusiveInputTokens + billableOutputTokens,
+      // The top-up bills under the long-context tier its whole call reached,
+      // so it carries the call's full prompt size, not the delta's.
+      requestPromptTokens: counted.input + counted.cacheRead + counted.cacheWrite,
       ...(usage.model ? { model: usage.model } : {}),
       provenance: usage.provenance,
     };

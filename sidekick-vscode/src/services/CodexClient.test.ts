@@ -263,3 +263,37 @@ describe('CodexClient.isAvailable', () => {
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 });
+
+describe('CodexClient reasoning effort', () => {
+  beforeEach(() => mockSpawn.mockReset());
+
+  async function argsFor(options?: Parameters<CodexClient['complete']>[1]): Promise<string[]> {
+    const child = makeChild();
+    mockSpawn.mockReturnValue(child);
+    const pending = new CodexClient().complete('prompt', options);
+    child.stdout.write(
+      JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'ok' } }) +
+        '\n',
+    );
+    child.stdout.write(JSON.stringify({ type: 'turn.completed' }) + '\n');
+    child.emit('close', 0);
+    await pending;
+    return mockSpawn.mock.calls[0][1] as string[];
+  }
+
+  it('passes the feature effort as a config override, low as the floor', async () => {
+    const minimal = await argsFor({ model: 'gpt-6.1-sol', effort: 'minimal' });
+    expect(minimal).toEqual(expect.arrayContaining(['--model', 'gpt-6.1-sol']));
+    expect(minimal.slice(minimal.indexOf('-c'), minimal.indexOf('-c') + 2)).toEqual([
+      '-c',
+      'model_reasoning_effort="low"',
+    ]);
+    mockSpawn.mockReset();
+    const medium = await argsFor({ effort: 'medium' });
+    expect(medium).toContain('model_reasoning_effort="medium"');
+  });
+
+  it('leaves the Codex default alone without an effort', async () => {
+    expect(await argsFor()).not.toContain('-c');
+  });
+});

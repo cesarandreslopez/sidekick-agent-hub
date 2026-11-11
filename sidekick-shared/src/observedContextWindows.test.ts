@@ -60,7 +60,7 @@ describe('observedContextWindows', () => {
 
     // Survives a fresh process.
     _clearObservedContextWindows();
-    expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(1_050_000);
+    expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(922_000);
     const loaded = await loadObservedContextWindows({ cacheDir });
     expect(loaded['gpt-5.6-sol']).toBe(258_400);
     expect(getModelContextWindowSize('gpt-5.6-sol')).toBe(258_400);

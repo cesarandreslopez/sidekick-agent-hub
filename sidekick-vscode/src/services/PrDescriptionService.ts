@@ -16,6 +16,7 @@ import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
 import { truncateDiffIntelligently } from '../utils/tokenEstimator';
 import { getPrDescriptionPrompt, cleanPrDescription } from '../utils/prompts';
+import { featureEffort } from '../types/inferenceProvider';
 
 /**
  * Result from PR description generation.
@@ -139,6 +140,7 @@ export class PrDescriptionService implements vscode.Disposable {
         task: (signal: AbortSignal) =>
           this.authService.complete(prompt, {
             model,
+            effort: featureEffort('prDescriptionModel'),
             maxTokens: 1000,
             signal,
           }),

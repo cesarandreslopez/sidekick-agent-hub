@@ -44,6 +44,11 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
       : undefined;
   const cost = usage?.reported_cost;
   const usageKind = usage ? event.message?.usageKind : undefined;
+  // The request's prompt size, which selects a long-context price tier.
+  const requestPromptTokens = usage
+    ? event.message?.normalizedUsage?.requestPromptTokens
+    : undefined;
+  const promptSize = requestPromptTokens !== undefined ? { requestPromptTokens } : {};
   const model = event.message?.model;
   const rateLimits = event.rateLimits;
 
@@ -113,6 +118,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
           tokens,
           cacheTokens,
           ...(usageKind ? { usageKind } : {}),
+          ...promptSize,
           cost,
           model,
           raw: event,
@@ -123,6 +129,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
         last.tokens = tokens;
         last.cacheTokens = cacheTokens;
         if (usageKind) last.usageKind = usageKind;
+        if (requestPromptTokens !== undefined) last.requestPromptTokens = requestPromptTokens;
         last.cost = cost;
       }
       break;
@@ -238,6 +245,7 @@ export function toFollowEvents(event: SessionEvent, providerId: ProviderId): Fol
         tokens,
         cacheTokens,
         ...(usageKind ? { usageKind } : {}),
+        ...promptSize,
         cost,
         model,
         rateLimits,

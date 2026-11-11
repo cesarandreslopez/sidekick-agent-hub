@@ -34,12 +34,33 @@ export type { FormatCostOptions } from './formatting';
 
 // ── Types ──
 
+/**
+ * Long-context rates. Applies to a whole request when its prompt (uncached
+ * input plus cache reads plus cache writes) is strictly greater than
+ * `aboveInputTokens`; every token category of that request then bills at
+ * these rates. All four rates are always present: a rate the vendor leaves
+ * unchanged above the threshold is carried over from the rates below it.
+ */
+export interface ModelPricingTier {
+  aboveInputTokens: number;
+  inputCostPerMillion: number;
+  outputCostPerMillion: number;
+  cacheWriteCostPerMillion: number;
+  cacheReadCostPerMillion: number;
+}
+
 /** Pricing information for a model. All costs are per million tokens in USD. */
 export interface ModelPricing {
   inputCostPerMillion: number;
   outputCostPerMillion: number;
   cacheWriteCostPerMillion: number;
   cacheReadCostPerMillion: number;
+  /**
+   * Long-context tiers, ascending by `aboveInputTokens`. Only a single
+   * request's prompt size selects one (`resolvePricingTier`); totals that
+   * merge several requests always bill at the base rates.
+   */
+  tiers?: readonly ModelPricingTier[];
 }
 
 /**
@@ -177,6 +198,12 @@ export interface ParsedModelId {
    * Absent for every other id.
    */
   variant?: string;
+  /**
+   * GPT specialty model (`cyber`, `rosalind`, `law`), e.g. `gpt-6-cyber` →
+   * `cyber`, `gpt-6-astra-law` → `law` (with `variant: 'astra'`). Absent for
+   * every other id.
+   */
+  specialty?: string;
 }
 
 /** Comprehensive model metadata. */
@@ -219,6 +246,150 @@ export interface ModelDisplayInfo {
   rank: number;
 }
 
+// ── Long-context tiers ──
+
+// A request whose prompt is strictly larger than `aboveInputTokens` bills every
+// token category at the tier's rates (LiteLLM's `*_above_<N>k_tokens` keys,
+// where `272k` is 272,000). A rate the vendor leaves unchanged carries over
+// from below. Plain object literals, never helper calls, so a bundle that
+// never prices anything drops them along with the table. The 1-hour cache
+// write rates are not modeled.
+const HAIKU_5_5_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 100_000,
+    inputCostPerMillion: 0.5,
+    outputCostPerMillion: 2.5,
+    cacheWriteCostPerMillion: 0.625,
+    cacheReadCostPerMillion: 0.05,
+  },
+];
+const GPT_6_ASTRA_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 20,
+    outputCostPerMillion: 75,
+    cacheWriteCostPerMillion: 25,
+    cacheReadCostPerMillion: 2,
+  },
+];
+const GPT_6_SOL_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 4,
+    outputCostPerMillion: 15,
+    cacheWriteCostPerMillion: 5,
+    cacheReadCostPerMillion: 0.4,
+  },
+];
+const GPT_6_LUNA_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 0.2,
+    outputCostPerMillion: 0.75,
+    cacheWriteCostPerMillion: 0.25,
+    cacheReadCostPerMillion: 0.02,
+  },
+];
+const GPT_6_1_SOL_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 4,
+    outputCostPerMillion: 15,
+    cacheWriteCostPerMillion: 5,
+    cacheReadCostPerMillion: 0.2,
+  },
+];
+const GPT_6_1_TERRA_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 7.5,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.1,
+  },
+];
+const GPT_6_CYBER_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 40,
+    outputCostPerMillion: 150,
+    cacheWriteCostPerMillion: 25,
+    cacheReadCostPerMillion: 4,
+  },
+];
+const GPT_6_ROSALIND_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 30,
+    outputCostPerMillion: 112.5,
+    cacheWriteCostPerMillion: 37.5,
+    cacheReadCostPerMillion: 3,
+  },
+];
+const GPT_5_6_SOL_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 30,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.8,
+  },
+];
+const GPT_5_6_TERRA_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 4,
+    outputCostPerMillion: 18,
+    cacheWriteCostPerMillion: 5,
+    cacheReadCostPerMillion: 0.4,
+  },
+];
+const GPT_5_6_LUNA_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 0.4,
+    outputCostPerMillion: 1.8,
+    cacheWriteCostPerMillion: 0.5,
+    cacheReadCostPerMillion: 0.04,
+  },
+];
+const GPT_5_6_CYBER_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 25,
+    outputCostPerMillion: 112.5,
+    cacheWriteCostPerMillion: 31.25,
+    cacheReadCostPerMillion: 2.5,
+  },
+];
+const GPT_5_5_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 45,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 1,
+  },
+];
+const GPT_5_PRO_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 60,
+    outputCostPerMillion: 270,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 3,
+  },
+];
+const GPT_5_4_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 5,
+    outputCostPerMillion: 22.5,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.5,
+  },
+];
+
 // ── Static Pricing Table ──
 
 /**
@@ -229,7 +400,7 @@ export interface ModelDisplayInfo {
  * Sources:
  *   - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
  *   - OpenAI: https://developers.openai.com/api/docs/models
- * Current Anthropic and GPT-5.6/6 rates verified: 2026-09-22.
+ * Current Anthropic and GPT-5.6/6 rates verified: 2026-11-11.
  * Runtime LiteLLM hydration refreshes this offline baseline.
  *
  * Anthropic keys appear in both dashed (`claude-opus-4-8`, the real model-ID
@@ -237,35 +408,208 @@ export interface ModelDisplayInfo {
  * prefix matching cannot bridge the two, so both are needed.
  */
 const PRICING_TABLE: Record<string, ModelPricing> = {
-  // Current coding models verified 2026-10-30. Standard short-context rates;
-  // DeepSeek uses peak rates. Gemini promotions end 2026-11-30 (Argon) and
-  // 2026-12-31 (Flash). Haiku 5.5 costs more above 100K prompt tokens.
+  // Current coding models verified 2026-11-11 (Fable 5.2, Mythos, GPT-6
+  // specialties) and 2026-10-30. DeepSeek uses peak rates. Gemini promotions
+  // end 2026-11-30 (Argon) and 2026-12-31 (Flash). Long-context rates (GPT
+  // above 272K, Haiku 5.5 above 100K) are in `tiers`.
   // Sources and estimation limits: docs/configuration/model-resolution.md.
   // Explicit direct-provider keys support offline OpenCode model IDs without
   // stripping arbitrary deployment prefixes or changing alias resolution.
+  //
+  // Fable 5.2 and Mythos 5.2 undercut 5.1 and cache-read at $0.20; without
+  // their own keys every spelling would prefix-match `claude-fable-5` /
+  // `claude-mythos-5` and read $10/$50 with $1.00 cache reads.
+  'claude-fable-5-2': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'anthropic/claude-fable-5-2': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'claude-fable-5.2': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'anthropic/claude-fable-5.2': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.2,
+  },
+  // Mythos models are the Fable models for verified organizations, at the
+  // same per-token rates.
+  'claude-mythos-5-2': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'anthropic/claude-mythos-5-2': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'claude-mythos-5.2': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'anthropic/claude-mythos-5.2': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'claude-mythos-5-1': {
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 50,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 0.25,
+  },
+  'claude-mythos-5.1': {
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 50,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 0.25,
+  },
+  'claude-mythos-5': {
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 50,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 1,
+  },
+  'claude-mythos-preview': {
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 50,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 1,
+  },
+  // OpenCode's direct-provider spelling of the Opus 5.5 default.
+  'anthropic/claude-opus-5-5': {
+    inputCostPerMillion: 4,
+    outputCostPerMillion: 20,
+    cacheWriteCostPerMillion: 5,
+    cacheReadCostPerMillion: 0.2,
+  },
+  'anthropic/claude-opus-5.5': {
+    inputCostPerMillion: 4,
+    outputCostPerMillion: 20,
+    cacheWriteCostPerMillion: 5,
+    cacheReadCostPerMillion: 0.2,
+  },
+  // GPT-6 specialty models bill above the tier they are named after, so each
+  // needs its own key. Astra Law is flat (no long-context rate) and has no
+  // cache-write rate; without its key it would inherit Astra's.
+  'gpt-6-cyber': {
+    inputCostPerMillion: 20,
+    outputCostPerMillion: 100,
+    cacheWriteCostPerMillion: 25,
+    cacheReadCostPerMillion: 2,
+    tiers: GPT_6_CYBER_TIERS,
+  },
+  'openai/gpt-6-cyber': {
+    inputCostPerMillion: 20,
+    outputCostPerMillion: 100,
+    cacheWriteCostPerMillion: 25,
+    cacheReadCostPerMillion: 2,
+    tiers: GPT_6_CYBER_TIERS,
+  },
+  'gpt-6-rosalind': {
+    inputCostPerMillion: 15,
+    outputCostPerMillion: 75,
+    cacheWriteCostPerMillion: 18.75,
+    cacheReadCostPerMillion: 1.5,
+    tiers: GPT_6_ROSALIND_TIERS,
+  },
+  'openai/gpt-6-rosalind': {
+    inputCostPerMillion: 15,
+    outputCostPerMillion: 75,
+    cacheWriteCostPerMillion: 18.75,
+    cacheReadCostPerMillion: 1.5,
+    tiers: GPT_6_ROSALIND_TIERS,
+  },
+  'gpt-6-astra-law': {
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 50,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 1,
+  },
+  'openai/gpt-6-astra-law': {
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 50,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 1,
+  },
+  'openai/gpt-6-astra': {
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 50,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 1,
+    tiers: GPT_6_ASTRA_TIERS,
+  },
+  'openai/gpt-6-sol': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.2,
+    tiers: GPT_6_SOL_TIERS,
+  },
+  'openai/gpt-6-luna': {
+    inputCostPerMillion: 0.1,
+    outputCostPerMillion: 0.5,
+    cacheWriteCostPerMillion: 0.125,
+    cacheReadCostPerMillion: 0.01,
+    tiers: GPT_6_LUNA_TIERS,
+  },
+  'gpt-5.6-cyber': {
+    inputCostPerMillion: 12.5,
+    outputCostPerMillion: 75,
+    cacheWriteCostPerMillion: 15.625,
+    cacheReadCostPerMillion: 1.25,
+    tiers: GPT_5_6_CYBER_TIERS,
+  },
+  'gpt-5.5-cyber': {
+    inputCostPerMillion: 12.5,
+    outputCostPerMillion: 75,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 1.25,
+  },
   'gpt-6.1-sol': {
     inputCostPerMillion: 2,
     outputCostPerMillion: 10,
     cacheWriteCostPerMillion: 2.5,
     cacheReadCostPerMillion: 0.1,
+    tiers: GPT_6_1_SOL_TIERS,
   },
   'openai/gpt-6.1-sol': {
     inputCostPerMillion: 2,
     outputCostPerMillion: 10,
     cacheWriteCostPerMillion: 2.5,
     cacheReadCostPerMillion: 0.1,
+    tiers: GPT_6_1_SOL_TIERS,
   },
   'gpt-6.1-terra': {
     inputCostPerMillion: 1,
     outputCostPerMillion: 5,
     cacheWriteCostPerMillion: 1.25,
     cacheReadCostPerMillion: 0.05,
+    tiers: GPT_6_1_TERRA_TIERS,
   },
   'openai/gpt-6.1-terra': {
     inputCostPerMillion: 1,
     outputCostPerMillion: 5,
     cacheWriteCostPerMillion: 1.25,
     cacheReadCostPerMillion: 0.05,
+    tiers: GPT_6_1_TERRA_TIERS,
   },
   'claude-sonnet-5-5': {
     inputCostPerMillion: 2,
@@ -296,24 +640,28 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 0.5,
     cacheWriteCostPerMillion: 0.125,
     cacheReadCostPerMillion: 0.01,
+    tiers: HAIKU_5_5_TIERS,
   },
   'anthropic/claude-haiku-5-5': {
     inputCostPerMillion: 0.1,
     outputCostPerMillion: 0.5,
     cacheWriteCostPerMillion: 0.125,
     cacheReadCostPerMillion: 0.01,
+    tiers: HAIKU_5_5_TIERS,
   },
   'claude-haiku-5.5': {
     inputCostPerMillion: 0.1,
     outputCostPerMillion: 0.5,
     cacheWriteCostPerMillion: 0.125,
     cacheReadCostPerMillion: 0.01,
+    tiers: HAIKU_5_5_TIERS,
   },
   'anthropic/claude-haiku-5.5': {
     inputCostPerMillion: 0.1,
     outputCostPerMillion: 0.5,
     cacheWriteCostPerMillion: 0.125,
     cacheReadCostPerMillion: 0.01,
+    tiers: HAIKU_5_5_TIERS,
   },
   'gemini-4-argon': {
     inputCostPerMillion: 2,
@@ -637,36 +985,42 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 50.0,
     cacheWriteCostPerMillion: 12.5,
     cacheReadCostPerMillion: 1.0,
+    tiers: GPT_6_ASTRA_TIERS,
   },
   'gpt-6-sol': {
     inputCostPerMillion: 2.0,
     outputCostPerMillion: 10.0,
     cacheWriteCostPerMillion: 2.5,
     cacheReadCostPerMillion: 0.2,
+    tiers: GPT_6_SOL_TIERS,
   },
   'gpt-6-luna': {
     inputCostPerMillion: 0.1,
     outputCostPerMillion: 0.5,
     cacheWriteCostPerMillion: 0.125,
     cacheReadCostPerMillion: 0.01,
+    tiers: GPT_6_LUNA_TIERS,
   },
   'gpt-5.6-sol': {
     inputCostPerMillion: 4.0,
     outputCostPerMillion: 20.0,
     cacheWriteCostPerMillion: 5.0,
     cacheReadCostPerMillion: 0.4,
+    tiers: GPT_5_6_SOL_TIERS,
   },
   'gpt-5.6-terra': {
     inputCostPerMillion: 2.0,
     outputCostPerMillion: 12.0,
     cacheWriteCostPerMillion: 2.5,
     cacheReadCostPerMillion: 0.2,
+    tiers: GPT_5_6_TERRA_TIERS,
   },
   'gpt-5.6-luna': {
     inputCostPerMillion: 0.2,
     outputCostPerMillion: 1.2,
     cacheWriteCostPerMillion: 0.25,
     cacheReadCostPerMillion: 0.02,
+    tiers: GPT_5_6_LUNA_TIERS,
   },
   // The GPT-5.6 alias routes to Sol.
   'gpt-5.6': {
@@ -674,18 +1028,21 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 20.0,
     cacheWriteCostPerMillion: 5.0,
     cacheReadCostPerMillion: 0.4,
+    tiers: GPT_5_6_SOL_TIERS,
   },
   'gpt-5.5-pro': {
     inputCostPerMillion: 30.0,
     outputCostPerMillion: 180.0,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 3.0,
+    tiers: GPT_5_PRO_TIERS,
   },
   'gpt-5.5': {
     inputCostPerMillion: 5.0,
     outputCostPerMillion: 30.0,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 0.5,
+    tiers: GPT_5_5_TIERS,
   },
   'gpt-5.4-mini': {
     inputCostPerMillion: 0.75,
@@ -704,12 +1061,14 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 180.0,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 3.0,
+    tiers: GPT_5_PRO_TIERS,
   },
   'gpt-5.4': {
     inputCostPerMillion: 2.5,
     outputCostPerMillion: 15.0,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 0.25,
+    tiers: GPT_5_4_TIERS,
   },
   'gpt-5.3-codex': {
     inputCostPerMillion: 1.75,
@@ -739,6 +1098,8 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheReadCostPerMillion: 0,
   },
   // Also answers `gpt-5.2-codex` and `gpt-5.2-chat*`, which bill at this rate.
+  // (Likewise `gpt-5` answers `gpt-5-codex`, `gpt-5.1`, `gpt-5.1-codex` and
+  // `gpt-5.1-codex-max`, all $1.25/$10 with $0.125 cache reads.)
   'gpt-5.2': {
     inputCostPerMillion: 1.75,
     outputCostPerMillion: 14.0,
@@ -796,6 +1157,12 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 80.0,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 0,
+  },
+  'o4-mini': {
+    inputCostPerMillion: 1.1,
+    outputCostPerMillion: 4.4,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 0.275,
   },
   o3: {
     inputCostPerMillion: 2.0,
@@ -862,7 +1229,7 @@ export function _setPricingOverrides(
   basis?: PricingOverridesBasis,
 ): void {
   overrideTable = Object.fromEntries(
-    Object.entries(overrides).map(([key, value]) => [key.trim().toLowerCase(), { ...value }]),
+    Object.entries(overrides).map(([key, value]) => [key.trim().toLowerCase(), copyPricing(value)]),
   );
   overrideSortedKeys = Object.keys(overrideTable).sort((a, b) => b.length - a.length);
   overrideBasis = basis ? { ...basis } : null;
@@ -908,7 +1275,7 @@ interface RegisteredPricingEntry {
 // A Map (created on first registration) so keys such as `__proto__` stay data.
 let registeredTable: Map<string, RegisteredPricingEntry> | null = null;
 
-function isValidModelPricing(value: unknown): value is ModelPricing {
+function hasValidRates(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
   const pricing = value as Record<string, unknown>;
   return [
@@ -917,6 +1284,48 @@ function isValidModelPricing(value: unknown): value is ModelPricing {
     pricing.cacheWriteCostPerMillion,
     pricing.cacheReadCostPerMillion,
   ].every((item) => typeof item === 'number' && Number.isFinite(item) && item >= 0);
+}
+
+/**
+ * Internal: true for a valid `tiers` value — absent, or an array of tiers that each have
+ * four finite nonnegative rates and a finite positive `aboveInputTokens`.
+ */
+export function _isValidPricingTiers(
+  value: unknown,
+): value is readonly ModelPricingTier[] | undefined {
+  if (value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  return value.every((tier) => {
+    if (!hasValidRates(tier)) return false;
+    const threshold = (tier as Record<string, unknown>).aboveInputTokens;
+    return typeof threshold === 'number' && Number.isFinite(threshold) && threshold > 0;
+  });
+}
+
+function isValidModelPricing(value: unknown): value is ModelPricing {
+  return hasValidRates(value) && _isValidPricingTiers((value as ModelPricing).tiers);
+}
+
+/** A detached copy: its tiers sorted ascending and each tier its own object. */
+function copyPricing(value: ModelPricing): ModelPricing {
+  const copy: ModelPricing = {
+    inputCostPerMillion: value.inputCostPerMillion,
+    outputCostPerMillion: value.outputCostPerMillion,
+    cacheWriteCostPerMillion: value.cacheWriteCostPerMillion,
+    cacheReadCostPerMillion: value.cacheReadCostPerMillion,
+  };
+  if (value.tiers && value.tiers.length > 0) {
+    copy.tiers = value.tiers
+      .map((tier) => ({
+        aboveInputTokens: tier.aboveInputTokens,
+        inputCostPerMillion: tier.inputCostPerMillion,
+        outputCostPerMillion: tier.outputCostPerMillion,
+        cacheWriteCostPerMillion: tier.cacheWriteCostPerMillion,
+        cacheReadCostPerMillion: tier.cacheReadCostPerMillion,
+      }))
+      .sort((a, b) => a.aboveInputTokens - b.aboveInputTokens);
+  }
+  return copy;
 }
 
 /**
@@ -956,15 +1365,7 @@ export function registerModelPricing(
       .toLowerCase();
     if (!id || !isValidModelPricing(value)) continue;
     registeredTable ??= new Map();
-    registeredTable.set(id, {
-      pricing: {
-        inputCostPerMillion: value.inputCostPerMillion,
-        outputCostPerMillion: value.outputCostPerMillion,
-        cacheWriteCostPerMillion: value.cacheWriteCostPerMillion,
-        cacheReadCostPerMillion: value.cacheReadCostPerMillion,
-      },
-      onlyIfMissing,
-    });
+    registeredTable.set(id, { pricing: copyPricing(value), onlyIfMissing });
     changed = true;
   }
   if (changed) invalidatePricingDigest();
@@ -1187,6 +1588,7 @@ const MOVING_MODEL_ALIASES: Record<string, true> = {
   opus: true,
   haiku: true,
   fable: true,
+  mythos: true,
   opusplan: true,
 };
 
@@ -1198,7 +1600,7 @@ const LATEST_TAG_RE = /^.+[-:@]latest$/;
  * True for model names an agent CLI or provider resolves to a different
  * concrete model over time, so a recorded value names a moving target rather
  * than a model: the bare aliases `default`, `auto`, `latest`, `sonnet`,
- * `opus`, `haiku`, `fable` and Claude Code's `opusplan` (exact matches only),
+ * `opus`, `haiku`, `fable`, `mythos` and Claude Code's `opusplan` (exact matches only),
  * and any id ending in a `-latest`, `:latest` or `@latest` tag.
  * Case-insensitive, trimmed, and `[1m]`-tolerant (`sonnet[1m]`). Other dated
  * or versioned ids are never moving aliases.
@@ -1224,7 +1626,10 @@ export function isMovingModelAlias(id: string): boolean {
 // (`claude-sonnet-4.5-20241022`). Accept both, then normalize to a dot.
 // The `{1,2}` bound plus the trailing `(?![0-9])` keep the 8-digit release
 // date from being mistaken for a minor version in `claude-opus-4-20250514`.
-const CLAUDE_RE = /^claude-(haiku|sonnet|opus|fable)-([0-9]+(?:[-.][0-9]{1,2})?)(?![0-9])/i;
+const CLAUDE_RE = /^claude-(haiku|sonnet|opus|fable|mythos)-([0-9]+(?:[-.][0-9]{1,2})?)(?![0-9])/i;
+// Unversioned previews (`claude-mythos-preview`): version `preview`, which has
+// no numeric segments and so sorts after every numbered release of its family.
+const CLAUDE_PREVIEW_RE = /^claude-(mythos)-preview(?![a-z0-9])/i;
 const LEGACY_CLAUDE_RE = /^claude-([0-9]+(?:[-.][0-9]+)?)-(haiku|sonnet|opus)(?:-|$)/i;
 const GPT_RE = /^gpt-([0-9][0-9.A-Za-z-]*)/i;
 const O_SERIES_RE = /^o([0-9]+)(-mini|-pro)?/i;
@@ -1237,6 +1642,11 @@ const GPT_TIER_VARIANT_RANK: Record<string, number> = {
   terra: 2,
   luna: 3,
 };
+// GPT specialty models, optionally after a tier (`6-cyber`, `6-astra-law`).
+const GPT_SPECIALTY_RE =
+  /^[0-9]+(?:\.[0-9]+)*(?:-(?:astra|sol|terra|luna))?-(cyber|rosalind|law)(?=-|$)/;
+// A version that is digits only, optionally followed by a release date.
+const GPT_BASE_VERSION_RE = /^[0-9]+(?:\.[0-9]+)*(?:-[0-9]{4}-[0-9]{2}-[0-9]{2}|-[0-9]{8})?$/;
 
 /**
  * Parses a model ID into {provider, family, version}.
@@ -1260,6 +1670,11 @@ export function parseModelId(modelId: string): ParsedModelId | null {
     };
   }
 
+  const preview = normalized.match(CLAUDE_PREVIEW_RE);
+  if (preview) {
+    return { provider: 'anthropic', family: preview[1].toLowerCase(), version: 'preview' };
+  }
+
   const legacyClaude = normalized.match(LEGACY_CLAUDE_RE);
   if (legacyClaude) {
     return {
@@ -1273,11 +1688,16 @@ export function parseModelId(modelId: string): ParsedModelId | null {
   if (gpt) {
     const version = gpt[1];
     const variant = GPT_TIER_VARIANT_RE.exec(version)?.[1];
-    // The key is only present when set, so untiered results stay deep-equal
+    const specialty = GPT_SPECIALTY_RE.exec(version)?.[1];
+    // The keys are only present when set, so plain results stay deep-equal
     // to what earlier releases returned.
-    return variant
-      ? { provider: 'openai', family: 'gpt', version, variant }
-      : { provider: 'openai', family: 'gpt', version };
+    return {
+      provider: 'openai',
+      family: 'gpt',
+      version,
+      ...(variant ? { variant } : {}),
+      ...(specialty ? { specialty } : {}),
+    };
   }
 
   const oSeries = normalized.match(O_SERIES_RE);
@@ -1329,7 +1749,7 @@ export function resolveModelPricing(
   const registeredResult = (match: { id: string; entry: RegisteredPricingEntry }) => ({
     modelId,
     canonicalModelId: aliasId,
-    pricing: { ...match.entry.pricing },
+    pricing: copyPricing(match.entry.pricing),
     provenance: {
       source: 'registered' as const,
       match: 'exact' as const,
@@ -1466,6 +1886,33 @@ export function getModelInfo(modelId: string): ModelInfo {
   };
 }
 
+// ── Long-Context Tiers ──
+
+/**
+ * The long-context tier one request bills under: the tier with the highest
+ * `aboveInputTokens` strictly below `promptTokens`, or null when the pricing
+ * has no tiers, the prompt size is unknown, or no threshold is exceeded.
+ *
+ * `promptTokens` is the request's whole prompt: uncached input plus cache
+ * reads plus cache writes (`NormalizedUsage.cacheInclusiveInputTokens` of a
+ * single request). Never pass a total that merges several requests.
+ */
+export function resolvePricingTier(
+  pricing: ModelPricing | null | undefined,
+  promptTokens: number | undefined,
+): ModelPricingTier | null {
+  const tiers = pricing?.tiers;
+  if (!tiers || tiers.length === 0) return null;
+  if (typeof promptTokens !== 'number' || !Number.isFinite(promptTokens)) return null;
+  let selected: ModelPricingTier | null = null;
+  for (const tier of tiers) {
+    if (promptTokens > tier.aboveInputTokens) {
+      if (!selected || tier.aboveInputTokens > selected.aboveInputTokens) selected = tier;
+    }
+  }
+  return selected;
+}
+
 // ── Cost Calculation ──
 
 /**
@@ -1596,9 +2043,12 @@ export function shortModelName(modelId: string): string {
 }
 
 // Display groups, in menu order. Each group owns a disjoint band of ranks, so
-// a provider's versions never interleave with another provider's.
+// a provider's versions never interleave with another provider's. Mythos is
+// Fable for verified organizations and shares its band: equal versions
+// tie-break by id, so Fable 5.2 lists just before Mythos 5.2.
 const CLAUDE_FAMILY_GROUP: Record<string, number> = {
   fable: 0,
+  mythos: 0,
   opus: 1,
   sonnet: 2,
   haiku: 3,
@@ -1654,8 +2104,8 @@ function displayGroup(parsed: ParsedModelId | null, normalized: string): number 
 /**
  * Returns stable display metadata and a rank suitable for provider model menus.
  *
- * Lower ranks sort first. Groups, in order: Fable, Opus, Sonnet, Haiku, other
- * Claude, Codex, GPT, o-series, Gemini, unknown; within a group, newer
+ * Lower ranks sort first. Groups, in order: Fable and Mythos, Opus, Sonnet,
+ * Haiku, other Claude, Codex, GPT, o-series, Gemini, unknown; within a group, newer
  * versions first, comparing version segments numerically (`opus-4-10` above
  * `opus-4-5`, `gpt-5.10` above `gpt-5.9`). Every rank is a finite integer.
  */
@@ -1677,26 +2127,25 @@ export function getModelDisplayInfo(modelId: string): ModelDisplayInfo {
 }
 
 /**
- * Order two GPT tier variants of the same family and numeric version
- * (astra > sol > terra > luna); 0 for every other pair.
+ * Where a GPT id sorts among the ids that share its numeric version: the
+ * plain model first (`gpt-6`, `gpt-6-2026-01-01`), then the tiers astra, sol,
+ * terra, luna (a tiered specialty such as `gpt-6-astra-law` sorts with its
+ * tier), then any other suffix (`-mini`, `-pro`), then untiered specialties
+ * (`gpt-6-cyber`). Every other id is 0. A function of one id, so the order
+ * it induces is transitive whatever ids are mixed.
  */
-function compareTierVariants(a: string, b: string): number {
-  const left = parseModelId(a);
-  const right = parseModelId(b);
-  if (!left?.variant || !right?.variant) return 0;
-  if (left.provider !== right.provider || left.family !== right.family) return 0;
-  if (compareSegments(versionSegments(left.version), versionSegments(right.version)) !== 0) {
-    return 0;
-  }
-  return (
-    (GPT_TIER_VARIANT_RANK[left.variant] ?? Number.MAX_SAFE_INTEGER) -
-    (GPT_TIER_VARIANT_RANK[right.variant] ?? Number.MAX_SAFE_INTEGER)
-  );
+function gptSuffixKey(parsed: ParsedModelId | null): number {
+  if (parsed?.provider !== 'openai' || parsed.family !== 'gpt') return 0;
+  if (GPT_BASE_VERSION_RE.test(parsed.version)) return -1;
+  if (parsed.variant) return GPT_TIER_VARIANT_RANK[parsed.variant] ?? 4;
+  if (parsed.specialty) return 5;
+  return 4;
 }
 
 /**
  * Compare two model IDs using shared provider/family ranking rules. Within a
- * family and numeric version, GPT tiers rank astra > sol > terra > luna.
+ * family and numeric version, the plain GPT model ranks first, then the GPT
+ * tiers astra > sol > terra > luna, other suffixes, and specialty models.
  */
 export function compareModelIds(a: string, b: string): number {
   const left = getModelDisplayInfo(a);
@@ -1708,8 +2157,8 @@ export function compareModelIds(a: string, b: string): number {
     versionSegments(right.version),
   );
   if (segmentOrder !== 0) return segmentOrder;
-  const variantOrder = compareTierVariants(a, b);
-  if (variantOrder !== 0) return variantOrder;
+  const suffixOrder = gptSuffixKey(parseModelId(a)) - gptSuffixKey(parseModelId(b));
+  if (suffixOrder !== 0) return suffixOrder;
   return a.localeCompare(b);
 }
 

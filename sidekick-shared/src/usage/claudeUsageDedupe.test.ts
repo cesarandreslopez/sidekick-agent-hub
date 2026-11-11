@@ -214,3 +214,24 @@ describe('dedupedRawClaudeUsage', () => {
     expect(dedupedRawClaudeUsage({ type: 'user' }, deduper)).toBeNull();
   });
 });
+
+describe('long-context tier selection across split lines', () => {
+  it('gives a call its prompt size, and a correction its whole call size', () => {
+    const deduper = new ClaudeUsageDeduper();
+    const first = deduper.apply(
+      assistant('msg_t', { input: 90_000, output: 1, cacheRead: 15_000 }, 'claude-haiku-5-5'),
+    );
+    expect(first.message?.normalizedUsage?.requestPromptTokens).toBe(105_000);
+    const grown = deduper.apply(
+      assistant('msg_t', { input: 90_000, output: 400, cacheRead: 15_000 }, 'claude-haiku-5-5'),
+    );
+    expect(grown.message?.usageKind).toBe('correction');
+    // The top-up carries only the 399 output tokens, but bills under the tier
+    // its whole 105K-token call reached, not under the delta's empty prompt.
+    expect(grown.message?.normalizedUsage).toMatchObject({
+      outputTokens: 399,
+      cacheInclusiveInputTokens: 0,
+      requestPromptTokens: 105_000,
+    });
+  });
+});

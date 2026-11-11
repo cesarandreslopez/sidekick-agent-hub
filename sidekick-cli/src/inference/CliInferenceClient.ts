@@ -11,7 +11,12 @@
 
 import { spawn, execSync, type ExecSyncOptionsWithStringEncoding } from 'child_process';
 import type { ProviderId, ProviderFailureDiagnosis, ProviderFailureInput } from 'sidekick-shared';
-import { getCodexExecutionEnv, diagnoseProviderFailure } from 'sidekick-shared';
+import {
+  anthropicRequestTuning,
+  diagnoseProviderFailure,
+  getCodexExecutionEnv,
+  openAiReasoningEffort,
+} from 'sidekick-shared';
 
 export interface InferenceResult {
   text: string;
@@ -21,8 +26,27 @@ export interface InferenceResult {
 
 type Strategy = 'claude-cli' | 'anthropic-api' | 'openai-api' | 'codex-cli' | 'none';
 
-const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+// Haiku 5.5 thinks by default; requests turn that off (`anthropicRequestTuning`).
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-5-5';
 const DEFAULT_OPENAI_MODEL = 'gpt-6-luna';
+
+/**
+ * Messages API body for a dashboard summary: the per-model settings that keep
+ * it short (thinking off where the model allows it, low effort), never a
+ * sampling parameter the model rejects.
+ */
+export function anthropicRequestBody(prompt: string): Record<string, unknown> {
+  const tuning = anthropicRequestTuning(DEFAULT_ANTHROPIC_MODEL, {
+    effort: 'minimal',
+    maxTokens: 1024,
+  });
+  return {
+    model: DEFAULT_ANTHROPIC_MODEL,
+    max_tokens: tuning.maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+    ...tuning.body,
+  };
+}
 
 const EXEC_OPTS: ExecSyncOptionsWithStringEncoding = {
   encoding: 'utf-8',
@@ -146,11 +170,7 @@ export class CliInferenceClient {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
         },
-        body: JSON.stringify({
-          model: DEFAULT_ANTHROPIC_MODEL,
-          max_tokens: 1024,
-          messages: [{ role: 'user', content: prompt }],
-        }),
+        body: JSON.stringify(anthropicRequestBody(prompt)),
       });
 
       if (!response.ok) {
@@ -162,8 +182,15 @@ export class CliInferenceClient {
         );
       }
 
-      const data = (await response.json()) as { content: Array<{ text: string }> };
-      const text = data.content?.map((b) => b.text).join('') || '';
+      // Thinking blocks (empty by default) come before the answer: read text only.
+      const data = (await response.json()) as {
+        content?: Array<{ type?: string; text?: string }>;
+      };
+      const text =
+        data.content
+          ?.filter((b) => b.type === undefined || b.type === 'text')
+          .map((b) => b.text ?? '')
+          .join('') || '';
       return { text };
     } catch (err) {
       return this.apiFailure(err, `Anthropic API failed: ${(err as Error).message}`, 'claude-code');
@@ -189,8 +216,9 @@ export class CliInferenceClient {
         body: JSON.stringify({
           model: DEFAULT_OPENAI_MODEL,
           max_completion_tokens: 1024,
-          // Dashboard summaries need a short answer within the output budget.
-          reasoning_effort: 'none',
+          // Dashboard summaries need a short answer within the output budget:
+          // the least reasoning the model accepts.
+          reasoning_effort: openAiReasoningEffort(DEFAULT_OPENAI_MODEL, 'minimal'),
           messages: [{ role: 'user', content: prompt }],
         }),
       });

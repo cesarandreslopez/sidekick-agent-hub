@@ -65,10 +65,17 @@ describe('CliInferenceClient', () => {
     },
   );
 
-  it('keeps the Anthropic API summary on Haiku 4.5 and its Messages request format', async () => {
+  it('summarizes on Haiku 5.5 with thinking off, reading only the text blocks', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-anthropic-key');
     fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ content: [{ type: 'text', text: 'Claude summary' }] })),
+      new Response(
+        JSON.stringify({
+          content: [
+            { type: 'thinking', thinking: '' },
+            { type: 'text', text: 'Claude summary' },
+          ],
+        }),
+      ),
     );
 
     await expect(
@@ -80,9 +87,11 @@ describe('CliInferenceClient', () => {
     const [url, request] = fetchMock.mock.calls[0];
     expect(url).toBe('https://api.anthropic.com/v1/messages');
     expect(JSON.parse(request!.body as string)).toEqual({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
       max_tokens: 1024,
       messages: [{ role: 'user', content: 'Summarize this session' }],
+      thinking: { type: 'disabled' },
+      output_config: { effort: 'low' },
     });
   });
 

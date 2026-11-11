@@ -97,6 +97,9 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       'getModelContextWindowSize',
       'resolveModelContextWindow',
       'resolveModelPricing',
+      'resolvePricingTier',
+      'anthropicRequestTuning',
+      'openAiReasoningEffort',
       'exportResolvedModelCatalog',
       'importResolvedModelCatalog',
       'registerModelAlias',
@@ -277,7 +280,12 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       expect(typeof root[name], name).toBe('function');
       expect(browser[name], name).toBe(root[name]);
     }
-    for (const name of ['priceProviderUsage', 'normalizeRawProviderUsage', 'RAW_USAGE_FORMATS']) {
+    for (const name of [
+      'priceProviderUsage',
+      'normalizeRawProviderUsage',
+      'RAW_USAGE_FORMATS',
+      'resolvePricingTier',
+    ]) {
       expect(pricing[name], name).toBeDefined();
       expect(root[name], name).toBe(pricing[name]);
       expect(browser[name], name).toBe(pricing[name]);

@@ -694,6 +694,12 @@ export class EventAggregator {
         cacheWriteTokens: event.cacheTokens?.write,
         reasoningIncludedInOutput: false,
         reportedCostUsd: event.cost,
+        // One followed event's tokens are one request's; a correction names
+        // its whole call's prompt size explicitly.
+        singleRequest: true,
+        ...(event.requestPromptTokens !== undefined
+          ? { requestPromptTokens: event.requestPromptTokens }
+          : {}),
       });
       const cost = this.accumulateUsage(normalized, event.timestamp, event.model, event.usageKind);
       this.attributePlanUsage(normalized.totalTokens, cost);

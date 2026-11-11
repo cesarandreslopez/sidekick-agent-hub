@@ -47,7 +47,9 @@ export interface JsonlSessionWatcherOptions {
  * through the shared deduper so each response is counted once (last copy wins).
  */
 function dedupedClaudeUsage(raw: RawSessionEvent, deduper: ClaudeUsageDeduper) {
-  if (!raw.message?.usage) return { usage: undefined, usageKind: undefined };
+  if (!raw.message?.usage) {
+    return { usage: undefined, usageKind: undefined, requestPromptTokens: undefined };
+  }
   const event = deduper.apply(
     normalizeClaudeUsage({
       type: 'assistant',
@@ -55,7 +57,14 @@ function dedupedClaudeUsage(raw: RawSessionEvent, deduper: ClaudeUsageDeduper) {
       message: raw.message,
     } as SessionEvent),
   );
-  return { usage: event.message?.usage, usageKind: event.message?.usageKind };
+  return {
+    usage: event.message?.usage,
+    usageKind: event.message?.usageKind,
+    // Selects a long-context price tier; a correction carries its whole call's.
+    requestPromptTokens: event.message?.usage
+      ? event.message?.normalizedUsage?.requestPromptTokens
+      : undefined,
+  };
 }
 
 function normalizeClaudeCodeEvent(
@@ -68,10 +77,10 @@ function normalizeClaudeCodeEvent(
   const permissionMode = (raw as unknown as Record<string, unknown>).permissionMode as
     | string
     | undefined;
-  const { usage, usageKind } =
+  const { usage, usageKind, requestPromptTokens } =
     raw.type === 'assistant'
       ? dedupedClaudeUsage(raw, deduper)
-      : { usage: undefined, usageKind: undefined };
+      : { usage: undefined, usageKind: undefined, requestPromptTokens: undefined };
   const tokens = usage
     ? { input: usage.input_tokens || 0, output: usage.output_tokens || 0 }
     : undefined;
@@ -143,6 +152,7 @@ function normalizeClaudeCodeEvent(
         tokens,
         cacheTokens,
         ...(usageKind ? { usageKind } : {}),
+        ...(requestPromptTokens !== undefined ? { requestPromptTokens } : {}),
         cost,
         model,
         raw,
@@ -153,6 +163,7 @@ function normalizeClaudeCodeEvent(
       last.tokens = tokens;
       last.cacheTokens = cacheTokens;
       if (usageKind) last.usageKind = usageKind;
+      if (requestPromptTokens !== undefined) last.requestPromptTokens = requestPromptTokens;
       last.cost = cost;
     }
   } else if (raw.type === 'summary') {

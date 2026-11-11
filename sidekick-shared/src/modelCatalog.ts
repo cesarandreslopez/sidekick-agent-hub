@@ -7,6 +7,7 @@ import {
 } from './modelContext';
 import {
   _getModelPricingIds,
+  _isValidPricingTiers,
   _setImportedResolvedPricing,
   resolveModelPricing,
   type ModelPricing,
@@ -157,7 +158,14 @@ function clonePricing(
     ...value,
     modelId,
     canonicalModelId,
-    pricing: value.pricing ? { ...value.pricing } : null,
+    pricing: value.pricing
+      ? {
+          ...value.pricing,
+          ...(value.pricing.tiers
+            ? { tiers: value.pricing.tiers.map((tier) => ({ ...tier })) }
+            : {}),
+        }
+      : null,
     provenance: { ...value.provenance },
   };
 }
@@ -172,12 +180,15 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 
 function validPricing(value: unknown): value is ModelPricing {
   if (!isRecord(value)) return false;
-  return [
-    value.inputCostPerMillion,
-    value.outputCostPerMillion,
-    value.cacheWriteCostPerMillion,
-    value.cacheReadCostPerMillion,
-  ].every((item) => typeof item === 'number' && Number.isFinite(item) && item >= 0);
+  return (
+    [
+      value.inputCostPerMillion,
+      value.outputCostPerMillion,
+      value.cacheWriteCostPerMillion,
+      value.cacheReadCostPerMillion,
+    ].every((item) => typeof item === 'number' && Number.isFinite(item) && item >= 0) &&
+    _isValidPricingTiers(value.tiers)
+  );
 }
 
 function isResolvedEntry(value: unknown): value is ResolvedModelCatalogEntry {

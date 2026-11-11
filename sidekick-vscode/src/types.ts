@@ -7,6 +7,7 @@
  * @module types
  */
 
+import type { InferenceEffort } from 'sidekick-shared';
 import type { InferenceProviderId } from './types/inferenceProvider';
 
 /**
@@ -48,6 +49,17 @@ export interface CompletionOptions {
    * This is in addition to internal timeout handling.
    */
   signal?: AbortSignal;
+
+  /**
+   * How much reasoning the feature wants (`FEATURE_EFFORT`). Clients turn it
+   * into the parameters the resolved model accepts: thinking off and low
+   * effort for `minimal` where the model allows it, `output_config.effort`
+   * on Claude 5+, `model_reasoning_effort` for Codex, the Claude Code effort
+   * level for Claude Max. Unset leaves the Codex and Claude Max defaults
+   * alone; the API key client still sends `low` (with thinking headroom) to
+   * models that think by default.
+   */
+  effort?: InferenceEffort;
 }
 
 /**

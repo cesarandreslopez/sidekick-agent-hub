@@ -32,6 +32,7 @@ export {
   getModelInfo,
   getModelPricing,
   resolveModelPricing,
+  resolvePricingTier,
   registerModelPricing,
   clearRegisteredModelPricing,
   getPricingCatalogInfo,
@@ -42,6 +43,7 @@ export {
 } from './modelInfo';
 export type {
   ModelPricing,
+  ModelPricingTier,
   ModelPricingSource,
   ModelPricingMatch,
   ModelPricingProvenance,

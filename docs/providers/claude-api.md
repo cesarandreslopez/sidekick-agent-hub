@@ -13,6 +13,8 @@ Direct Anthropic API access with per-token billing.
 - Uses `@anthropic-ai/sdk` with your API key
 - Per-token billing — costs depend on usage
 - API key stored securely in VS Code's secret storage
+- Tiers resolve to Haiku 5.5, Sonnet 5.5 and Opus 5.5; a literal `fable` means `claude-fable-5-2`
+- Each request carries the settings its model accepts (thinking off where possible for fast features, effort, room for thinking in `max_tokens`); see [Request Tuning](../configuration/model-resolution.md#request-tuning)
 
 ## Session Monitoring
 

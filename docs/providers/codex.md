@@ -16,6 +16,7 @@ Uses your authenticated Codex CLI for inference.
 - Spawns the Codex CLI as a subprocess for each inference request
 - No SDK dependency — direct CLI invocation
 - Uses the Codex login or API credentials available to the CLI
+- Tiers resolve to `gpt-6-luna`, `gpt-6.1-sol` and `gpt-6-astra`; each feature passes its reasoning effort as `-c model_reasoning_effort` (`low`, or `medium` for code review and transforms)
 
 ## Session Monitoring
 

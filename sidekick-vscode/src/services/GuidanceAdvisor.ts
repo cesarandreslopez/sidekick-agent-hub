@@ -20,6 +20,7 @@ import { resolveInstructionTarget } from '../types/instructionFile';
 import { buildGuidanceAnalysisPrompt, parseGuidanceSuggestions } from '../utils/analysisPrompts';
 import type { KnowledgeNoteService } from './KnowledgeNoteService';
 import { log, logError } from './Logger';
+import { featureEffort } from '../types/inferenceProvider';
 
 /**
  * A suggestion for improving the agent instruction file.
@@ -186,6 +187,7 @@ export class GuidanceAdvisor {
       const timeout = options?.timeout ?? 90000;
       const response = await this.authService.complete(prompt, {
         model,
+        effort: featureEffort('explanationModel'),
         timeout,
       });
       log(`GuidanceAdvisor: Received response (${response.length} chars)`);
