@@ -58,17 +58,17 @@ If you have sessions from multiple providers, the most recently active one is se
 sidekick dashboard [options]
 ```
 
-| Flag                   | Description                                                                                                  |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--project <path>`     | Override project path (default: current working directory)                                                   |
-| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)                                    |
-| `--session <id>`       | Follow a specific session by ID (default: most recent or session picker)                                     |
-| `--replay`             | Replay existing events from the beginning before streaming live                                              |
-| `--no-mouse`           | Start with mouse capture disabled so terminal text selection works (toggle with `M`)                         |
-| `--no-color`           | Disable colored output for any command (also honors `NO_COLOR`)                                              |
-| `--offline`            | Price from the cached catalog only; never refresh it over the network (also `SIDEKICK_OFFLINE=1`)            |
-| `--output-file <path>` | Write everything a command prints to stdout into a file, without colour codes (not for `dashboard` or `mcp`) |
-| `--json`               | Output as JSON; a global flag honoured by the one-shot commands below                                        |
+| Flag                   | Description                                                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `--project <path>`     | Override project path (default: current working directory)                                                                   |
+| `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)                                                    |
+| `--session <id>`       | Follow a specific session by ID (default: most recent or session picker)                                                     |
+| `--replay`             | Replay existing events from the beginning before streaming live                                                              |
+| `--no-mouse`           | Start with mouse capture disabled so terminal text selection works (toggle with `M`)                                         |
+| `--no-color`           | Disable colored output for any command (also honors `NO_COLOR`)                                                              |
+| `--offline`            | Price from the cached catalog only; never refresh it over the network (also `SIDEKICK_OFFLINE=1`)                            |
+| `--output-file <path>` | Write everything a command prints to stdout into a file, without colour codes (not for `dashboard`, `mcp` or `map --follow`) |
+| `--json`               | Output as JSON; a global flag honoured by the one-shot commands below                                                        |
 
 ### Examples
 
@@ -214,6 +214,41 @@ sidekick report --no-open --output session.html
 ```
 
 You can also press `r` in the TUI dashboard to generate and open a report for the current session.
+
+## Activity Map
+
+```bash
+sidekick map [options]
+```
+
+Draws the [activity map](activity-map.md) of a session, live with `--follow` or exported as text, SVG or JSON at any moment (`--at`). Labels carry names, never content.
+
+| Flag                                | Description                                                                                               |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `--session <id>`                    | Session to show (default: most recent)                                                                    |
+| `-f`, `--follow`                    | Live full-screen map; waits for a session to start and follows newer sessions unless `--session` is given |
+| `--format <format>`                 | `text` (default), `svg`, or `json` (also selected by the global `--json`)                                 |
+| `--at <time>`                       | `end` (default), `start`, `+15m`, `-5m`, `50%`, `HH:MM[:SS]`, or an ISO date-time                         |
+| `-o`, `--output <path>`             | Write to a file                                                                                           |
+| `--theme <theme>`                   | SVG colors: `auto` (default), `dark`, or `light`                                                          |
+| `--motion <motion>`                 | SVG animation: `none` (default), `reduced`, or `full`                                                     |
+| `--labels <mode>`                   | `descriptive` (default for text and `--follow`), `names` (default for SVG and JSON), or `none`            |
+| `--width <cols>`, `--height <rows>` | Text size (default: the terminal)                                                                         |
+| `--subagents`                       | Include subagent transcripts                                                                              |
+| `--core-name <name>`                | Text in the centre                                                                                        |
+
+### Examples
+
+```bash
+# Live, in a tmux pane beside the agent
+tmux split-window -h 'sidekick map --follow'
+
+# The latest Codex session as text
+sidekick --provider codex map
+
+# An animated SVG of a session fifteen minutes in
+sidekick map --session 3f2a --at +15m --format svg --motion full -o map.svg
+```
 
 ## Extract Session Assets
 
@@ -826,7 +861,7 @@ Minimum terminal size: 60 columns wide, 15 rows tall.
 
 ## Dashboard Panels
 
-Switch panels with number keys `1`–`8`.
+Switch panels with number keys `1`–`9`.
 
 ### Sessions (1)
 
@@ -890,13 +925,22 @@ Session analytics visualized as ASCII charts. The side list shows a single "Sess
 | **Heatmap**  | 60-minute rolling activity heatmap using `░▒▓█` intensity characters — one column per minute with peak rate and active minute count |
 | **Patterns** | Detected event patterns from template clustering (e.g. `Read src/<*>.ts`) with frequency bars and example summaries                 |
 
+### Map (9)
+
+The [activity map](activity-map.md) of the session in the terminal: the eleven stations around the agent, with counts, faults, running calls (`×N`) and the context bar, the route the main loop took, and the activity feed. The side list has an Overview item and one item per station; selecting a station highlights it and filters the feed.
+
+| Tab          | Description                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------- |
+| **Map**      | The map, the current action and the folded activity feed                                                      |
+| **Insights** | Per-station calls, time, errors, denials and context weight; detected retry streaks and alternations; summary |
+
 ## Keybindings
 
 ### Navigation
 
 | Key       | Action                                               |
 | --------- | ---------------------------------------------------- |
-| `1`–`8`   | Switch panel                                         |
+| `1`–`9`   | Switch panel                                         |
 | `Tab`     | Toggle focus between side list and detail pane       |
 | `j` / `↓` | Next item (side list) or scroll down (detail pane)   |
 | `k` / `↑` | Previous item (side list) or scroll up (detail pane) |

@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.32.0: the activity map** — `sidekick map --follow` draws a live map of what your agent is doing in any terminal split: every tool call pulses from the agent to one of eleven stations (files, shell, network, memory, agents, hooks, plan, …), with the context window as a ring, faults, subagents and the route the agent took. `sidekick map --format text|svg|json` exports any session at any moment (`--at 50%`, `--at +15m`), the dashboard gains a **Map** panel (`9`) with an Insights tab (time, errors and context weight per station, retry streaks and edit ↔ test loops), the HTML report includes the map, and the MCP server adds `get_activity_map`. Summaries now use Claude Haiku 5.5, Claude Fable 5.2 and the Mythos models are priced, long prompts on GPT-5.4+ (above 272K tokens) and Haiku 5.5 (above 100K) are priced at their long-context rates, and `report --theme light` now renders light.
 - **0.31.0: project scope you can trust, subagent spend per prompt** — `daily`, `weekly`, `monthly`, `sessions`, and `blocks` with `--project` resolve the path (relative paths work) and count only sessions recorded inside it: folders whose name matches or starts with the same name, and Codex sessions started in a parent folder, no longer count. `dump --prompts` charges a subagent's calls to the prompt that started it (background agents included), with `--signals` a failed Codex command shows as `toolError (exec_command, exit 2)` and markdown or JSON output keeps the end of its output, and Codex follow timelines show when a turn completes. The dashboard's billing block keeps up with a session that is still being written, and the bundle is about 175 KB smaller.
 - **0.30.3: usage credits balance vs spend limit** — `sidekick quota` used to print `Extra usage $0.00 of $40.00 used`, where $40 is the monthly spend limit, not your balance. It now prints `Usage credits $100.00 available` (the prepaid balance) and `Spend limit $0.00 of $40.00 used this month` on separate rows, and `--json` adds `extraUsage.balance`.
 - **0.30.1: update notifications** — one-shot commands such as `sidekick quota` end with an "Update available" line on stderr when a newer `sidekick-agent-hub` is on npm. npm is asked at most every 4 hours, and the request overlaps the command. The same version is announced at most twice a day, never with `--json`, in pipes, in CI, or from `statusline` / `mcp`. `SIDEKICK_NO_UPDATE_NOTIFIER=1` turns it off.
@@ -207,6 +208,37 @@ Capture tasks, knowledge notes, and decisions from the terminal without opening 
 
 The global flag `--project` also applies.
 
+## Activity Map
+
+```bash
+sidekick map [options]
+```
+
+A map of what the agent is doing: every tool call is drawn on one of eleven stations (you, model, memory, files, shell, network, browser, agents, skills, hooks, plan) around the agent, with the context window as a ring, faults, subagents and the agent's route. Works for Claude Code, Codex and OpenCode. See the [Activity Map docs](https://cesarandreslopez.github.io/sidekick-agent-hub/features/activity-map/).
+
+```bash
+sidekick map --follow                      # live, full screen; run it in a split beside your agent
+sidekick map --format text                 # the map, feed and insights for the latest session
+sidekick map --format svg -o session.svg   # a still SVG (--motion full animates it)
+sidekick map --format json --at 50%        # snapshot and insights halfway through
+```
+
+| Flag                                | Description                                                                                                                      |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `--session <id>`                    | Session to show (default: most recent)                                                                                           |
+| `-f`, `--follow`                    | Live map of the running session; waits for one to start and follows newer sessions unless `--session` is given                   |
+| `--format <format>`                 | `text` (default), `svg`, or `json` (the global `--json` also selects JSON)                                                       |
+| `--at <time>`                       | `end` (default), `start`, `+15m` after the start, `-5m` before the end, `50%`, `HH:MM[:SS]`, or an ISO date-time                 |
+| `-o`, `--output <path>`             | Write to a file instead of stdout                                                                                                |
+| `--theme <theme>`                   | SVG colors: `auto` (default, follows the viewer's light or dark mode), `dark`, or `light`                                        |
+| `--motion <motion>`                 | SVG animation: `none` (default), `reduced`, or `full`                                                                            |
+| `--labels <mode>`                   | `descriptive` (adds the agent's own short descriptions; default for text and `--follow`), `names` (default for files), or `none` |
+| `--width <cols>`, `--height <rows>` | Size of the text map (default: the terminal)                                                                                     |
+| `--subagents`                       | Include subagent transcripts in the replay                                                                                       |
+| `--core-name <name>`                | Text in the centre (default: the agent)                                                                                          |
+
+Live keys: `f` feed, `i` insights, `p` or `Space` pause, `←`/`→` step while paused (`Shift` for a minute), `l` live, `q` quit. `--follow` cannot be combined with `--format`, `--at` or `-o`. Labels carry names, never content: a file's last two path parts, a host, a command's name.
+
 ## MCP Facts Server
 
 ```bash
@@ -220,7 +252,7 @@ claude mcp add sidekick -- sidekick mcp     # Claude Code
 codex mcp add sidekick -- sidekick mcp      # Codex
 ```
 
-Seven tools: `get_quota_status`, `get_burn_rate`, `get_context_pressure`, `get_tasks`, `get_decisions`, `get_notes`, and `get_project_context`. Every tool is annotated read-only, non-destructive, and idempotent — the server exposes no capture or store-mutation tools. Pass the global `--project` and `--provider` flags before `mcp` to target a specific project or provider.
+Eight tools: `get_quota_status`, `get_burn_rate`, `get_context_pressure`, `get_activity_map` (the active session's activity map as structured data and a short summary, optionally with the SVG), `get_tasks`, `get_decisions`, `get_notes`, and `get_project_context`. Every tool is annotated read-only, non-destructive, and idempotent — the server exposes no capture or store-mutation tools. Pass the global `--project` and `--provider` flags before `mcp` to target a specific project or provider.
 
 ## Session Dump
 
@@ -277,7 +309,7 @@ Codex-only for now (reads the global `~/.codex/history.jsonl`); Claude Code and 
 sidekick report [options]
 ```
 
-Generate a self-contained HTML session report and open it in the default browser. Includes full transcript, token/cost stats, model breakdown, and tool-use summary. Token cards show "Total (incl. cache)" with all four buckets and a "Cache hit" rate; when the session spawned subagents, "Subagents (n)" and "Session total (incl. subagents)" appear beside the main thread. Per-message token counts include cache.
+Generate a self-contained HTML session report and open it in the default browser. Includes full transcript, token/cost stats, model breakdown, tool-use summary, and the session's activity map with time, errors and context weight per station. Token cards show "Total (incl. cache)" with all four buckets and a "Cache hit" rate; when the session spawned subagents, "Subagents (n)" and "Session total (incl. subagents)" appear beside the main thread. Per-message token counts include cache.
 
 | Flag              | Description                                      |
 | ----------------- | ------------------------------------------------ |
@@ -464,6 +496,7 @@ The dashboard is a two-pane terminal UI. The left side shows a navigable list, t
 | 6   | **Plans**     | Agent plans persisted in the project store from Claude Code, OpenCode, and Codex sessions              |
 | 7   | **Events**    | Live event stream with type badges, timestamps, and keyword-highlighted summaries                      |
 | 8   | **Charts**    | Tool frequency bars, event distribution, activity heatmap, and pattern analysis                        |
+| 9   | **Map**       | The live activity map and its feed; Insights tab with time, errors, context weight and patterns        |
 
 The Agents tab and mind map list Claude Code and Codex subagents with their state: running, done, `finished (no report)` (transcript ended cleanly and quiet for 2 minutes), `ended` (session idle for more than 6 hours), `stopped`, `killed` or `failed`. The status bar shows Claude Code's permission mode when it is not `default` (`BYPASS`, `EDITS`, `PLAN`, `AUTO`, `DONT-ASK`), and the Summary tab shows it as a Permission line.
 
