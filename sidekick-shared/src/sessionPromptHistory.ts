@@ -107,8 +107,10 @@ export interface CollectSessionPromptHistoryOptions {
   /**
    * A listing from `listAgentSessions()` to use instead of listing again:
    * its roots, homes, worktree expansion and compressed-rollout choice
-   * apply, so passing `workspacePaths`, `includeWorktrees`, `homes` or
-   * `includeCompressedRollouts` with it is a `TypeError`.
+   * apply, so passing `workspacePaths`, `includeWorktrees` or `homes` with
+   * it is a `TypeError`. `includeCompressedRollouts: false` narrows a
+   * listing that includes compressed rollouts to the plain ones for this
+   * call; `true` with a listing made without them is a `TypeError`.
    */
   listing?: SessionListing;
 }

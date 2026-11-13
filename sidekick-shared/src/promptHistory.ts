@@ -35,6 +35,7 @@ import { getClaudeProjectsDir } from './claudePaths';
 import { resolveMonitoredHomes } from './monitoredHomes';
 import {
   canReadCompressedRollouts,
+  isCompressedRolloutPath,
   openRolloutReadHandle,
   statRolloutContent,
   type RolloutContentStat,
@@ -299,8 +300,10 @@ export interface CollectPromptHistoryOptions {
   /**
    * A listing from `listAgentSessions()` to use instead of listing again:
    * its roots, homes, worktree expansion and compressed-rollout choice
-   * apply, so passing `workspacePaths`, `includeWorktrees`, `homes` or
-   * `includeCompressedRollouts` with it is a `TypeError`.
+   * apply, so passing `workspacePaths`, `includeWorktrees` or `homes` with
+   * it is a `TypeError`. `includeCompressedRollouts: false` narrows a
+   * listing that includes compressed rollouts to the plain ones for this
+   * call; `true` with a listing made without them is a `TypeError`.
    */
   listing?: SessionListing;
 }
@@ -899,24 +902,54 @@ export const LISTING_FIXED_OPTIONS = [
 /**
  * The `listing` option of a prompt-family collector, checked: `TypeError`
  * when options it fixes are passed too, or when neither it nor
- * `workspacePaths` is given.
+ * `workspacePaths` is given. `includeCompressedRollouts` may still narrow
+ * it: `false` with a listing that includes compressed rollouts drops them
+ * for this call (one listing can then serve collectors that read them and
+ * collectors that don't); the listing's own value is a no-op; `true` with a
+ * listing made without them is a `TypeError`.
  * @internal
  */
 export function listingOption(
   caller: string,
-  options: { listing?: SessionListing; workspacePaths?: string[] },
+  options: {
+    listing?: SessionListing;
+    workspacePaths?: string[];
+    includeCompressedRollouts?: boolean;
+  },
 ): SessionListing | undefined {
   if (options.listing !== undefined) {
     if (!isSessionListing(options.listing)) {
       throw new TypeError(`${caller}: \`listing\` must come from listAgentSessions().`);
     }
-    assertListingAlone(caller, options as Record<string, unknown>, LISTING_FIXED_OPTIONS);
-    return options.listing;
+    assertListingAlone(
+      caller,
+      options as Record<string, unknown>,
+      LISTING_FIXED_OPTIONS.filter((name) => name !== 'includeCompressedRollouts'),
+    );
+    return narrowListing(caller, options.listing, options.includeCompressedRollouts);
   }
   if (!Array.isArray(options.workspacePaths)) {
     throw new TypeError(`${caller}: pass \`workspacePaths\` or \`listing\`.`);
   }
   return undefined;
+}
+
+/** `listing` with compressed rollouts dropped when `include` is false (see `listingOption`). */
+function narrowListing(caller: string, listing: SessionListing, include: unknown): SessionListing {
+  if (include === undefined || include === listing.includeCompressedRollouts) return listing;
+  if (include === false) {
+    return {
+      ...listing,
+      includeCompressedRollouts: false,
+      files: listing.files.filter((file) => !isCompressedRolloutPath(file.filePath)),
+    };
+  }
+  if (include === true) {
+    throw new TypeError(
+      `${caller}: \`listing\` was made without compressed rollouts; list again with \`includeCompressedRollouts: true\` to read them.`,
+    );
+  }
+  throw new TypeError(`${caller}: \`includeCompressedRollouts\` must be a boolean.`);
 }
 
 /** A listing's files as scan candidates, in `listCandidates()` order. @internal */
