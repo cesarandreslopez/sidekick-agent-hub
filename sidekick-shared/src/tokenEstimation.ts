@@ -1,3 +1,15 @@
+/**
+ * Text token estimates without a tokenizer, as the single-module
+ * `sidekick-shared/tokenEstimation` entry: no other sidekick module, no
+ * Node built-ins, no Zod. For workers that only need a budget estimate;
+ * bundled hosts can equally take `estimateTextTokens` from
+ * `sidekick-shared/pricing`, which tree-shakes to the same code.
+ * Everything here is also exported from the package root,
+ * `sidekick-shared/pricing` and `sidekick-shared/browser`.
+ *
+ * @module tokenEstimation
+ */
+
 export type TokenEstimationMethod = 'exact' | 'sidekick-fallback-v1';
 export type TokenEstimationConfidence = 'exact' | 'medium' | 'low';
 

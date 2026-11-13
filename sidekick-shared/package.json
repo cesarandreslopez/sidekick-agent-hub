@@ -166,6 +166,20 @@
       "require": "./dist/activity.js",
       "default": "./dist/activity.js"
     },
+    "./tokenEstimation": {
+      "types": "./dist/tokenEstimation.d.ts",
+      "module": "./dist/esm/tokenEstimation.js",
+      "import": "./dist/tokenEstimation.js",
+      "require": "./dist/tokenEstimation.js",
+      "default": "./dist/tokenEstimation.js"
+    },
+    "./pricingHydration": {
+      "types": "./dist/pricingHydration.d.ts",
+      "module": "./dist/esm/pricingHydration.js",
+      "import": "./dist/pricingHydration.js",
+      "require": "./dist/pricingHydration.js",
+      "default": "./dist/pricingHydration.js"
+    },
     "./dist/esm/*": null,
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -230,6 +244,12 @@
       ],
       "activity": [
         "dist/activity.d.ts"
+      ],
+      "tokenEstimation": [
+        "dist/tokenEstimation.d.ts"
+      ],
+      "pricingHydration": [
+        "dist/pricingHydration.d.ts"
       ]
     }
   },

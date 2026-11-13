@@ -1,5 +1,7 @@
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync, promises as fs } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -61,6 +63,11 @@ const SUBPATHS = [
   // Zod-free; the budget covers its own modules plus the shared helpers it
   // classifies with (tool categories, MCP names, subagents, turn state, shell).
   { name: 'activity', pure: true, maxModules: 30 },
+  // 0.33: text token estimates as one module, for workers that load nothing else.
+  { name: 'tokenEstimation', pure: true, maxModules: 1 },
+  // 0.33: LiteLLM catalog hydration and observed context windows without the
+  // /node graph: the pricing tables plus the config-dir and atomic-write helpers.
+  { name: 'pricingHydration', pure: false, maxModules: 12 },
 ] as const;
 
 describe('lean subpath entries', { timeout: 30_000 }, () => {
@@ -114,6 +121,74 @@ describe('sidekick-shared/agentPaths closure', () => {
     ]);
     for (const external of externals) {
       expect(['fs', 'os', 'path'], `agentPaths requires ${external}`).toContain(external);
+    }
+  });
+});
+
+// The hydration entry writes into the pricing tables `/pricing` reads, so a
+// host can hydrate through one entry and price through the other.
+describe('sidekick-shared/pricingHydration shares the pricing tables', { timeout: 30_000 }, () => {
+  const probeModel = 'sidekick-hydration-probe-model';
+  const catalog = {
+    [probeModel]: {
+      input_cost_per_token: 0.000007,
+      output_cost_per_token: 0.000021,
+      max_input_tokens: 123_456,
+    },
+  };
+  const fetchCatalog = (async () =>
+    new Response(JSON.stringify(catalog), { status: 200 })) as unknown as typeof fetch;
+
+  it('is visible to sidekick-shared/pricing through require()', async () => {
+    const hydration = pkgRequire('sidekick-shared/pricingHydration');
+    const pricing = pkgRequire('sidekick-shared/pricing');
+    const modelInfo = pkgRequire('sidekick-shared/dist/modelInfo');
+    const modelContext = pkgRequire('sidekick-shared/dist/modelContext');
+    const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sidekick-hydration-cjs-'));
+    try {
+      expect(pricing.getModelPricing(probeModel)).toBeNull();
+      const result = await hydration.hydratePricingCatalog({ cacheDir, fetchImpl: fetchCatalog });
+      expect(result.source).toBe('network');
+      expect(pricing.getModelPricing(probeModel)).toMatchObject({
+        inputCostPerMillion: 7,
+        outputCostPerMillion: 21,
+      });
+      expect(hydration.getPricingCatalogInfo().digest).toBe(pricing.getPricingCatalogInfo().digest);
+    } finally {
+      modelInfo._clearPricingOverrides();
+      modelContext._clearCatalogContextWindows();
+      await fs.rm(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it('is visible to sidekick-shared/pricing through import() in Node', async () => {
+    const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sidekick-hydration-esm-'));
+    try {
+      const script = [
+        "const hydration = await import('sidekick-shared/pricingHydration');",
+        "const pricing = await import('sidekick-shared/pricing');",
+        `const catalog = ${JSON.stringify(catalog)};`,
+        'const before = pricing.getModelPricing(process.env.PROBE_MODEL) ?? null;',
+        'await hydration.hydratePricingCatalog({',
+        '  cacheDir: process.env.PROBE_CACHE_DIR,',
+        '  fetchImpl: async () => new Response(JSON.stringify(catalog), { status: 200 }),',
+        '});',
+        'const after = pricing.getModelPricing(process.env.PROBE_MODEL) ?? null;',
+        'process.stdout.write(JSON.stringify({ before, after }));',
+      ].join('\n');
+      const stdout = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+        cwd: pkgRoot,
+        encoding: 'utf8',
+        env: { ...process.env, PROBE_MODEL: probeModel, PROBE_CACHE_DIR: cacheDir },
+      });
+      const { before, after } = JSON.parse(stdout) as {
+        before: unknown;
+        after: { inputCostPerMillion: number; outputCostPerMillion: number } | null;
+      };
+      expect(before).toBeNull();
+      expect(after).toMatchObject({ inputCostPerMillion: 7, outputCostPerMillion: 21 });
+    } finally {
+      await fs.rm(cacheDir, { recursive: true, force: true });
     }
   });
 });
