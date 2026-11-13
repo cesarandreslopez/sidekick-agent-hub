@@ -192,6 +192,7 @@ export class CompressedCodexRolloutReader implements SessionReader {
         inputTokens: lastUsage.input_tokens,
         outputTokens: lastUsage.output_tokens,
         cacheReadTokens: lastUsage.cached_input_tokens,
+        cacheWriteTokens: lastUsage.cache_write_input_tokens,
         reasoningTokens: lastUsage.reasoning_output_tokens,
       });
       onTokenUsage({

@@ -213,11 +213,11 @@ describe('normalizeRawProviderUsage', () => {
       cache_write_input_tokens: 50,
       total_tokens: 1300,
     });
-    // cache_write_input_tokens is ignored, as the session parser ignores it.
+    // Cache reads and writes are both inside input_tokens.
     expect(disjoint(usage)).toEqual({
-      uncached: 200,
+      uncached: 150,
       read: 800,
-      write: 0,
+      write: 50,
       billableOutput: 300,
       total: 1300,
     });
@@ -230,6 +230,7 @@ describe('normalizeRawProviderUsage', () => {
       normalizeRawProviderUsage('codex', {
         inputTokens: 1000,
         cachedInputTokens: 800,
+        cacheWriteInputTokens: 50,
         outputTokens: 300,
         reasoningOutputTokens: 200,
       }),
@@ -240,6 +241,7 @@ describe('normalizeRawProviderUsage', () => {
     const last = {
       input_tokens: 5120,
       cached_input_tokens: 4096,
+      cache_write_input_tokens: 512,
       output_tokens: 640,
       reasoning_output_tokens: 128,
       total_tokens: 5760,
@@ -571,5 +573,137 @@ describe('long-context tier pricing', () => {
       singleRequest: true,
     });
     expect(normalizedUsageSchema.parse(usage).requestPromptTokens).toBe(10);
+  });
+});
+
+describe('cache writes on models with no write rate', () => {
+  // Disjoint usage a caller stored after normalizing: 1M uncached + 1M written.
+  const disjointWrites = (model?: string) =>
+    normalizeProviderUsage({
+      semantics: 'sidekick',
+      reasoningIncludedInOutput: true,
+      inputTokens: 1_000_000,
+      cacheWriteTokens: 1_000_000,
+      ...(model ? { model } : {}),
+    });
+  const noWriteRate = { ...pricing, cacheWriteCostPerMillion: 0 };
+
+  it('bills OpenAI-family writes at the input rate whatever the semantics', () => {
+    // gpt-5.5: $5 input, no write rate.
+    expect(calculateNormalizedUsageCost({ usage: disjointWrites('gpt-5.5') }).costUsd).toBeCloseTo(
+      10,
+      9,
+    );
+    for (const model of [
+      'gpt-5.5',
+      'openai/gpt-5.5',
+      'azure/us/gpt-6.1-terra',
+      'o3',
+      'codex-mini-latest',
+      'gpt-5.3-codex',
+    ]) {
+      expect(
+        calculateNormalizedUsageCost({
+          usage: disjointWrites(),
+          modelId: model,
+          pricing: noWriteRate,
+        }).costUsd,
+        model,
+      ).toBeCloseTo(20, 9);
+    }
+  });
+
+  it('keeps other providers’ zero write rates at zero', () => {
+    // glm-5.3: $1.40 input, no write rate; gemini-4-argon: $2 input.
+    expect(calculateNormalizedUsageCost({ usage: disjointWrites('glm-5.3') }).costUsd).toBeCloseTo(
+      1.4,
+      9,
+    );
+    expect(
+      calculateNormalizedUsageCost({ usage: disjointWrites('gemini-4-argon') }).costUsd,
+    ).toBeCloseTo(2, 9);
+    for (const model of [
+      'deepseek-chat',
+      'openrouter/z-ai/glm-5.3',
+      'claude-opus-5-5',
+      undefined,
+    ]) {
+      expect(
+        calculateNormalizedUsageCost({
+          usage: disjointWrites(),
+          modelId: model,
+          pricing: noWriteRate,
+        }).costUsd,
+        String(model),
+      ).toBeCloseTo(10, 9);
+    }
+  });
+
+  it('leaves positive write rates alone', () => {
+    // claude-opus-5-5: $4 input, $5 write.
+    expect(
+      calculateNormalizedUsageCost({ usage: disjointWrites('claude-opus-5-5') }).costUsd,
+    ).toBeCloseTo(9, 9);
+    expect(
+      calculateNormalizedUsageCost({ usage: disjointWrites(), modelId: 'gpt-5.5', pricing })
+        .costUsd,
+    ).toBeCloseTo(22.5, 9);
+  });
+
+  it('uses the tier input rate for an OpenAI-family write above a threshold', () => {
+    const tiered = {
+      ...noWriteRate,
+      tiers: [
+        {
+          aboveInputTokens: 272_000,
+          inputCostPerMillion: 40,
+          outputCostPerMillion: 30,
+          cacheWriteCostPerMillion: 0,
+          cacheReadCostPerMillion: 2,
+        },
+      ],
+    };
+    const usage = normalizeProviderUsage({
+      semantics: 'sidekick',
+      reasoningIncludedInOutput: true,
+      inputTokens: 200_000,
+      cacheWriteTokens: 100_000,
+      singleRequest: true,
+    });
+    const priced = calculateNormalizedUsageCost({ usage, modelId: 'gpt-6.1-sol', pricing: tiered });
+    expect(priced.pricingTier).toBe(272_000);
+    expect(priced.costUsd).toBeCloseTo(0.3 * 40, 9);
+  });
+
+  it('prices through priceProviderUsage with the model it was given', () => {
+    // One request of 200K prompt tokens, below gpt-5.5's long-context tier.
+    const writes = {
+      input_tokens: 100_000,
+      output_tokens: 0,
+      cache_creation_input_tokens: 100_000,
+    };
+    // Anthropic-format writes on an OpenAI-family model (a gateway) bill as input.
+    expect(
+      priceProviderUsage({ provider: 'anthropic', usage: writes, model: 'gpt-5.5' }).costUsd,
+    ).toBeCloseTo(1, 9);
+    expect(
+      priceProviderUsage({ provider: 'anthropic', usage: writes, model: 'glm-5.3' }).costUsd,
+    ).toBeCloseTo(0.14, 9);
+  });
+
+  it('pins an OpenCode message without a total as disjoint', async () => {
+    // Without `total`, the layout cannot be detected, so the input is taken as
+    // uncached and the writes are added on top (at the input rate for an
+    // OpenAI-family model). An old cache-inclusive message would count its
+    // writes twice; current OpenCode stores disjoint buckets.
+    const { normalizeOpenCodeUsage } = await import('./parsers/openCodeParser');
+    const usage = normalizeOpenCodeUsage(
+      { input: 100_000, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 100_000 },
+      'openai',
+      { model: 'gpt-5.5' },
+    );
+    expect(usage.uncachedInputTokens).toBe(100_000);
+    expect(usage.cacheWriteTokens).toBe(100_000);
+    expect(calculateNormalizedUsageCost({ usage }).costUsd).toBeCloseTo(1, 9);
   });
 });

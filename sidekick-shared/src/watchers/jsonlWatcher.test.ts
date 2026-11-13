@@ -311,6 +311,33 @@ describe('JsonlSessionWatcher', () => {
       cacheTokens: { read: 800 },
     });
   });
+
+  it('splits Codex cache writes out of input too', () => {
+    watchMock.mockReturnValue(Object.assign(new EventEmitter(), { close: vi.fn() }));
+    const usage = {
+      input_tokens: 1000,
+      cached_input_tokens: 600,
+      cache_write_input_tokens: 150,
+      output_tokens: 50,
+    };
+    const tokenCount =
+      JSON.stringify({
+        type: 'event_msg',
+        timestamp: '2026-09-01T00:00:00.000Z',
+        payload: { type: 'token_count', info: { last_token_usage: usage } },
+      }) + '\n';
+    const events: FollowEvent[] = [];
+    const watcher = new JsonlSessionWatcher('codex', file(tokenCount), {
+      onEvent: (event) => events.push(event),
+    });
+    watchers.push(watcher);
+    watcher.start(true);
+    expect(events.find((e) => e.tokens)).toMatchObject({
+      tokens: { input: 250, output: 50 },
+      cacheTokens: { read: 600, write: 150 },
+      requestPromptTokens: 1000,
+    });
+  });
 });
 
 describe('JsonlSessionWatcher task-notification attachments', () => {

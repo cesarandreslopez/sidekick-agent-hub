@@ -12,8 +12,14 @@
  *   `error` (`turn`) and an `error` `result`; `error` → `error` (`stream`).
  *
  * Usage: `turn.completed.usage` is the thread's running total, earlier
- * `exec resume` runs included. It is reported as `thread-total`, and as
- * `run` after subtracting `baselineUsage`. Codex counts cached and
+ * `exec resume` runs included. Codex's own struct doc calls it the usage
+ * "during the turn", but `codex exec` fills it from the thread's
+ * `total` token usage (`usage_from_last_total` in
+ * `codex-rs/exec/src/event_processor_with_jsonl_output.rs`), so a resumed
+ * thread's first `turn.completed` already holds the earlier runs. It is
+ * reported as `thread-total`, and as `run` after subtracting
+ * `baselineUsage`; a caller that resumes threads and prices `thread-total`
+ * directly bills the earlier runs again. Codex counts cached and
  * cache-written tokens inside `input_tokens` (its uncached input is input
  * minus cached), so the buckets here subtract both; reasoning is inside
  * `output_tokens`.
