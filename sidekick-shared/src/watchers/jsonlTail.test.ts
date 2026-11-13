@@ -635,6 +635,46 @@ describe('captureJsonlCheckpoint / verifyJsonlCheckpoint', () => {
     expect(verifyJsonlCheckpoint(file, checkpoint)).toBe(true);
   });
 
+  it.skipIf(process.platform === 'win32')(
+    'refuses a symlinked path with noFollow and follows it by default',
+    () => {
+      const target = makeJsonlFile();
+      appendFileSync(target, content);
+      const link = path.join(path.dirname(target), 'link.jsonl');
+      symlinkSync(target, link);
+      const end = Buffer.byteLength(content);
+
+      const followed = captureJsonlCheckpoint(link, end);
+      expect(followed).toEqual(captureJsonlCheckpoint(target, end));
+      expect(verifyJsonlCheckpoint(link, followed)).toBe(true);
+
+      expect(captureJsonlCheckpoint(link, end, { noFollow: true })).toBeNull();
+      expect(verifyJsonlCheckpoint(link, followed, { noFollow: true })).toBe(false);
+      // A plain file is unaffected by noFollow.
+      const direct = captureJsonlCheckpoint(target, end, { noFollow: true });
+      expect(direct).toEqual(followed);
+      expect(verifyJsonlCheckpoint(target, direct, { noFollow: true })).toBe(true);
+    },
+  );
+
+  it('rolls back a refused batch by resuming from the checkpoint taken before it', async () => {
+    const file = makeJsonlFile();
+    appendFileSync(file, '{"type":"one"}\n');
+    const { tail, events } = recordingTail(file);
+    const first = await tail.read();
+    const beforeBatch = first.checkpoint;
+
+    appendFileSync(file, '{"type":"two"}\n{"type":"three"}\n');
+    await tail.read();
+    expect(events).toEqual(['one', 'two', 'three']);
+
+    // The caller could not take the batch: rewind and read it again.
+    events.length = 0;
+    expect(tail.resumeFrom(beforeBatch)).toBe(true);
+    await tail.read();
+    expect(events).toEqual(['two', 'three']);
+  });
+
   it('returns null for a missing file or an offset that is not resume-safe', () => {
     const file = makeJsonlFile();
     appendFileSync(file, content);

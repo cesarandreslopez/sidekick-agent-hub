@@ -41,7 +41,7 @@ export type { FindCodexRolloutFileOptions } from './providers/codexRollouts';
 export { atomicWriteJson, atomicWriteJsonSync } from './writers/atomic';
 
 export { parseClaudeAuthStatus, parseCodexLoginStatus } from './authStatus';
-export type { ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
+export type { AuthStatusState, ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
 
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';

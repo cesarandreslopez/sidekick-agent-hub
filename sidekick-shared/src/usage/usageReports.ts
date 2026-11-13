@@ -19,9 +19,11 @@ export type UsageGranularity = 'day' | 'week' | 'month' | 'session';
 
 /**
  * Extra dimensions a bucket is split by, beyond the time key. `session`
- * splits each time bucket per session (rows then carry `sessionId`).
+ * splits each time bucket per session (rows then carry `sessionId`). `tag`
+ * splits by the caller's own label for each event (`tagOf`), such as a task
+ * or a billing code; rows then carry `tag`.
  */
-export type UsageGroupDimension = 'provider' | 'project' | 'model' | 'session';
+export type UsageGroupDimension = 'provider' | 'project' | 'model' | 'session' | 'tag';
 
 export interface BucketUsageOptions {
   granularity: UsageGranularity;
@@ -44,6 +46,13 @@ export interface BucketUsageOptions {
    * share a row. Pricing is unaffected: events arrive already priced.
    */
   modelKey?: 'raw' | 'canonical';
+  /**
+   * The caller's label for an event, read when `groupBy` includes `'tag'`
+   * (required then; `bucketUsage` throws a `RangeError` without it). Events
+   * with the same label share rows; `null`, `undefined` or an empty string
+   * puts an event in the untagged rows (`tag: null`). Called once per event.
+   */
+  tagOf?: (event: UsageEventRecord) => string | null | undefined;
 }
 
 export interface UsageBucketRow {
@@ -56,6 +65,19 @@ export interface UsageBucketRow {
   model: string | null;
   /** Session id for `session` rows and rows grouped by `session`; null otherwise. */
   sessionId: string | null;
+  /**
+   * Rows of a subagent or fork that is its own session (a Codex spawned or
+   * forked rollout): the session at the top of its chain
+   * (`UsageEventRecord.subagent.rootSessionId`). Null for a top-level session,
+   * when the root is unknown, and on rows not split by session. Always set by
+   * `bucketUsage`.
+   */
+  rootSessionId?: string | null;
+  /**
+   * The `tagOf` label of rows grouped by `tag`, or null for untagged events
+   * and rows not grouped by tag. Always set by `bucketUsage`.
+   */
+  tag?: string | null;
   /** Models seen in the row, most tokens first. */
   models: string[];
   calls: number;
@@ -196,6 +218,11 @@ export function bucketUsage(
   const byProject = isSession || groupBy.has('project');
   const byModel = groupBy.has('model');
   const bySession = isSession || groupBy.has('session');
+  const byTag = groupBy.has('tag');
+  const tagOf = options.tagOf;
+  if (byTag && typeof tagOf !== 'function') {
+    throw new RangeError("bucketUsage: grouping by 'tag' needs a `tagOf` function.");
+  }
   const keyModel =
     options.modelKey === 'canonical'
       ? (model: string) => (model === SYNTHETIC_MODEL ? model : canonicalModelId(model) || model)
@@ -210,7 +237,8 @@ export function bucketUsage(
     const eventModel = keyModel(event.model);
     const model = byModel ? eventModel : null;
     const sessionId = bySession ? event.sessionId : null;
-    const id = JSON.stringify([key, provider, project, model, sessionId]);
+    const tag = byTag ? tagLabel(tagOf!(event)) : null;
+    const id = JSON.stringify([key, provider, project, model, sessionId, tag]);
 
     let acc = buckets.get(id);
     if (!acc) {
@@ -222,6 +250,8 @@ export function bucketUsage(
           project,
           model,
           sessionId,
+          rootSessionId: null,
+          tag,
           models: [],
           calls: 0,
           sessions: 0,
@@ -244,6 +274,7 @@ export function bucketUsage(
     }
 
     const { row } = acc;
+    if (bySession && row.rootSessionId === null) row.rootSessionId = rootOf(event);
     row.calls += 1;
     addTokens(row.tokens, event.tokens);
     row.totalTokens += event.tokens.totalTokens;
@@ -284,11 +315,31 @@ export function bucketUsage(
       (a.provider ?? '').localeCompare(b.provider ?? '') ||
       (a.project ?? '').localeCompare(b.project ?? '') ||
       (a.model ?? '').localeCompare(b.model ?? '') ||
+      (byTag ? compareTags(a.tag ?? null, b.tag ?? null) : 0) ||
       (bySession && !isSession
         ? a.firstTimestamp - b.firstTimestamp ||
           (a.sessionId ?? '').localeCompare(b.sessionId ?? '')
         : 0),
   );
+}
+
+/** A `tagOf` result as a row label: a nonempty string, else null (untagged). */
+function tagLabel(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+/** Untagged rows sort before tagged ones; tags in code-unit order. */
+function compareTags(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (a === null) return -1;
+  if (b === null) return 1;
+  return a < b ? -1 : 1;
+}
+
+/** The root session of a subagent or fork that is its own session, else null. */
+function rootOf(event: UsageEventRecord): string | null {
+  const root = event.subagent?.rootSessionId;
+  return typeof root === 'string' && root !== '' && root !== event.sessionId ? root : null;
 }
 
 function reasoningOf(value: number | undefined): number {

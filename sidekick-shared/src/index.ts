@@ -856,6 +856,7 @@ export {
   verifyJsonlCheckpoint,
 } from './watchers/jsonlTail';
 export type {
+  JsonlCheckpointFileOptions,
   JsonlTail,
   JsonlTailCheckpoint,
   JsonlTailReadResult,
@@ -1663,7 +1664,7 @@ export {
   decodeCodexErrorInfo,
 } from './providerFailure';
 export { parseClaudeAuthStatus, parseCodexLoginStatus } from './authStatus';
-export type { ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
+export type { AuthStatusState, ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
 export type {
   CodexErrorInfoKind,
   CodexErrorInfoSummary,

@@ -323,3 +323,82 @@ describe('bucketUsage — session dimension, priced cost, reasoning, synthetic',
     expect(summarizeUsageRows([legacyUnpriced as UsageBucketRow]).pricedCostUsd).toBeNull();
   });
 });
+
+describe('bucketUsage — tag dimension and subagent roots', () => {
+  const events = [
+    event('2026-09-04T09:00:00Z', { sessionId: 's1', total: 100 }),
+    event('2026-09-04T10:00:00Z', { sessionId: 's1', total: 200 }),
+    event('2026-09-04T11:00:00Z', { sessionId: 's1', total: 400 }),
+    event('2026-09-04T12:00:00Z', { sessionId: 's2', total: 800 }),
+  ];
+  const taskOf = (e: UsageEventRecord): string | null =>
+    e.timestamp < Date.parse('2026-09-04T10:30:00Z') ? 'task-a' : e.sessionId === 's2' ? '' : null;
+
+  it('splits rows by the caller’s tag, untagged rows first', () => {
+    const rows = bucketUsage(events, {
+      granularity: 'day',
+      utc: true,
+      groupBy: ['provider', 'tag'],
+      tagOf: taskOf,
+    });
+    expect(rows.map((row) => [row.tag, row.calls, row.totalTokens, row.sessions])).toEqual([
+      [null, 2, 1200, 2],
+      ['task-a', 2, 300, 1],
+    ]);
+  });
+
+  it('leaves tag null on every row when not grouping by tag', () => {
+    const rows = bucketUsage(events, { granularity: 'day', utc: true, tagOf: taskOf });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].tag).toBeNull();
+    expect(rows[0].rootSessionId).toBeNull();
+  });
+
+  it('throws a RangeError when grouping by tag without tagOf', () => {
+    expect(() => bucketUsage(events, { granularity: 'day', groupBy: ['tag'] })).toThrow(RangeError);
+  });
+
+  it('combines tag with session and model grouping', () => {
+    const rows = bucketUsage(events, {
+      granularity: 'day',
+      utc: true,
+      groupBy: ['provider', 'session', 'model', 'tag'],
+      tagOf: taskOf,
+    });
+    expect(rows.map((row) => [row.sessionId, row.tag, row.calls])).toEqual([
+      ['s1', null, 1],
+      ['s2', null, 1],
+      ['s1', 'task-a', 2],
+    ]);
+  });
+
+  it('carries the root session on rows of a subagent that is its own session', () => {
+    const subagentEvents = [
+      event('2026-09-04T09:00:00Z', { provider: 'codex', sessionId: 'root' }),
+      event('2026-09-04T09:05:00Z', {
+        provider: 'codex',
+        sessionId: 'child',
+        subagent: { agentId: 'child', parentSessionId: 'root', rootSessionId: 'root' },
+      }),
+      // A Claude Code subagent's calls already belong to its parent session.
+      event('2026-09-04T09:10:00Z', {
+        sessionId: 'parent',
+        subagent: { agentId: 'a1', parentSessionId: 'parent', rootSessionId: 'parent' },
+      }),
+    ];
+    const bySession = bucketUsage(subagentEvents, {
+      granularity: 'day',
+      utc: true,
+      groupBy: ['provider', 'session'],
+    });
+    expect(bySession.map((row) => [row.sessionId, row.rootSessionId])).toEqual([
+      ['parent', null],
+      ['root', null],
+      ['child', 'root'],
+    ]);
+    const sessions = bucketUsage(subagentEvents, { granularity: 'session' });
+    expect(sessions.find((row) => row.key === 'child')?.rootSessionId).toBe('root');
+    const byDay = bucketUsage(subagentEvents, { granularity: 'day', utc: true });
+    expect(byDay.every((row) => row.rootSessionId === null)).toBe(true);
+  });
+});

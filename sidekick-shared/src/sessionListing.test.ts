@@ -29,7 +29,7 @@ vi.mock('./providers/codexDatabase', () => ({
 }));
 
 import type { SessionHomesOptions } from './agentHomes';
-import { collectPromptHistory } from './promptHistory';
+import { collectPromptHistory, listingOption } from './promptHistory';
 import { ClaudeCodeProvider } from './providers/claudeCode';
 import { CodexProvider } from './providers/codex';
 import { collectSessionPromptHistory } from './sessionPromptHistory';
@@ -173,6 +173,70 @@ describe('listAgentSessions', () => {
     await expect(collectPromptHistory({ listing: { version: 1 } as never })).rejects.toThrow(
       TypeError,
     );
+  });
+
+  it('lets a prompt-family collector narrow a listing to plain rollouts, never widen it', async () => {
+    const plain = await listAgentSessions({ workspacePaths: [repo], homes });
+    const rollout = plain.files.find((file) => file.provider === 'codex')!;
+    // A listing made with compressed rollouts: one more Codex session, as `.jsonl.zst`.
+    const compressed = {
+      ...plain,
+      includeCompressedRollouts: true,
+      files: [
+        ...plain.files,
+        {
+          ...rollout,
+          sessionId: 'zst-session',
+          sessionKey: 'codex:zst-session:0123456789ab',
+          filePath: rollout.filePath.replace(/\.jsonl$/, '-archived.jsonl.zst'),
+        },
+      ],
+    };
+    const ids = ['toolu_1', 'toolu_2'];
+
+    expect(
+      await collectPromptHistory({ listing: compressed, includeCompressedRollouts: false }),
+    ).toEqual(await collectPromptHistory({ listing: plain }));
+    expect(
+      await collectSessionPromptHistory({ listing: compressed, includeCompressedRollouts: false }),
+    ).toEqual(await collectSessionPromptHistory({ listing: plain }));
+    expect(
+      await findToolCallOrigins({ ids, listing: compressed, includeCompressedRollouts: false }),
+    ).toEqual(await findToolCallOrigins({ ids, listing: plain }));
+    // What those collectors were handed: the plain files only, as a new listing.
+    const narrowed = listingOption('test', {
+      listing: compressed,
+      includeCompressedRollouts: false,
+    });
+    expect(narrowed).toMatchObject({ includeCompressedRollouts: false, roots: plain.roots });
+    expect(narrowed?.files).toEqual(plain.files);
+    expect(listingOption('test', { listing: compressed, includeCompressedRollouts: true })).toBe(
+      compressed,
+    );
+    expect(listingOption('test', { listing: compressed })).toBe(compressed);
+    expect(() =>
+      listingOption('test', {
+        listing: compressed,
+        includeCompressedRollouts: 'no' as unknown as boolean,
+      }),
+    ).toThrow(TypeError);
+    // The caller's listing is untouched.
+    expect(compressed.files).toHaveLength(plain.files.length + 1);
+    expect(compressed.includeCompressedRollouts).toBe(true);
+
+    // The listing's own choice is a no-op; widening it is refused.
+    expect(
+      await collectPromptHistory({ listing: plain, includeCompressedRollouts: false }),
+    ).toEqual(await collectPromptHistory({ listing: plain }));
+    await expect(
+      collectPromptHistory({ listing: plain, includeCompressedRollouts: true }),
+    ).rejects.toThrow(/made without compressed rollouts/);
+    await expect(
+      collectSessionPromptHistory({ listing: plain, includeCompressedRollouts: true }),
+    ).rejects.toThrow(TypeError);
+    await expect(
+      findToolCallOrigins({ ids, listing: plain, includeCompressedRollouts: true }),
+    ).rejects.toThrow(TypeError);
   });
 
   it('reuses the previous listing and still sees appends and new sessions', async () => {

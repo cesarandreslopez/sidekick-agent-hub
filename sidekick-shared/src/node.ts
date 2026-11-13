@@ -308,7 +308,7 @@ export {
 export type { CodexAuthIdentity, CodexAuthJsonFile } from './codexAuth';
 export { atomicWriteJson, atomicWriteJsonSync, waitForPendingAtomicWrites } from './writers/atomic';
 export { parseClaudeAuthStatus, parseCodexLoginStatus } from './authStatus';
-export type { ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
+export type { AuthStatusState, ParsedClaudeAuthStatus, ParsedCodexLoginStatus } from './authStatus';
 export { codexRolloutOrigin, codexSpawnParentFromSource } from './parsers/codexRolloutOrigin';
 export type { CodexRolloutOrigin } from './parsers/codexRolloutOrigin';
 // Codex inherited-history boundary (0.31)
@@ -416,6 +416,7 @@ export {
   verifyJsonlCheckpoint,
 } from './watchers/jsonlTail';
 export type {
+  JsonlCheckpointFileOptions,
   JsonlTail,
   JsonlTailCheckpoint,
   JsonlTailReadResult,
