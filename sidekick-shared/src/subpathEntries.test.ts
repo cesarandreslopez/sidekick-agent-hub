@@ -56,7 +56,8 @@ const SUBPATHS = [
   // 0.31: headless output parsers (TextDecoder only).
   { name: 'headless', pure: true, maxModules: 14 },
   // 0.31: dependency-free agent paths for hook bundles (Node built-ins only).
-  { name: 'agentPaths', pure: false, maxModules: 5 },
+  // 0.33: +1 for agentTranscriptLookup (transcript lookup by session id).
+  { name: 'agentPaths', pure: false, maxModules: 6 },
   // 0.32: the activity map (records, reducer, insights, renderers). Pure and
   // Zod-free; the budget covers its own modules plus the shared helpers it
   // classifies with (tool categories, MCP names, subagents, turn state, shell).
@@ -101,13 +102,14 @@ describe('lean subpath entries', { timeout: 30_000 }, () => {
 
 // Hook bundles may load nothing beyond these: pin the exact closure.
 describe('sidekick-shared/agentPaths closure', () => {
-  it('loads exactly its five modules and only fs, os and path', async () => {
+  it('loads exactly its six modules and only fs, os and path', async () => {
     const { modules, externals } = await requireClosure(
       pkgRequire.resolve('sidekick-shared/agentPaths'),
     );
     expect([...modules].map((file) => path.relative(distDir, file)).sort()).toEqual([
       'agentHomes.js',
       'agentPaths.js',
+      'agentTranscriptLookup.js',
       'agentVersion.js',
       'claudePaths.js',
       'codexLayout.js',

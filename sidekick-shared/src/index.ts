@@ -1721,6 +1721,7 @@ export type {
   AgentHomeProvider,
   AgentHomesEnv,
   IgnoredAgentHome,
+  ResolveAgentHomesOptions,
   ResolvedAgentHomes,
   SessionHomesOptions,
 } from './agentHomes';
@@ -1753,13 +1754,34 @@ export type {
   AgentTranscriptPath,
   ClassifyAgentTranscriptPathOptions,
 } from './agentPaths';
-export { DEFAULT_AGENT_VERSION_WINDOW_BYTES, readAgentVersion } from './agentVersion';
+export {
+  DEFAULT_AGENT_VERSION_WINDOW_BYTES,
+  readAgentModel,
+  readAgentVersion,
+} from './agentVersion';
 export type {
+  AgentModelInfo,
   AgentVersionInfo,
   AgentVersionProvider,
+  ReadAgentModelOptions,
   ReadAgentVersionOptions,
 } from './agentVersion';
-export { extractRolloutSessionId, isCompressedRolloutFile, isRolloutFile } from './codexLayout';
+export {
+  codexRolloutDayCandidates,
+  extractRolloutSessionId,
+  isCompressedRolloutFile,
+  isRolloutFile,
+} from './codexLayout';
+// Transcript lookup by session id (also on `sidekick-shared/agentPaths`)
+export {
+  DEFAULT_MAX_CLAUDE_PROJECT_DIRS,
+  findClaudeSessionFile,
+  locateCodexRolloutFile,
+} from './agentTranscriptLookup';
+export type {
+  FindClaudeSessionFileOptions,
+  LocateCodexRolloutFileOptions,
+} from './agentTranscriptLookup';
 
 // Strict workspace scope for session listings and usage
 export { pathWithinRoots } from './workspaceRoots';

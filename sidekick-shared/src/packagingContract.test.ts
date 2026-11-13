@@ -1091,11 +1091,33 @@ describe('lean bundles', { timeout: 60_000 }, () => {
     }
   }
 
-  it('keeps the whole sidekick-shared/agentPaths entry under 8 KB minified', async () => {
+  // The whole entry, as `export *` keeps it. 0.33 raised it from 8 KB for the
+  // model reader and the transcript lookup by id (about 2.5 KB); a bundle that
+  // imports only some functions keeps only those (no side effects).
+  it('keeps the whole sidekick-shared/agentPaths entry under 12 KB minified', async () => {
     const code = await bundle("export * from 'sidekick-shared/agentPaths';\n");
     expect(code).toContain('classifyAgentTranscriptPath');
     expect(code).not.toMatch(/from\s*["']zod/);
-    expect(code.length).toBeLessThan(8 * 1024);
+    expect(code.length).toBeLessThan(12 * 1024);
+  });
+
+  it('keeps a hook-style import of the path classifiers under 4.5 KB minified', async () => {
+    const code = await bundle(
+      [
+        'export {',
+        '  resolveAgentHomes,',
+        '  classifyAgentTranscriptPath,',
+        '  getClaudeSubagentTranscriptPath,',
+        '  isCompressedRolloutFile,',
+        "} from 'sidekick-shared/agentPaths';",
+        '',
+      ].join('\n'),
+    );
+    // Tree-shaken: the readers and the lookups are not pulled in.
+    expect(code).not.toContain('session_meta');
+    expect(code).not.toContain('turn_context');
+    expect(code).not.toContain('maxProjectDirs');
+    expect(code.length).toBeLessThan(4.5 * 1024);
   });
 
   it('leaves OpenCode out of a bundle that builds only Claude Code and Codex', async () => {

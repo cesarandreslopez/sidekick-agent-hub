@@ -9,10 +9,17 @@
  * then `<HOME>/.claude` / `<HOME>/.codex` decide.
  *
  * Precedence, per provider: an explicit array (`[]` disables that provider),
- * then the environment variable, then the default under the user's home. A
- * blank variable counts as unset (the CLIs treat it the same way). A relative
- * variable is ignored and reported, because it names a directory relative to
- * the agent's working directory, which the reader cannot know.
+ * then the environment variable, then the default under the user's home.
+ *
+ * A blank variable counts as unset, which is how Codex treats a blank
+ * `CODEX_HOME`. Claude Code is different: since 2.1.316 it resolves an
+ * *exactly* empty `CLAUDE_CONFIG_DIR` to the folder it was started in (and
+ * reports a relative `transcript_path`), while older versions treat it as
+ * unset. A relative variable names a directory relative to the agent's start
+ * folder too. A reader that knows the candidate start folders passes them as
+ * `agentCwds` (see {@link ResolveAgentHomesOptions}); without them an empty
+ * `CLAUDE_CONFIG_DIR` falls back to the default home, and a relative variable
+ * is ignored and reported.
  *
  * Never adds sidekick account-profile homes; `resolveMonitoredHomes()` in
  * `codexPaths` does that for Codex.
@@ -49,6 +56,21 @@ export interface SessionHomesOptions {
    * true, as the providers always have). Ignored by `resolveAgentHomes()`.
    */
   includeProfileHomes?: boolean;
+}
+
+/** Options for {@link resolveAgentHomes}. */
+export interface ResolveAgentHomesOptions extends SessionHomesOptions {
+  /**
+   * Folders the agent may have been started in, absolute, most likely first
+   * (for a hook: its project directory, then the payload's `cwd`). They
+   * resolve what only the agent's start folder can: an exactly empty
+   * `CLAUDE_CONFIG_DIR` adds each as a Claude home after the default home
+   * (Claude Code 2.1.316+ writes to `<start folder>/projects/`, older
+   * versions to the default), and a relative `CLAUDE_CONFIG_DIR` or
+   * `CODEX_HOME` resolves against each instead of being ignored. Blank,
+   * relative, or non-string entries are skipped. Explicit home lists win.
+   */
+  agentCwds?: readonly string[];
 }
 
 export type AgentHomeProvider = 'claude-code' | 'codex';
@@ -127,6 +149,15 @@ export function dedupeHomes(homes: readonly string[]): string[] {
   return unique;
 }
 
+function absoluteDirs(dirs: readonly string[] | undefined): string[] {
+  if (!Array.isArray(dirs)) return [];
+  return dedupeHomes(
+    dirs
+      .filter((dir) => typeof dir === 'string' && dir.trim() !== '' && path.isAbsolute(dir))
+      .map((dir) => path.resolve(dir)),
+  );
+}
+
 function resolveOne(
   provider: AgentHomeProvider,
   explicit: readonly string[] | undefined,
@@ -135,24 +166,35 @@ function resolveOne(
   dirname: string,
   env: AgentHomesEnv,
   ignored: IgnoredAgentHome[],
+  cwds: string[],
 ): string[] {
   if (explicit !== undefined) return normalizeExplicitHomes(explicit, label);
-  const fromEnv = nonBlank(env[variable]);
+  const fallback = path.join(agentUserHome(env), dirname);
+  const raw = env[variable];
+  // Claude Code 2.1.316+ resolves an exactly empty value to its start folder;
+  // older versions (and Codex) treat it as unset.
+  if (raw === '' && provider === 'claude-code' && cwds.length > 0) {
+    return dedupeHomes([fallback, ...cwds]);
+  }
+  const fromEnv = nonBlank(raw);
   if (fromEnv !== undefined) {
     if (path.isAbsolute(fromEnv)) return [path.resolve(fromEnv)];
+    if (cwds.length > 0) return dedupeHomes(cwds.map((cwd) => path.resolve(cwd, fromEnv)));
     ignored.push({ provider, variable, value: fromEnv, reason: 'relative' });
   }
-  return [path.join(agentUserHome(env), dirname)];
+  return [fallback];
 }
 
 /**
  * Resolve the Claude Code and Codex homes to read. Pure: no filesystem
  * access. Throws `RangeError` only for an explicit list with a relative or
- * blank entry; environment values never throw (see `ignored`).
+ * blank entry; environment values and `agentCwds` never throw (see
+ * `ignored`).
  */
-export function resolveAgentHomes(options: SessionHomesOptions = {}): ResolvedAgentHomes {
+export function resolveAgentHomes(options: ResolveAgentHomesOptions = {}): ResolvedAgentHomes {
   const env = options.env ?? process.env;
   const ignored: IgnoredAgentHome[] = [];
+  const cwds = absoluteDirs(options.agentCwds);
   const claude = resolveOne(
     'claude-code',
     options.claudeHomes,
@@ -161,6 +203,7 @@ export function resolveAgentHomes(options: SessionHomesOptions = {}): ResolvedAg
     DEFAULT_CLAUDE_HOME_DIRNAME,
     env,
     ignored,
+    cwds,
   );
   const codex = resolveOne(
     'codex',
@@ -170,6 +213,7 @@ export function resolveAgentHomes(options: SessionHomesOptions = {}): ResolvedAg
     DEFAULT_CODEX_HOME_DIRNAME,
     env,
     ignored,
+    cwds,
   );
   return { claude, codex, ignored };
 }
