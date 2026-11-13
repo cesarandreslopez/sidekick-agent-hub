@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { StringDecoder } from 'string_decoder';
 import { getCodexSessionsDirs } from '../codexPaths';
+import { CODEX_SESSIONS_SUBDIR, codexRolloutDayCandidates } from '../codexLayout';
 import type { CodexRolloutLine, CodexSessionMeta } from '../types/codex';
 import { DirectoryListingCache } from './directoryListingCache';
 import { walkRolloutFiles, walkRolloutFilesAsync } from './rolloutWalker';
@@ -317,9 +318,16 @@ export interface FindCodexRolloutFileOptions {
  * Filename-only match, case-insensitive on the id — no file contents are read
  * and files are only stat'ed once their name matches, so the walk stays cheap
  * even over a large history. When the same id exists in more than one home,
- * the most recently modified copy wins. Returns `null` for an unknown, empty,
- * or whitespace id. Consumers who want the database's answer instead can query
- * the already-public `CodexDatabase` (requires the external `sqlite3` binary).
+ * the most recently modified copy wins, and a live `.jsonl` beats a
+ * compressed copy. Returns `null` for an unknown, empty, or whitespace id.
+ * Consumers who want the database's answer instead can query the
+ * already-public `CodexDatabase` (requires the external `sqlite3` binary).
+ *
+ * For a UUIDv7 id (every current Codex thread), the dated folders its
+ * creation time points to ({@link codexRolloutDayCandidates}) and the
+ * archive folders are searched first, across every home; the full walk runs
+ * only when they hold no copy. A copy moved by hand into another dated
+ * folder is therefore found only when no copy sits where Codex files it.
  */
 export function findCodexRolloutFile(
   sessionId: string,
@@ -331,14 +339,24 @@ export function findCodexRolloutFile(
   const sessionsDirs = options.codexHome
     ? getCodexSessionsDirs([options.codexHome])
     : getSessionsDirs(options.codexHomes);
+  const walkOptions = { sessionId: normalizedId, includeCompressed: options.includeCompressed };
+  // A live `.jsonl` wins over a compressed copy found in another home; the
+  // walker returns newest modification first.
+  const pick = (matches: { path: string }[]): string | null =>
+    (matches.find((file) => !isCompressedRolloutPath(file.path)) ?? matches[0])?.path ?? null;
+
+  const days = codexRolloutDayCandidates(normalizedId);
+  if (days.length > 0) {
+    // Dated folders of each `sessions/` root; archive roots are searched whole.
+    const hinted = sessionsDirs.flatMap((dir) =>
+      path.basename(dir) === CODEX_SESSIONS_SUBDIR ? days.map((day) => path.join(dir, day)) : [dir],
+    );
+    const found = pick(walkRolloutFiles(hinted, walkOptions));
+    if (found) return found;
+  }
 
   // Name-only filter, one walk across the homes, newest modification first.
-  const matches = walkRolloutFiles(sessionsDirs, {
-    sessionId: normalizedId,
-    includeCompressed: options.includeCompressed,
-  });
-  // A live `.jsonl` wins over a compressed copy found in another home.
-  return (matches.find((file) => !isCompressedRolloutPath(file.path)) ?? matches[0])?.path ?? null;
+  return pick(walkRolloutFiles(sessionsDirs, walkOptions));
 }
 
 // ── Inherited-history boundary of one rollout file ──

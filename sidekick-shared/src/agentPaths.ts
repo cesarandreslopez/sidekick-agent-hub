@@ -1,13 +1,16 @@
 /**
  * `sidekick-shared/agentPaths`: where Claude Code and Codex keep their
- * homes and transcripts, what a transcript path is, and which CLI version
- * wrote it, for bundles that may load nothing else (hooks, launchers).
+ * homes and transcripts, what a transcript path is, which CLI version and
+ * model wrote it, and where a session's transcript is by id, for bundles that
+ * may load nothing else (hooks, launchers).
  *
- * Five modules and Node's `fs`, `os` and `path`, nothing more. The
- * classifiers and readers here never throw; `resolveAgentHomes()` throws
- * `RangeError` only for an explicit relative or blank home, which is a
- * caller bug. Everything is also exported from the package root and
- * `sidekick-shared/node`.
+ * Six modules and Node's `fs`, `os` and `path`, nothing more. The
+ * classifiers, readers and lookups here never throw; `resolveAgentHomes()`
+ * throws `RangeError` only for an explicit relative or blank home, which is
+ * a caller bug. Everything is also exported from the package root and
+ * `sidekick-shared/node`. Bundlers keep only what is imported (the package
+ * has no side effects), so a hook that imports one classifier does not pay
+ * for the readers or lookups.
  *
  * @module agentPaths
  */
@@ -29,6 +32,7 @@ export type {
   AgentHomeProvider,
   AgentHomesEnv,
   IgnoredAgentHome,
+  ResolveAgentHomesOptions,
   ResolvedAgentHomes,
   SessionHomesOptions,
 } from './agentHomes';
@@ -48,17 +52,33 @@ export {
 export {
   CODEX_ARCHIVED_SESSIONS_SUBDIR,
   CODEX_SESSIONS_SUBDIR,
+  codexRolloutDayCandidates,
   extractRolloutSessionId,
   getSystemCodexHome,
   isCompressedRolloutFile,
   isRolloutFile,
 } from './codexLayout';
-export { DEFAULT_AGENT_VERSION_WINDOW_BYTES, readAgentVersion } from './agentVersion';
+export {
+  DEFAULT_AGENT_VERSION_WINDOW_BYTES,
+  readAgentModel,
+  readAgentVersion,
+} from './agentVersion';
 export type {
+  AgentModelInfo,
   AgentVersionInfo,
   AgentVersionProvider,
+  ReadAgentModelOptions,
   ReadAgentVersionOptions,
 } from './agentVersion';
+export {
+  DEFAULT_MAX_CLAUDE_PROJECT_DIRS,
+  findClaudeSessionFile,
+  locateCodexRolloutFile,
+} from './agentTranscriptLookup';
+export type {
+  FindClaudeSessionFileOptions,
+  LocateCodexRolloutFileOptions,
+} from './agentTranscriptLookup';
 
 export type AgentTranscriptKind = 'session' | 'subagent' | 'rollout';
 
@@ -87,6 +107,25 @@ export interface ClassifyAgentTranscriptPathOptions {
   homes?: Pick<SessionHomesOptions, 'claudeHomes' | 'codexHomes'>;
   /** Environment for `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `HOME` (default `process.env`). */
   env?: AgentHomesEnv;
+  /**
+   * Candidate start folders of the agent, as in `resolveAgentHomes()`: with
+   * an exactly empty `CLAUDE_CONFIG_DIR` each is also accepted as a Claude
+   * home, and a relative variable resolves against them.
+   */
+  agentCwds?: readonly string[];
+  /**
+   * Absolute folders a *relative* path is resolved against, in order (for a
+   * hook: its project directory, then the payload's `cwd`). Claude Code
+   * 2.1.316+ with an exactly empty `CLAUDE_CONFIG_DIR` reports
+   * `projects/<dir>/<id>.jsonl` relative to its start folder, so pass bases
+   * only when the agent ran that way. A relative path is accepted only as a
+   * Claude Code session or subagent transcript under a base's own
+   * `projects/`, and that base is reported as `home`: the first base where
+   * the file exists, else the first base (a session's first hook can run
+   * before its transcript is written). Without `baseDirs` a relative path
+   * gives null.
+   */
+  baseDirs?: readonly string[];
   /** Compare realpaths, following symlinks in the path and the homes (default false). */
   realpath?: boolean;
 }
@@ -181,19 +220,35 @@ function classifyCodex(
  * session (`<home>/projects/<dir>/<id>.jsonl`), a Claude Code subagent
  * (`<home>/projects/<dir>/<id>/subagents/agent-<agent>.jsonl`), or a Codex
  * rollout (`<home>/sessions/…/rollout-….jsonl[.zst]`, or below
- * `archived_sessions/`). Null for a relative path or anything else. Only
- * the path is examined unless `realpath` is set. Never throws.
+ * `archived_sessions/`). A relative path is classified only against
+ * `baseDirs` (see {@link ClassifyAgentTranscriptPathOptions.baseDirs}). Null
+ * for anything else. Only the path is examined unless `realpath` is set.
+ * Never throws.
  */
 export function classifyAgentTranscriptPath(
   filePath: string,
   options: ClassifyAgentTranscriptPathOptions = {},
 ): AgentTranscriptPath | null {
   try {
-    if (typeof filePath !== 'string' || !path.isAbsolute(filePath)) return null;
+    if (typeof filePath !== 'string' || !filePath) return null;
+    if (!path.isAbsolute(filePath)) {
+      let first: AgentTranscriptPath | null = null;
+      for (const base of validHomes(options.baseDirs) ?? []) {
+        const home = path.resolve(base);
+        const target = path.resolve(home, filePath);
+        const match = classifyClaude(canonical(target, options.realpath), home, options.realpath);
+        if (!match) continue;
+        // A relative path fits every base; prefer the one that holds the file.
+        if (fs.existsSync(target)) return match;
+        first ??= match;
+      }
+      return first;
+    }
     const homes = resolveAgentHomes({
       claudeHomes: validHomes(options.homes?.claudeHomes),
       codexHomes: validHomes(options.homes?.codexHomes),
       ...(options.env ? { env: options.env } : {}),
+      ...(options.agentCwds ? { agentCwds: options.agentCwds } : {}),
     });
     const target = canonical(path.resolve(filePath), options.realpath);
     for (const home of homes.claude) {

@@ -1,12 +1,14 @@
 /**
- * The agent CLI version that wrote a session file, read from bounded head
- * and tail windows without parsing the whole transcript.
+ * The agent CLI version (and the model) that wrote a session file, read from
+ * bounded head and tail windows without parsing the whole transcript.
  *
  * Claude Code stamps every record with a top-level `version` (and the
  * client in `entrypoint`); Codex records `cli_version` and `originator` on
  * the rollout's first line (`session_meta`). The head window gives the
  * first version, the tail window the latest one, so a session that was
- * resumed by a newer CLI reports both.
+ * resumed by a newer CLI reports both. The model comes from Claude Code's
+ * assistant `message.model` and Codex's `turn_context` `payload.model`,
+ * latest first.
  *
  * Dependency-free (Node's `fs` and `path` only), for hook bundles. Never
  * throws: unreadable, empty, or unrecognized files give null, and so do
@@ -34,11 +36,27 @@ export interface AgentVersionInfo {
 export interface ReadAgentVersionOptions {
   /** Bytes read from the head and from the tail (default 64 KiB each). */
   windowBytes?: number;
+  /**
+   * Refuse a symbolic link at `filePath`: open with `O_NOFOLLOW` where the
+   * platform defines it (a no-op where it does not, such as Windows), so a
+   * symlinked path gives null. Only the final path component is checked.
+   * Default false. Set it when the path comes from an untrusted payload.
+   */
+  noFollow?: boolean;
+}
+
+export type ReadAgentModelOptions = ReadAgentVersionOptions;
+
+export interface AgentModelInfo {
+  provider: AgentVersionProvider;
+  /** The model of the latest turn found (Claude Code `<synthetic>` messages are skipped). */
+  model: string;
 }
 
 export const DEFAULT_AGENT_VERSION_WINDOW_BYTES = 64 * 1024;
 const MAX_WINDOW_BYTES = 16 * 1024 * 1024;
 const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
+const MODEL_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.:@/+_[\]-]{0,127}$/;
 
 function shortString(value: unknown): string | undefined {
   return typeof value === 'string' && VERSION_PATTERN.test(value) ? value : undefined;
@@ -103,16 +121,24 @@ function claudeVersions(lines: string[]): { first?: string; last?: string; clien
   return { first, last, client };
 }
 
+interface FileWindows {
+  provider: AgentVersionProvider;
+  head: string;
+  /** The tail window's text, when the file is longer than the head window. */
+  tail?: string;
+  wholeFile: boolean;
+}
+
 /**
- * The agent version recorded in a Claude Code session or Codex rollout,
- * reading at most `windowBytes` from each end of the file with one open.
- * The provider comes from the file name: `rollout-….jsonl` is Codex,
- * anything else Claude Code.
+ * Read the head window (and, when `withTail` says so, the tail window) of a
+ * session file with one open. Null for compressed, missing, empty or
+ * unreadable files.
  */
-export function readAgentVersion(
+function readWindows(
   filePath: string,
-  options: ReadAgentVersionOptions = {},
-): AgentVersionInfo | null {
+  options: ReadAgentVersionOptions,
+  withTail: (provider: AgentVersionProvider) => boolean,
+): FileWindows | null {
   let fd: number | undefined;
   try {
     const name = path.basename(filePath);
@@ -121,38 +147,27 @@ export function readAgentVersion(
     const windowBytes = Number.isFinite(requested)
       ? Math.min(MAX_WINDOW_BYTES, Math.max(256, Math.floor(requested)))
       : DEFAULT_AGENT_VERSION_WINDOW_BYTES;
-    fd = fs.openSync(filePath, 'r');
+    const noFollow = options.noFollow ? fs.constants.O_NOFOLLOW : undefined;
+    fd = fs.openSync(filePath, noFollow ? fs.constants.O_RDONLY | noFollow : 'r');
     const size = fs.fstatSync(fd).size;
     if (size <= 0) return null;
+    const provider: AgentVersionProvider = isRolloutFile(name) ? 'codex' : 'claude-code';
     const headLength = Math.min(size, windowBytes);
     const head = Buffer.alloc(headLength);
     const headRead = fs.readSync(fd, head, 0, headLength, 0);
-    const headText = head.toString('utf8', 0, headRead);
     const wholeFile = headRead >= size;
-
-    if (isRolloutFile(name)) return codexVersion(headText, wholeFile);
-
-    const fromHead = claudeVersions(windowLines(headText, true, wholeFile));
-    let latest = fromHead.last;
-    let client = fromHead.client;
-    if (!wholeFile) {
+    const windows: FileWindows = {
+      provider,
+      head: head.toString('utf8', 0, headRead),
+      wholeFile,
+    };
+    if (!wholeFile && withTail(provider)) {
       const tailLength = Math.min(windowBytes, size - headRead);
       const tail = Buffer.alloc(tailLength);
       const tailRead = fs.readSync(fd, tail, 0, tailLength, size - tailLength);
-      const fromTail = claudeVersions(
-        windowLines(tail.toString('utf8', 0, tailRead), false, false),
-      );
-      latest = fromTail.last ?? latest;
-      client = fromTail.client ?? client;
+      windows.tail = tail.toString('utf8', 0, tailRead);
     }
-    const version = latest ?? fromHead.first;
-    if (!version) return null;
-    return {
-      provider: 'claude-code',
-      version,
-      ...(fromHead.first && fromHead.first !== version ? { firstVersion: fromHead.first } : {}),
-      ...(client ? { originator: client } : {}),
-    };
+    return windows;
   } catch {
     return null;
   } finally {
@@ -164,4 +179,85 @@ export function readAgentVersion(
       }
     }
   }
+}
+
+/**
+ * The agent version recorded in a Claude Code session or Codex rollout,
+ * reading at most `windowBytes` from each end of the file with one open.
+ * The provider comes from the file name: `rollout-….jsonl` is Codex,
+ * anything else Claude Code.
+ */
+export function readAgentVersion(
+  filePath: string,
+  options: ReadAgentVersionOptions = {},
+): AgentVersionInfo | null {
+  const windows = readWindows(filePath, options, (provider) => provider === 'claude-code');
+  if (!windows) return null;
+  if (windows.provider === 'codex') return codexVersion(windows.head, windows.wholeFile);
+
+  const fromHead = claudeVersions(windowLines(windows.head, true, windows.wholeFile));
+  let latest = fromHead.last;
+  let client = fromHead.client;
+  if (windows.tail !== undefined) {
+    const fromTail = claudeVersions(windowLines(windows.tail, false, false));
+    latest = fromTail.last ?? latest;
+    client = fromTail.client ?? client;
+  }
+  const version = latest ?? fromHead.first;
+  if (!version) return null;
+  return {
+    provider: 'claude-code',
+    version,
+    ...(fromHead.first && fromHead.first !== version ? { firstVersion: fromHead.first } : {}),
+    ...(client ? { originator: client } : {}),
+  };
+}
+
+/** The model a complete record names, for the provider's model-bearing record type. */
+function recordModel(provider: AgentVersionProvider, line: string): string | undefined {
+  // Cheap pre-filter before parsing: only these record types name a model.
+  if (!line.includes('"model"')) return undefined;
+  if (!line.includes(provider === 'codex' ? '"turn_context"' : '"assistant"')) return undefined;
+  const record = parseRecord(line);
+  if (!record) return undefined;
+  const holder =
+    provider === 'codex'
+      ? record.type === 'turn_context'
+        ? record.payload
+        : undefined
+      : record.type === 'assistant'
+        ? record.message
+        : undefined;
+  const model =
+    holder && typeof holder === 'object' ? (holder as Record<string, unknown>).model : undefined;
+  return typeof model === 'string' && model !== '<synthetic>' && MODEL_PATTERN.test(model)
+    ? model
+    : undefined;
+}
+
+/**
+ * The model of the latest turn in a Claude Code session (assistant
+ * `message.model`, skipping `<synthetic>`) or Codex rollout (`turn_context`
+ * `payload.model`), searching the tail window newest first, then the head.
+ * Only complete lines inside the windows are read, so a model named only in
+ * a record longer than `windowBytes` is not found. Null when none is found,
+ * and for compressed, missing, empty or unreadable files. Never throws.
+ */
+export function readAgentModel(
+  filePath: string,
+  options: ReadAgentModelOptions = {},
+): AgentModelInfo | null {
+  const windows = readWindows(filePath, options, () => true);
+  if (!windows) return null;
+  const chunks =
+    windows.tail !== undefined
+      ? [windowLines(windows.tail, false, false), windowLines(windows.head, true, false)]
+      : [windowLines(windows.head, true, windows.wholeFile)];
+  for (const lines of chunks) {
+    for (let index = lines.length - 1; index >= 0; index--) {
+      const model = recordModel(windows.provider, lines[index]);
+      if (model) return { provider: windows.provider, model };
+    }
+  }
+  return null;
 }

@@ -71,3 +71,33 @@ export function extractRolloutSessionId(filename: string): string {
   // Fallback: use everything after "rollout-"
   return base.replace(/^rollout-/, '');
 }
+
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The dated folders (`YYYY/MM/DD`, relative to a `sessions/` directory)
+ * where Codex most likely wrote the rollout of thread `threadId`.
+ *
+ * Codex thread ids are UUIDv7: their first 48 bits are the creation time in
+ * epoch milliseconds, and Codex files the rollout under the creating
+ * machine's local date of that instant. Every real time zone lies within a
+ * day of UTC, so the UTC date and the days either side of it always include
+ * that folder, whatever time zone the reader runs in. Returns those three
+ * folders (the UTC date first), or `[]` for an id that is not a UUIDv7.
+ * Pure: no filesystem access.
+ */
+export function codexRolloutDayCandidates(threadId: string): string[] {
+  const id = typeof threadId === 'string' ? threadId.trim().toLowerCase() : '';
+  if (!UUID_V7.test(id)) return [];
+  const created = parseInt(id.slice(0, 8) + id.slice(9, 13), 16);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const folders: string[] = [];
+  for (const offset of [0, -DAY_MS, DAY_MS]) {
+    const day = new Date(created + offset);
+    const year = day.getUTCFullYear();
+    if (year < 1970 || year > 9999) continue;
+    folders.push(path.join(String(year), pad(day.getUTCMonth() + 1), pad(day.getUTCDate())));
+  }
+  return folders;
+}

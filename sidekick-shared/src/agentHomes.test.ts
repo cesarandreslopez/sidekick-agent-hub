@@ -52,6 +52,52 @@ describe('resolveAgentHomes', () => {
     ]);
   });
 
+  it('adds the start folders after the default home for an exactly empty CLAUDE_CONFIG_DIR', () => {
+    const env = { HOME: '/home/u', CLAUDE_CONFIG_DIR: '' };
+    expect(resolveAgentHomes({ env, agentCwds: ['/proj', '/cwd', '/proj/'] })).toEqual({
+      claude: [path.join('/home/u', '.claude'), '/proj', '/cwd'],
+      codex: [path.join('/home/u', '.codex')],
+      ignored: [],
+    });
+    // Without start folders, empty stays unset; whitespace is unset either way.
+    expect(resolveAgentHomes({ env }).claude).toEqual([path.join('/home/u', '.claude')]);
+    expect(
+      resolveAgentHomes({ env: { ...env, CLAUDE_CONFIG_DIR: '  ' }, agentCwds: ['/proj'] }).claude,
+    ).toEqual([path.join('/home/u', '.claude')]);
+    // Codex treats an empty CODEX_HOME as unset.
+    expect(
+      resolveAgentHomes({ env: { HOME: '/home/u', CODEX_HOME: '' }, agentCwds: ['/proj'] }).codex,
+    ).toEqual([path.join('/home/u', '.codex')]);
+  });
+
+  it('resolves relative variables against the start folders instead of ignoring them', () => {
+    const resolved = resolveAgentHomes({
+      env: { HOME: '/home/u', CLAUDE_CONFIG_DIR: 'cfg/claude', CODEX_HOME: './codex' },
+      agentCwds: ['/proj', '/cwd'],
+    });
+    expect(resolved).toEqual({
+      claude: ['/proj/cfg/claude', '/cwd/cfg/claude'],
+      codex: ['/proj/codex', '/cwd/codex'],
+      ignored: [],
+    });
+  });
+
+  it('skips invalid start folders without throwing, and lets explicit lists win', () => {
+    const env = { HOME: '/home/u', CLAUDE_CONFIG_DIR: '' };
+    expect(
+      resolveAgentHomes({
+        env,
+        agentCwds: ['relative', '', '  ', 5 as unknown as string, '/ok'],
+      }).claude,
+    ).toEqual([path.join('/home/u', '.claude'), '/ok']);
+    expect(resolveAgentHomes({ env, agentCwds: 'nope' as unknown as string[] }).claude).toEqual([
+      path.join('/home/u', '.claude'),
+    ]);
+    expect(resolveAgentHomes({ env, agentCwds: ['/proj'], claudeHomes: ['/x'] }).claude).toEqual([
+      '/x',
+    ]);
+  });
+
   it('rejects relative or blank explicit entries with RangeError', () => {
     expect(() => resolveAgentHomes({ claudeHomes: ['relative'] })).toThrow(RangeError);
     expect(() => resolveAgentHomes({ codexHomes: [''] })).toThrow(RangeError);
