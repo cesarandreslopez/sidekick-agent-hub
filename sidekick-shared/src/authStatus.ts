@@ -15,12 +15,36 @@
 const MAX_STATUS_OUTPUT = 256 * 1024;
 const MAX_DETAIL = 200;
 
+/**
+ * What a status command's output says, as three states. `signed-in` and
+ * `signed-out` are the CLI's own answer; `unknown` means the output was not
+ * a status report this parser recognizes (empty, an error, an older or newer
+ * format), so it is no answer at all and must not be read as signed out.
+ */
+export type AuthStatusState = 'signed-in' | 'signed-out' | 'unknown';
+
 /** `claude auth status --json`, projected. */
 export interface ParsedClaudeAuthStatus {
   /** True only when the output is a JSON object with `"loggedIn": true`. */
   loggedIn: boolean;
+  /**
+   * `signed-in` for `"loggedIn": true`, `signed-out` for `"loggedIn": false`,
+   * and `unknown` for anything else: output that is not a JSON object, or an
+   * object whose `loggedIn` is missing or not a boolean. Always set.
+   */
+  state?: AuthStatusState;
   /** `authMethod` as reported, e.g. `claude.ai`, `oauth_token`, or `api_key`. */
   method?: string;
+  /**
+   * `apiProvider` as reported: which backend the credential is for, e.g.
+   * `firstParty` (Anthropic), or a cloud provider for Bedrock or Vertex logins.
+   */
+  apiProvider?: string;
+  /**
+   * `apiKeySource` as reported for API-key logins: where the key comes from,
+   * e.g. `ANTHROPIC_API_KEY` or an `apiKeyHelper`.
+   */
+  apiKeySource?: string;
   email?: string;
   subscriptionType?: string;
   /**
@@ -34,6 +58,12 @@ export interface ParsedClaudeAuthStatus {
 export interface ParsedCodexLoginStatus {
   /** True only when the output starts with `Logged in`. */
   loggedIn: boolean;
+  /**
+   * `signed-in` when the output starts with `Logged in`, `signed-out` when it
+   * starts with Codex's `Not logged in`, and `unknown` for anything else (no
+   * output, `Error checking login status: …`, other text). Always set.
+   */
+  state?: AuthStatusState;
   /**
    * `api-key` for any API-key login, `chatgpt` for a ChatGPT sign-in. Absent
    * for other logins (access tokens) and when not logged in.
@@ -83,13 +113,18 @@ export function parseClaudeAuthStatus(stdout: string): ParsedClaudeAuthStatus {
     typeof stdout === 'string' && stdout.length <= MAX_STATUS_OUTPUT
       ? parseJsonObject(stdout)
       : undefined;
-  if (!raw) return { loggedIn: false };
+  if (!raw) return { loggedIn: false, state: 'unknown' };
   const method = stringField(raw, 'authMethod');
+  const apiProvider = stringField(raw, 'apiProvider');
+  const apiKeySource = stringField(raw, 'apiKeySource');
   const email = stringField(raw, 'email');
   const subscriptionType = stringField(raw, 'subscriptionType');
   return {
     loggedIn: raw.loggedIn === true,
+    state: raw.loggedIn === true ? 'signed-in' : raw.loggedIn === false ? 'signed-out' : 'unknown',
     ...(method ? { method } : {}),
+    ...(apiProvider ? { apiProvider } : {}),
+    ...(apiKeySource ? { apiKeySource } : {}),
     ...(email ? { email } : {}),
     ...(subscriptionType ? { subscriptionType } : {}),
     raw,
@@ -111,8 +146,12 @@ export function parseCodexLoginStatus(stdout: string, stderr?: string): ParsedCo
     .slice(0, MAX_DETAIL)
     .trim();
   const withDetail = detail ? { detail } : {};
-  if (!/^Logged in/i.test(combined)) return { loggedIn: false, ...withDetail };
-  if (/API key/i.test(combined)) return { loggedIn: true, method: 'api-key', ...withDetail };
-  if (/ChatGPT/i.test(combined)) return { loggedIn: true, method: 'chatgpt', ...withDetail };
-  return { loggedIn: true, ...withDetail };
+  if (!/^Logged in/i.test(combined)) {
+    const state: AuthStatusState = /^Not logged in\b/i.test(combined) ? 'signed-out' : 'unknown';
+    return { loggedIn: false, state, ...withDetail };
+  }
+  const signedIn = { loggedIn: true, state: 'signed-in' as const };
+  if (/API key/i.test(combined)) return { ...signedIn, method: 'api-key', ...withDetail };
+  if (/ChatGPT/i.test(combined)) return { ...signedIn, method: 'chatgpt', ...withDetail };
+  return { ...signedIn, ...withDetail };
 }

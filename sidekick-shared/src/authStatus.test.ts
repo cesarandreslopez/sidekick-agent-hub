@@ -17,7 +17,9 @@ describe('parseClaudeAuthStatus', () => {
     const stdout = `${JSON.stringify(signedIn, null, 2)}\n`;
     expect(parseClaudeAuthStatus(stdout)).toEqual({
       loggedIn: true,
+      state: 'signed-in',
       method: 'claude.ai',
+      apiProvider: 'firstParty',
       email: 'dev@example.com',
       subscriptionType: 'max',
       raw: signedIn,
@@ -33,7 +35,10 @@ describe('parseClaudeAuthStatus', () => {
     };
     expect(parseClaudeAuthStatus(JSON.stringify(raw))).toEqual({
       loggedIn: true,
+      state: 'signed-in',
       method: 'api_key',
+      apiProvider: 'firstParty',
+      apiKeySource: 'ANTHROPIC_API_KEY',
       raw,
     });
   });
@@ -42,7 +47,9 @@ describe('parseClaudeAuthStatus', () => {
     const raw = { loggedIn: false, authMethod: 'none', apiProvider: 'firstParty' };
     expect(parseClaudeAuthStatus(JSON.stringify(raw))).toEqual({
       loggedIn: false,
+      state: 'signed-out',
       method: 'none',
+      apiProvider: 'firstParty',
       raw,
     });
   });
@@ -61,14 +68,24 @@ describe('parseClaudeAuthStatus', () => {
     ['JSON scalar', 'true'],
     ['truthy non-boolean', '{"loggedIn": "true"}'],
     ['oversized output', `{"loggedIn": true, "pad": "${'x'.repeat(256 * 1024)}"}`],
-  ])('never infers a login from %s', (_name, stdout) => {
+  ])('never infers a login, or a sign-out, from %s', (_name, stdout) => {
     const result = parseClaudeAuthStatus(stdout);
     expect(result.loggedIn).toBe(false);
+    expect(result.state).toBe('unknown');
   });
 
   it('marks unrecognized output by leaving raw absent', () => {
-    expect(parseClaudeAuthStatus('Logged in as dev@example.com')).toEqual({ loggedIn: false });
+    expect(parseClaudeAuthStatus('Logged in as dev@example.com')).toEqual({
+      loggedIn: false,
+      state: 'unknown',
+    });
     expect(parseClaudeAuthStatus('{"loggedIn": "true"}').raw).toEqual({ loggedIn: 'true' });
+  });
+
+  it('reads signed out only from a JSON loggedIn false', () => {
+    expect(parseClaudeAuthStatus('{"loggedIn": false}').state).toBe('signed-out');
+    expect(parseClaudeAuthStatus('{"authMethod": "none"}').state).toBe('unknown');
+    expect(parseClaudeAuthStatus('{"loggedIn": null}').state).toBe('unknown');
   });
 
   it('ignores non-string and blank fields', () => {
@@ -78,6 +95,7 @@ describe('parseClaudeAuthStatus', () => {
       ),
     ).toEqual({
       loggedIn: true,
+      state: 'signed-in',
       raw: { loggedIn: true, authMethod: 7, email: '  ', subscriptionType: null },
     });
   });
@@ -89,40 +107,59 @@ describe('parseCodexLoginStatus', () => {
       'ChatGPT on stderr',
       '',
       'Logged in using ChatGPT\n',
-      { loggedIn: true, method: 'chatgpt', detail: 'Logged in using ChatGPT' },
+      { loggedIn: true, state: 'signed-in', method: 'chatgpt', detail: 'Logged in using ChatGPT' },
     ],
     [
       'API key with masked suffix',
       '',
       'Logged in using an API key - sk-proj-***ABCDE\n',
-      { loggedIn: true, method: 'api-key', detail: 'Logged in using an API key' },
+      {
+        loggedIn: true,
+        state: 'signed-in',
+        method: 'api-key',
+        detail: 'Logged in using an API key',
+      },
     ],
     [
       'Bedrock API key',
       '',
       'Logged in using Amazon Bedrock API key\n',
-      { loggedIn: true, method: 'api-key', detail: 'Logged in using Amazon Bedrock API key' },
+      {
+        loggedIn: true,
+        state: 'signed-in',
+        method: 'api-key',
+        detail: 'Logged in using Amazon Bedrock API key',
+      },
     ],
     [
       'access token',
       '',
       'Logged in using access token\n',
-      { loggedIn: true, detail: 'Logged in using access token' },
+      { loggedIn: true, state: 'signed-in', detail: 'Logged in using access token' },
     ],
     [
       'status on stdout',
       'Logged in using ChatGPT\n',
       undefined,
-      { loggedIn: true, method: 'chatgpt', detail: 'Logged in using ChatGPT' },
+      { loggedIn: true, state: 'signed-in', method: 'chatgpt', detail: 'Logged in using ChatGPT' },
     ],
-    ['not logged in', '', 'Not logged in\n', { loggedIn: false, detail: 'Not logged in' }],
+    [
+      'not logged in',
+      '',
+      'Not logged in\n',
+      { loggedIn: false, state: 'signed-out', detail: 'Not logged in' },
+    ],
     [
       'probe error',
       '',
       'Error checking login status: permission denied\n',
-      { loggedIn: false, detail: 'Error checking login status: permission denied' },
+      {
+        loggedIn: false,
+        state: 'unknown',
+        detail: 'Error checking login status: permission denied',
+      },
     ],
-    ['no output', '', '', { loggedIn: false }],
+    ['no output', '', '', { loggedIn: false, state: 'unknown' }],
   ] as const)('parses %s', (_name, stdout, stderr, expected) => {
     expect(parseCodexLoginStatus(stdout, stderr)).toEqual(expected);
   });
@@ -139,6 +176,7 @@ describe('parseCodexLoginStatus', () => {
   it('does not read a login from a later line', () => {
     expect(parseCodexLoginStatus('notice: config migrated\n', 'Logged in using ChatGPT')).toEqual({
       loggedIn: false,
+      state: 'unknown',
       detail: 'notice: config migrated',
     });
   });
