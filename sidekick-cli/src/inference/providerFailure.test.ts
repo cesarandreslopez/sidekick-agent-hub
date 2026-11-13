@@ -41,4 +41,20 @@ describe('describeInferenceFailure retry wording', () => {
     const { retryable: _retryable, ...legacy } = overloaded;
     expect(describeInferenceFailure(legacy)).toBe(describeInferenceFailure(overloaded));
   });
+
+  it('asks for another model when the model is unavailable, without suggesting a plain retry', () => {
+    const diagnosis = diagnoseProviderFailure({
+      provider: 'codex',
+      credentialKind: 'oauth',
+      error: { codexErrorInfo: 'modelNotFound', message: 'model not found' },
+    });
+    expect(diagnosis).toMatchObject({
+      diagnosis: 'model_unavailable',
+      recovery: 'choose_model',
+      retryable: false,
+    });
+    expect(describeInferenceFailure(diagnosis)).toBe(
+      'Codex model is unavailable or not enabled for this account. Choose another model before retrying.',
+    );
+  });
 });

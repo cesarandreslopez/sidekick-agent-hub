@@ -42,6 +42,8 @@ export function describeInferenceFailure(result: ProviderFailureDiagnosis): stri
       return `${provider} runtime is unavailable. Check its installation and executable path.`;
     case 'reduce_context':
       return `${provider} context limit exceeded. Reduce the input or start a new session.`;
+    case 'choose_model':
+      return `${provider} model is unavailable or not enabled for this account. Choose another model before retrying.`;
     case 'retry_later':
       // `retryable: false` here is a usage quota exhausted with no known
       // reset: sending the request again cannot succeed, so do not suggest it.

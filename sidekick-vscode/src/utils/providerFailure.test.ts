@@ -26,6 +26,20 @@ describe('providerRetryOffer', () => {
   it('offers nothing when a retry cannot help', () => {
     expect(providerRetryOffer(codexError('unauthorized'))).toBeNull();
     expect(providerRetryOffer(codexError('contextWindowExceeded'))).toBeNull();
+    expect(providerRetryOffer(codexError('modelNotFound'))).toBeNull();
     expect(providerRetryOffer(new Error('plain'))).toBeNull();
+  });
+});
+
+describe('describeProviderFailure', () => {
+  it('asks for another model when the model is unavailable', () => {
+    const error = codexError('modelNotFound');
+    expect(error.diagnosis).toMatchObject({
+      diagnosis: 'model_unavailable',
+      recovery: 'choose_model',
+    });
+    expect(error.message).toBe(
+      "Codex model is unavailable or not enabled for this account. Choose another model in Sidekick's model settings.",
+    );
   });
 });

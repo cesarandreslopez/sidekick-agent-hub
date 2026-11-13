@@ -25,6 +25,8 @@ export function describeProviderFailure(result: ProviderFailureDiagnosis): strin
       return `${provider} local runtime is unavailable. Check the CLI installation and configured path.`;
     case 'reduce_context':
       return `${provider} context limit was exceeded. Reduce the input or start a new session.`;
+    case 'choose_model':
+      return `${provider} model is unavailable or not enabled for this account. Choose another model in Sidekick's model settings.`;
     case 'retry_later':
       return result.diagnosis === 'timeout'
         ? `${provider} request timed out. Retry when ready.`
