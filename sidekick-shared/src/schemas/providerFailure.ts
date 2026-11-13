@@ -17,6 +17,7 @@ import {
   PROVIDER_CREDENTIAL_KINDS,
   PROVIDER_FAILURE_CODES,
   PROVIDER_FAILURE_EVIDENCE_SOURCES,
+  PROVIDER_FAILURE_DIAGNOSIS_BOUNDS,
   PROVIDER_RECOVERY_ACTIONS,
 } from '../providerFailure';
 import type {
@@ -57,23 +58,9 @@ export const providerFailureDiagnosisSchema = z.object({
   retryAfter: providerRetryAfterSchema.optional(),
 }) satisfies z.ZodType<ProviderFailureDiagnosis>;
 
-/**
- * Size and range limits enforced by `boundedProviderFailureDiagnosisSchema`.
- * Every value `diagnoseProviderFailure()` returns is well inside them.
- */
-export const PROVIDER_FAILURE_DIAGNOSIS_BOUNDS = {
-  /** `checkedAt` and `retryAfter.at` length; an ISO timestamp is 24 characters. */
-  timestampMinChars: 1,
-  timestampMaxChars: 32,
-  /** `httpStatus`, an integer. */
-  httpStatusMin: 100,
-  httpStatusMax: 599,
-  /** `retryAfter.delayMs`, finite. */
-  delayMsMin: 0,
-  delayMsMax: Number.MAX_SAFE_INTEGER,
-  /** Entries in `evidence`; the classifier returns at most one. */
-  maxEvidence: 8,
-} as const;
+// Defined beside the codes in `providerFailure.ts` (pure data, no Zod) since
+// 0.33.0 and re-exported here unchanged: the same object on both entries.
+export { PROVIDER_FAILURE_DIAGNOSIS_BOUNDS };
 
 const bounds = PROVIDER_FAILURE_DIAGNOSIS_BOUNDS;
 

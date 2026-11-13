@@ -159,8 +159,15 @@ export interface PricingOverridesBasis {
 export interface CostComponent {
   /** Provenance of this component's cost; undefined means nothing seen yet. */
   source?: CostSource;
-  /** Tokens this component contributed. */
+  /** Tokens this component contributed (0 when `tokensUnknown` is set). */
   tokens: number;
+  /**
+   * The component's token count is not known, as for a step that reported a
+   * failure but no usage. An `unpriced` component with unknown tokens taints
+   * the merge just as one with tokens does, so callers need not pass
+   * `Infinity` as the count. Since 0.33.0.
+   */
+  tokensUnknown?: true;
 }
 
 /**
@@ -215,8 +222,14 @@ export interface ModelInfo {
   pricing: ModelPricing | null;
 }
 
+/**
+ * Every `CostSource`, as a runtime tuple for validators and enum mirrors.
+ * Since 0.33.0.
+ */
+export const COST_SOURCES = ['reported', 'estimated', 'unpriced'] as const;
+
 /** Provenance for a displayed cost value. */
-export type CostSource = 'reported' | 'estimated' | 'unpriced';
+export type CostSource = (typeof COST_SOURCES)[number];
 
 /**
  * Input for the legacy cost calculation contract.
@@ -1578,19 +1591,24 @@ export function canonicalModelId(id: string): string {
   return value;
 }
 
-// Names an agent CLI re-points at a different concrete model over time.
-// An object literal rather than a Set keeps it free for tree-shaking.
-const MOVING_MODEL_ALIASES: Record<string, true> = {
-  default: true,
-  auto: true,
-  latest: true,
-  sonnet: true,
-  opus: true,
-  haiku: true,
-  fable: true,
-  mythos: true,
-  opusplan: true,
-};
+/**
+ * The bare names `isMovingModelAlias()` matches exactly: aliases an agent CLI
+ * re-points at a different concrete model over time. Sorted and frozen. The
+ * list only grows, so a mirror kept elsewhere should be compared with it as
+ * a set; ids with a `-latest`, `:latest` or `@latest` tag match by pattern,
+ * not through this list. Since 0.33.0.
+ */
+export const MOVING_MODEL_ALIASES = /* @__PURE__ */ Object.freeze([
+  'auto',
+  'default',
+  'fable',
+  'haiku',
+  'latest',
+  'mythos',
+  'opus',
+  'opusplan',
+  'sonnet',
+] as const);
 
 // A `latest` tag a provider re-points: `claude-3-5-sonnet-latest`,
 // `gpt-5.3-chat-latest`, Ollama's `llama3:latest`, `model@latest`.
@@ -1614,9 +1632,7 @@ export function isMovingModelAlias(id: string): boolean {
     .toLowerCase()
     .replace(/\[1m\]/g, '')
     .trim();
-  return (
-    Object.prototype.hasOwnProperty.call(MOVING_MODEL_ALIASES, value) || LATEST_TAG_RE.test(value)
-  );
+  return (MOVING_MODEL_ALIASES as readonly string[]).includes(value) || LATEST_TAG_RE.test(value);
 }
 
 // ── Model ID Parsing ──
@@ -1918,7 +1934,10 @@ export function resolvePricingTier(
 /**
  * Calculates cost from token usage and an explicit pricing object.
  *
- * Legacy behavior treats reasoning as disjoint and adds it at the output rate.
+ * Legacy behavior treats reasoning as disjoint and adds it at the output rate,
+ * and bills cache writes at the listed write rate even when that rate is 0
+ * for an OpenAI-family model (the maintained pricing functions bill those at
+ * the input rate). Kept as it was for compatibility.
  * @deprecated Double-counts OpenAI/Codex usage: reasoning is billed again on
  * top of output that already contains it, and cached input passed as both
  * `inputTokens` and `cacheReadTokens` is billed twice. Use
@@ -2003,14 +2022,17 @@ export function costSourceFromPricingProvenance(provenance: PricingProvenance): 
  * Merge the cost sources of a rollup's components, least certain winning (as
  * `mergeCostSources`). Components without a `source` have not been seen yet
  * and are ignored, and an `unpriced` component that contributed no tokens
- * does not taint the total. Returns `undefined` when nothing counted.
+ * does not taint the total; one whose count is unknown (`tokensUnknown`)
+ * does. Returns `undefined` when nothing counted.
  */
 export function mergeCostComponents(components: Iterable<CostComponent>): CostSource | undefined {
   let merged: CostSource | undefined;
   for (const component of components) {
     const source = component?.source;
     if (!source) continue;
-    if (source === 'unpriced' && !(component.tokens > 0)) continue;
+    if (source === 'unpriced' && !(component.tokens > 0) && component.tokensUnknown !== true) {
+      continue;
+    }
     merged = merged ? mergeCostSources(merged, source) : source;
   }
   return merged;

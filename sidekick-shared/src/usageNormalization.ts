@@ -1,6 +1,8 @@
 import {
+  canonicalModelId,
   costSourceFromPricingProvenance,
   getModelPricing,
+  parseModelId,
   resolveModelPricing,
   resolvePricingTier,
   type CostSource,
@@ -92,11 +94,18 @@ export interface NormalizedUsage {
   provenance: UsageNormalizationProvenance;
 }
 
-export type PricingProvenance =
-  | 'provider-reported'
-  | 'explicit-pricing'
-  | 'model-catalog'
-  | 'unpriced';
+/**
+ * Every `PricingProvenance`, as a runtime tuple for validators and enum
+ * mirrors. Since 0.33.0.
+ */
+export const PRICING_PROVENANCES = [
+  'provider-reported',
+  'explicit-pricing',
+  'model-catalog',
+  'unpriced',
+] as const;
+
+export type PricingProvenance = (typeof PRICING_PROVENANCES)[number];
 
 export interface NormalizedUsageCostInput {
   usage: NormalizedUsage;
@@ -204,24 +213,42 @@ export function extractNormalizedUsage(event: SessionEvent): NormalizedUsage | n
 }
 
 /**
+ * True when `modelId` names an OpenAI-family model (`gpt-*`, `o<n>`,
+ * `codex-*`, `chatgpt-*`, with any provider or region prefix). OpenAI bills a
+ * prompt-cache write as ordinary input, so a catalog that lists no write rate
+ * (0) for such a model does not make writes free. Other providers' zero write
+ * rates (Gemini, DeepSeek, GLM, …) are taken at their word.
+ */
+function writesBilledAsInput(modelId: string | undefined): boolean {
+  if (typeof modelId !== 'string' || !modelId.trim()) return false;
+  const id = canonicalModelId(modelId);
+  if (/^(?:codex|chatgpt)(?:-|$)/.test(id)) return true;
+  return parseModelId(id)?.provider === 'openai';
+}
+
+/**
  * USD for disjoint usage at `pricing`'s rates, or null when the result is not
  * a finite nonnegative number. A single request's prompt size
  * (`requestPromptTokens`) selects a long-context tier, whose rates then apply
  * to every category; `tier` reports its threshold.
  *
- * OpenAI-style providers fold cache writes into input and the catalogs carry
- * no separate write rate for them (0), so under `openai-inclusive-cache`
- * semantics a write with no positive write rate is billed as ordinary input.
+ * OpenAI-style providers fold cache writes into input, and the catalogs carry
+ * no separate write rate for them (0). A write with no positive write rate is
+ * therefore billed as ordinary input (the tier's input rate when a tier
+ * applies) under `openai-inclusive-cache` semantics, and for an
+ * OpenAI-family `modelId` whatever the semantics, such as disjoint usage a
+ * caller stored after normalizing. Any other zero write rate stays zero.
  */
 function usageCostAtRates(
   usage: NormalizedUsage,
   pricing: ModelPricing,
+  modelId?: string,
 ): { costUsd: number | null; tier?: number } {
   const tier = resolvePricingTier(pricing, usage.requestPromptTokens);
   const rates = tier ?? pricing;
   const cacheWriteRate =
-    usage.provenance?.semantics === 'openai-inclusive-cache' &&
-    !(rates.cacheWriteCostPerMillion > 0)
+    !(rates.cacheWriteCostPerMillion > 0) &&
+    (usage.provenance?.semantics === 'openai-inclusive-cache' || writesBilledAsInput(modelId))
       ? rates.inputCostPerMillion
       : rates.cacheWriteCostPerMillion;
   const costUsd =
@@ -245,7 +272,7 @@ export function calculateNormalizedUsageCost(input: NormalizedUsageCostInput): N
   const pricing = explicit ? input.pricing : modelId ? getModelPricing(modelId) : null;
   if (!pricing) return { costUsd: null, source: 'unpriced', modelId, usage };
 
-  const priced = usageCostAtRates(usage, pricing);
+  const priced = usageCostAtRates(usage, pricing, modelId);
   if (priced.costUsd === null) {
     return { costUsd: null, source: 'unpriced', modelId, usage };
   }
@@ -274,9 +301,10 @@ export function calculateNormalizedUsageCost(input: NormalizedUsageCostInput): N
  *   and reasoning inside output.
  * - `codex`: a Codex `TokenUsage` (rollout `last_token_usage`, `exec --json`,
  *   or the app-server's camelCase spelling): `input_tokens`,
- *   `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens`.
- *   OpenAI semantics. `cache_write_input_tokens` is ignored, as the session
- *   parser ignores it, so totals match parsed sessions.
+ *   `cached_input_tokens`, `cache_write_input_tokens`, `output_tokens`,
+ *   `reasoning_output_tokens`. OpenAI semantics: cache reads and writes are
+ *   both inside `input_tokens` and come out of it, exactly as the session
+ *   parser reads them, so totals match parsed sessions.
  */
 export const RAW_USAGE_FORMATS = ['anthropic', 'openai', 'codex'] as const;
 export type RawUsageFormat = (typeof RAW_USAGE_FORMATS)[number];
@@ -378,6 +406,9 @@ export function normalizeRawProviderUsage(
         inputTokens: rawCount(rawField(usage, 'input_tokens', 'inputTokens')),
         outputTokens: rawCount(rawField(usage, 'output_tokens', 'outputTokens')),
         cacheReadTokens: rawCount(rawField(usage, 'cached_input_tokens', 'cachedInputTokens')),
+        cacheWriteTokens: rawCount(
+          rawField(usage, 'cache_write_input_tokens', 'cacheWriteInputTokens'),
+        ),
         reasoningTokens: rawCount(
           rawField(usage, 'reasoning_output_tokens', 'reasoningOutputTokens'),
         ),
@@ -404,6 +435,13 @@ export interface PriceProviderUsageInput {
    * response's usage) and false for `codex`, whose usage objects include
    * running totals (`exec --json` `turn.completed`); pass true for a rollout's
    * `last_token_usage`.
+   *
+   * Pass false for any total that merges several model calls under the
+   * `anthropic` or `openai` format, such as Claude Code's headless
+   * `result.usage` (`claude -p --output-format stream-json`, the `run` usage
+   * of `sidekick-shared/headless`), which sums every call of the run: priced
+   * as one request it could cross a long-context threshold no single call
+   * reached.
    */
   singleRequest?: boolean;
 }
@@ -456,14 +494,14 @@ export function priceProviderUsage(input: PriceProviderUsageInput): ProviderUsag
     return result(normalized.reportedCostUsd, 'provider-reported');
   }
   if (input.pricing !== undefined) {
-    const priced = input.pricing ? usageCostAtRates(normalized, input.pricing) : null;
+    const priced = input.pricing ? usageCostAtRates(normalized, input.pricing, modelId) : null;
     return !priced || priced.costUsd === null
       ? result(null, 'unpriced')
       : result(priced.costUsd, 'explicit-pricing', undefined, priced.tier);
   }
   if (!modelId) return result(null, 'unpriced');
   const resolved = resolveModelPricing(modelId);
-  const priced = resolved.pricing ? usageCostAtRates(normalized, resolved.pricing) : null;
+  const priced = resolved.pricing ? usageCostAtRates(normalized, resolved.pricing, modelId) : null;
   return !priced || priced.costUsd === null
     ? result(null, 'unpriced', resolved.provenance)
     : result(priced.costUsd, 'model-catalog', resolved.provenance, priced.tier);

@@ -535,16 +535,26 @@ export class JsonlSessionWatcher implements SessionWatcher {
             summary: usage
               ? `Tokens: ${usage.input_tokens ?? 0} in / ${usage.output_tokens ?? 0} out`
               : 'Rate limits updated',
-            // Codex input includes cached input; FollowEvent buckets are disjoint.
+            // Codex input includes cache reads and writes; FollowEvent buckets
+            // are disjoint.
             tokens: usage
               ? {
-                  input: Math.max(0, (usage.input_tokens || 0) - (usage.cached_input_tokens || 0)),
+                  input: Math.max(
+                    0,
+                    (usage.input_tokens || 0) -
+                      (usage.cached_input_tokens || 0) -
+                      (usage.cache_write_input_tokens || 0),
+                  ),
                   output: usage.output_tokens || 0,
                 }
               : undefined,
-            cacheTokens: usage?.cached_input_tokens
-              ? { read: usage.cached_input_tokens, write: 0 }
-              : undefined,
+            cacheTokens:
+              usage?.cached_input_tokens || usage?.cache_write_input_tokens
+                ? {
+                    read: usage.cached_input_tokens || 0,
+                    write: usage.cache_write_input_tokens || 0,
+                  }
+                : undefined,
             // One call's prompt (Codex input includes cached input) selects the
             // long-context tier; a difference of running totals does not.
             ...(usage && single ? { requestPromptTokens: usage.input_tokens || 0 } : {}),

@@ -3,6 +3,9 @@ import {
   CODEX_ERROR_INFO_KINDS,
   decodeCodexErrorInfo,
   diagnoseProviderFailure,
+  PROVIDER_FAILURE_CODES,
+  PROVIDER_FAILURE_DIAGNOSIS_BOUNDS,
+  PROVIDER_RECOVERY_ACTIONS,
   type ProviderAuthenticationEvidence,
   type ProviderCredentialKind,
   type ProviderFailureCode,
@@ -751,6 +754,8 @@ describe('diagnoseProviderFailure with Codex codexErrorInfo', () => {
       undefined,
     ],
     ['contextWindowExceeded', 'oauth', 'context_overflow', 'reduce_context', false, undefined],
+    ['modelNotFound', 'oauth', 'model_unavailable', 'choose_model', false, undefined],
+    ['model_not_found', 'api-key', 'model_unavailable', 'choose_model', false, undefined],
     [
       { httpConnectionFailed: { httpStatusCode: 503 } },
       'oauth',
@@ -896,8 +901,6 @@ describe('diagnoseProviderFailure with Codex codexErrorInfo', () => {
     'sandboxError',
     'sessionBudgetExceeded',
     'threadRollbackFailed',
-    'modelNotFound',
-    'model_not_found',
     'invalidPrompt',
     'invalid_prompt',
     'bioPolicy',
@@ -907,7 +910,7 @@ describe('diagnoseProviderFailure with Codex codexErrorInfo', () => {
     'other',
     { activeTurnNotSteerable: { turnKind: 'review' } },
     'notAVariant',
-    { somethingElse: { httpStatusCode: 503 } },
+    { somethingElse: { detail: 'no status here' } },
     null,
     42,
   ])('leaves %j to the existing rules', (info) => {
@@ -924,6 +927,32 @@ describe('diagnoseProviderFailure with Codex codexErrorInfo', () => {
       });
       expect(withInfo).toEqual(without);
     }
+  });
+
+  it('classifies an unknown variant by the HTTP status it carries', () => {
+    const unknown503 = diagnoseProviderFailure({
+      provider: 'codex',
+      credentialKind: 'oauth',
+      error: turnError({ somethingElse: { httpStatusCode: 503 } }, 'something odd'),
+    });
+    expect(unknown503).toMatchObject({
+      diagnosis: 'service_unavailable',
+      recovery: 'retry_later',
+      retryable: true,
+      httpStatus: 503,
+      evidence: [{ source: 'http-status', rule: 'service_unavailable' }],
+    });
+    const unknown401 = diagnoseProviderFailure({
+      provider: 'codex',
+      credentialKind: 'oauth',
+      error: turnError({ future_variant: { http_status_code: 401 } }, 'something odd'),
+    });
+    expect(unknown401).toMatchObject({
+      diagnosis: 'oauth_reauthentication_required',
+      recovery: 'sign_in',
+      retryable: false,
+      httpStatus: 401,
+    });
   });
 
   it('projects no provider text from a codexErrorInfo error', () => {
@@ -1005,8 +1034,20 @@ describe('decodeCodexErrorInfo', () => {
     ['futureVariant', { kind: 'other', rawKind: 'futureVariant' }],
     ['future_variant', { kind: 'other', rawKind: 'future_variant' }],
     [{ nope: {} }, { kind: 'other', rawKind: 'nope' }],
-    // An unknown variant's payload is discarded, as Codex does.
-    [{ futureVariant: { httpStatusCode: 503 } }, { kind: 'other', rawKind: 'futureVariant' }],
+    // An unknown variant's payload is discarded, as Codex does, except a
+    // valid HTTP status.
+    [
+      { futureVariant: { httpStatusCode: 503 } },
+      { kind: 'other', rawKind: 'futureVariant', httpStatusCode: 503 },
+    ],
+    [
+      { future_variant: { http_status_code: '429', detail: 'x' } },
+      { kind: 'other', rawKind: 'future_variant', httpStatusCode: 429 },
+    ],
+    [
+      { futureVariant: { httpStatusCode: 42, detail: 'x' } },
+      { kind: 'other', rawKind: 'futureVariant' },
+    ],
     ['x'.repeat(64), { kind: 'other', rawKind: 'x'.repeat(64) }],
   ] as const)('decodes the unknown variant %j as other', (value, expected) => {
     expect(decodeCodexErrorInfo(value)).toEqual(expected);
@@ -1048,5 +1089,82 @@ describe('decodeCodexErrorInfo', () => {
         error: { codexErrorInfo: hostile, status: 503 },
       }).diagnosis,
     ).toBe('service_unavailable');
+  });
+});
+
+describe('model_unavailable', () => {
+  const diagnose = (error: unknown, credentialKind: ProviderCredentialKind = 'api-key') =>
+    diagnoseProviderFailure({ provider: 'claude-code', credentialKind, error });
+
+  it('is a code with its own recovery action', () => {
+    expect(PROVIDER_FAILURE_CODES).toContain('model_unavailable');
+    expect(PROVIDER_RECOVERY_ACTIONS).toContain('choose_model');
+  });
+
+  it.each([
+    [
+      'an Anthropic not_found_error naming the model',
+      { status: 404, type: 'not_found_error', message: 'model: claude-opus-9-9' },
+    ],
+    [
+      'an OpenAI model_not_found code',
+      {
+        status: 404,
+        code: 'model_not_found',
+        message: 'The model `gpt-9` does not exist or you do not have access to it.',
+      },
+    ],
+    [
+      'OpenAI text without a code',
+      { message: 'The model `gpt-9` does not exist or you do not have access to it.' },
+    ],
+    [
+      "Claude Code's selected-model text",
+      {
+        message:
+          "There's an issue with the selected model (claude-x). It may not exist or you may not have access to it. Run /model to pick a different model.",
+      },
+    ],
+    [
+      'a model an account cannot use',
+      {
+        message: "The 'gpt-9-pro' model is not supported when using Codex with a ChatGPT account.",
+      },
+    ],
+    [
+      'a nested API error body',
+      { error: { error: { type: 'not_found_error', message: 'model: x' } } },
+    ],
+  ])('diagnoses %s', (_label, error) => {
+    expect(diagnose(error)).toMatchObject({
+      diagnosis: 'model_unavailable',
+      recovery: 'choose_model',
+      retryable: false,
+    });
+  });
+
+  it.each([
+    [
+      'a not_found_error about something else',
+      { type: 'not_found_error', message: 'File not found' },
+    ],
+    ['a missing runtime', { message: 'codex CLI not found' }],
+    ['a missing thread', { message: 'Thread abc not found' }],
+    ['a transient outage', { message: 'The model is overloaded. Please try again later.' }],
+  ])('does not claim %s', (_label, error) => {
+    expect(diagnose(error).diagnosis).not.toBe('model_unavailable');
+  });
+});
+
+describe('PROVIDER_FAILURE_DIAGNOSIS_BOUNDS', () => {
+  it('is the same object on the Zod-free entry and the schemas entry', async () => {
+    const schemas = await import('./schemas/providerFailure');
+    expect(schemas.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toBe(PROVIDER_FAILURE_DIAGNOSIS_BOUNDS);
+    expect(PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toMatchObject({
+      timestampMaxChars: 32,
+      httpStatusMin: 100,
+      httpStatusMax: 599,
+      maxEvidence: 8,
+    });
   });
 });

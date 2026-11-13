@@ -311,8 +311,12 @@ export function isAggregateCodexLimit(limitId?: string | null): boolean {
 }
 
 export interface CodexTokenUsage {
+  /** Every prompt token, cache reads and writes included. */
   input_tokens: number;
+  /** Prompt tokens read from the cache; part of `input_tokens`. */
   cached_input_tokens?: number;
+  /** Prompt tokens written to the cache; part of `input_tokens`. */
+  cache_write_input_tokens?: number;
   output_tokens: number;
   reasoning_output_tokens?: number;
   total_tokens?: number;

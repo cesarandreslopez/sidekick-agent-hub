@@ -127,6 +127,7 @@ function normalizeRateLimits(
 const CODEX_USAGE_FIELDS = [
   'input_tokens',
   'cached_input_tokens',
+  'cache_write_input_tokens',
   'output_tokens',
   'reasoning_output_tokens',
   'total_tokens',
@@ -185,6 +186,8 @@ export function resolveCodexCallUsage(
   const delta = {} as CodexTokenUsage;
   let any = false;
   for (const field of CODEX_USAGE_FIELDS) {
+    // Older Codex builds never write cache writes; keep their deltas' shape.
+    if (field === 'cache_write_input_tokens' && total[field] === undefined) continue;
     const value = Math.max(
       0,
       usageField(total, field) - (previousTotal ? usageField(previousTotal, field) : 0),
@@ -511,7 +514,12 @@ export function codexTokenUsageFrom(value: unknown): CodexTokenUsage | null | un
     input_tokens: value.input_tokens,
     output_tokens: value.output_tokens,
   };
-  for (const field of ['cached_input_tokens', 'reasoning_output_tokens', 'total_tokens'] as const) {
+  for (const field of [
+    'cached_input_tokens',
+    'cache_write_input_tokens',
+    'reasoning_output_tokens',
+    'total_tokens',
+  ] as const) {
     const count = value[field];
     if (count === undefined) continue;
     if (!isTokenCount(count)) return undefined;
@@ -1925,6 +1933,9 @@ export class CodexRolloutParser {
           inputTokens: usage.input_tokens,
           outputTokens: usage.output_tokens,
           cacheReadTokens: usage.cached_input_tokens,
+          // Inside `input_tokens` like cache reads (`openai` semantics take
+          // both out), so a model with a write rate bills them at it.
+          cacheWriteTokens: usage.cache_write_input_tokens,
           reasoningTokens: usage.reasoning_output_tokens,
           // Only `last_token_usage` is one model call's, so only its prompt
           // selects the long-context tier; a difference of running totals
