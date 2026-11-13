@@ -416,6 +416,7 @@ export {
   verifyJsonlCheckpoint,
 } from './watchers/jsonlTail';
 export type {
+  JsonlCheckpointFileOptions,
   JsonlTail,
   JsonlTailCheckpoint,
   JsonlTailReadResult,

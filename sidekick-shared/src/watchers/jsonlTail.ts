@@ -271,12 +271,34 @@ export interface JsonlTail<T = unknown> {
    * Otherwise the `onRewrite` policy picks the position (0, or the file's
    * current end) and this returns false; `onReset` is not called. Either way
    * the position overrides `startAtEnd` on a later `start()`.
+   *
+   * This is also the rollback for a batch the caller could not take (a full
+   * outbox, a failed upload): keep the checkpoint from before the batch
+   * (the previous `read()`'s `checkpoint`, or `checkpoint()` before reading)
+   * and pass it here, and the next read returns the same lines again.
    */
   resumeFrom(checkpoint: unknown): boolean;
 }
 
 export function createJsonlTail<T>(options: JsonlTailOptions<T>): JsonlTail<T> {
   return new JsonlTailReader(options);
+}
+
+/** Options for {@link captureJsonlCheckpoint} and {@link verifyJsonlCheckpoint}. */
+export interface JsonlCheckpointFileOptions {
+  /**
+   * Refuse a symbolic link at `filePath`, as the tail's `noFollow` does: the
+   * file is opened with `O_NOFOLLOW` where the platform defines it (a no-op
+   * where it does not, such as Windows), and a symlinked path gives `null`
+   * (capture) or `false` (verify). Only the final path component is checked.
+   */
+  noFollow?: boolean;
+}
+
+/** Read-only open flags, with `O_NOFOLLOW` when asked for and defined. */
+function readOnlyFlags(noFollow: boolean | undefined): string | number {
+  const flag = noFollow ? fs.constants.O_NOFOLLOW : undefined;
+  return typeof flag === 'number' ? fs.constants.O_RDONLY | flag : 'r';
 }
 
 /**
@@ -289,16 +311,17 @@ export function createJsonlTail<T>(options: JsonlTailOptions<T>): JsonlTail<T> {
  *
  * Returns `null` when the file is missing or unreadable, or when `offset` is
  * not a resume-safe position in it: negative, past the end, or not 0 and not
- * just after a newline. Follows symbolic links.
+ * just after a newline. Follows symbolic links unless `noFollow` is set.
  */
 export function captureJsonlCheckpoint(
   filePath: string,
   offset: number,
+  options: JsonlCheckpointFileOptions = {},
 ): JsonlTailCheckpoint | null {
   if (!Number.isSafeInteger(offset) || offset < 0) return null;
   let fd: number | null = null;
   try {
-    fd = fs.openSync(filePath, 'r');
+    fd = fs.openSync(filePath, readOnlyFlags(options.noFollow));
     const stat = fs.fstatSync(fd);
     if (offset > stat.size) return null;
     if (offset > 0 && readAt(fd, offset - 1, 1)[0] !== 0x0a) return null;
@@ -316,14 +339,18 @@ export function captureJsonlCheckpoint(
  * and inode, the recorded first bytes unchanged, and its offset within the
  * file and just after a newline (or 0). This is the check
  * {@link JsonlTail.resumeFrom} applies. `false` on any error, including a
- * missing file. Follows symbolic links.
+ * missing file. Follows symbolic links unless `noFollow` is set.
  */
-export function verifyJsonlCheckpoint(filePath: string, checkpoint: unknown): boolean {
+export function verifyJsonlCheckpoint(
+  filePath: string,
+  checkpoint: unknown,
+  options: JsonlCheckpointFileOptions = {},
+): boolean {
   const parsed = parseCheckpoint(checkpoint);
   if (parsed === null) return false;
   let fd: number | null = null;
   try {
-    fd = fs.openSync(filePath, 'r');
+    fd = fs.openSync(filePath, readOnlyFlags(options.noFollow));
     const stat = fs.fstatSync(fd);
     return checkpointMatches(parsed, fd, stat, readPrefix(fd, stat));
   } catch {
@@ -808,8 +835,7 @@ class JsonlTailReader<T> implements JsonlTail<T> {
   }
 
   private openFlags(): string | number {
-    const noFollow = this.options.noFollow ? fs.constants.O_NOFOLLOW : undefined;
-    return typeof noFollow === 'number' ? fs.constants.O_RDONLY | noFollow : 'r';
+    return readOnlyFlags(this.options.noFollow);
   }
 
   private openSync(): number {
