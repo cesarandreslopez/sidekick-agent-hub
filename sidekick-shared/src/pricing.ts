@@ -24,6 +24,8 @@ export {
   MODEL_PROVIDER_IDS,
   canonicalModelId,
   isMovingModelAlias,
+  MOVING_MODEL_ALIASES,
+  COST_SOURCES,
   parseModelId,
   compareModelIds,
   sortModelIds,
@@ -83,6 +85,7 @@ export type {
 // One-call pricing of raw provider usage objects.
 export {
   RAW_USAGE_FORMATS,
+  PRICING_PROVENANCES,
   normalizeRawProviderUsage,
   priceProviderUsage,
 } from './usageNormalization';

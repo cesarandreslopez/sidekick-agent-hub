@@ -40,6 +40,7 @@ export type {
 // One-call pricing of raw provider usage objects.
 export {
   RAW_USAGE_FORMATS,
+  PRICING_PROVENANCES,
   normalizeRawProviderUsage,
   priceProviderUsage,
 } from './usageNormalization';
@@ -206,6 +207,8 @@ export {
   formatCost,
   canonicalModelId,
   isMovingModelAlias,
+  MOVING_MODEL_ALIASES,
+  COST_SOURCES,
   registerModelPricing,
   clearRegisteredModelPricing,
   getPricingCatalogInfo,

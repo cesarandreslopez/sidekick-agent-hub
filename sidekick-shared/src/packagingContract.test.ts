@@ -277,6 +277,10 @@ describe('packaging contract', { timeout: 30_000 }, () => {
       schemas.boundedProviderFailureDiagnosisSchema,
     );
     expect(root.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toBe(schemas.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS);
+    // The plain bounds also sit on the Zod-free /providerFailure entry.
+    expect(pkgRequire('sidekick-shared/providerFailure').PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toBe(
+      schemas.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS,
+    );
     expect(browser.boundedProviderFailureDiagnosisSchema).toBeUndefined();
     expect(browser.PROVIDER_FAILURE_DIAGNOSIS_BOUNDS).toBeUndefined();
   });

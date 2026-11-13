@@ -43,6 +43,12 @@ export const PROVIDER_FAILURE_CODES = [
   'execution_policy_denied',
   'runtime_unavailable',
   'context_overflow',
+  /**
+   * The requested model does not exist or this account cannot use it (Codex
+   * `modelNotFound`, OpenAI `model_not_found`, an Anthropic `not_found_error`
+   * naming a model). Since 0.33.0.
+   */
+  'model_unavailable',
   'unknown',
 ] as const;
 export type ProviderFailureCode = (typeof PROVIDER_FAILURE_CODES)[number];
@@ -57,11 +63,34 @@ export const PROVIDER_RECOVERY_ACTIONS = [
   'review_execution_policy',
   'repair_runtime',
   'reduce_context',
+  /** Pick a model the account can use (for `model_unavailable`). Since 0.33.0. */
+  'choose_model',
   'inspect_error',
 ] as const;
 export type ProviderRecoveryAction = (typeof PROVIDER_RECOVERY_ACTIONS)[number];
 
 export type ProviderRetryAfter = { kind: 'delay'; delayMs: number } | { kind: 'date'; at: string };
+
+/**
+ * Size and range limits enforced by `boundedProviderFailureDiagnosisSchema`
+ * (`sidekick-shared/schemas`). Every value `diagnoseProviderFailure()`
+ * returns is well inside them. Plain data, also on the Zod-free
+ * `sidekick-shared/providerFailure` entry (since 0.33.0), so a consumer that
+ * keeps its own validator can tie it to these numbers.
+ */
+export const PROVIDER_FAILURE_DIAGNOSIS_BOUNDS = {
+  /** `checkedAt` and `retryAfter.at` length; an ISO timestamp is 24 characters. */
+  timestampMinChars: 1,
+  timestampMaxChars: 32,
+  /** `httpStatus`, an integer. */
+  httpStatusMin: 100,
+  httpStatusMax: 599,
+  /** `retryAfter.delayMs`, finite. */
+  delayMsMin: 0,
+  delayMsMax: Number.MAX_SAFE_INTEGER,
+  /** Entries in `evidence`; the classifier returns at most one. */
+  maxEvidence: 8,
+} as const;
 
 export const PROVIDER_FAILURE_EVIDENCE_SOURCES = [
   'structured-error',
@@ -109,7 +138,11 @@ export type CodexErrorInfoKind = (typeof CODEX_ERROR_INFO_KINDS)[number];
 /** A decoded `codexErrorInfo`: its closed variant and any upstream HTTP status. */
 export interface CodexErrorInfoSummary {
   kind: CodexErrorInfoKind;
-  /** Present when a transport variant carried a valid `httpStatusCode`. */
+  /**
+   * Present when a transport variant, or a variant newer than
+   * `CODEX_ERROR_INFO_KINDS` (`kind: 'other'`, since 0.33.0), carried a
+   * valid `httpStatusCode`.
+   */
   httpStatusCode?: number;
   /**
    * The variant name exactly as received, set only when `kind` is `'other'`
@@ -138,8 +171,9 @@ export interface ProviderFailureDiagnosis {
    * `retryAfter`, can reasonably succeed. True for a rate limit that will
    * lift, overload, an unavailable service (5xx), a timeout, or a failed
    * connection. False for authentication, missing runtime or configuration,
-   * execution policy, an invalid provider session, context overflow, a usage
-   * quota exhausted with no known reset, and unknown failures. Conservative:
+   * execution policy, an invalid provider session, context overflow, an
+   * unavailable model, a usage quota exhausted with no known reset, and
+   * unknown failures. Conservative:
    * a hint for retry policy, not a promise. The caller still decides whether
    * a repeat is safe (idempotency, output already delivered).
    *
@@ -208,8 +242,10 @@ const CODEX_VARIANT_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
  * (`"serverOverloaded"`, `"usage_limit_exceeded"`) or an object variant
  * (`{ "httpConnectionFailed": { "httpStatusCode": 503 } }`, snake_case keys
  * accepted). Like Codex, an unknown variant name (a string, or the only key
- * of an object) decodes as `{ kind: 'other', rawKind }`; its payload is
- * discarded. Returns `undefined` for anything else, including `null`.
+ * of an object) decodes as `{ kind: 'other', rawKind }`. Its payload is
+ * discarded except a valid `httpStatusCode`, which is kept (since 0.33.0) so
+ * the status can still classify the failure. Returns `undefined` for
+ * anything else, including `null`.
  */
 export function decodeCodexErrorInfo(value: unknown): CodexErrorInfoSummary | undefined {
   if (typeof value === 'string') {
@@ -234,7 +270,13 @@ export function decodeCodexErrorInfo(value: unknown): CodexErrorInfoSummary | un
     return status === undefined ? { kind } : { kind, httpStatusCode: status };
   }
   if (keys.length === 1 && CODEX_VARIANT_NAME.test(keys[0])) {
-    return { kind: 'other', rawKind: keys[0] };
+    const payload = read(value, keys[0]);
+    const status = statusNumber(
+      read(payload, 'httpStatusCode') ?? read(payload, 'http_status_code'),
+    );
+    return status === undefined
+      ? { kind: 'other', rawKind: keys[0] }
+      : { kind: 'other', rawKind: keys[0], httpStatusCode: status };
   }
   return undefined;
 }
@@ -313,6 +355,11 @@ function classifyCode(code: string, kind: ProviderCredentialKind): ProviderFailu
     case 'contextwindowexceeded':
     case 'prompttoolong':
       return 'context_overflow';
+    // OpenAI `model_not_found`; Anthropic's generic `not_found_error` is
+    // left to the message rules, which require the model to be named.
+    case 'modelnotfound':
+    case 'modelnotfounderror':
+      return 'model_unavailable';
     default:
       return undefined;
   }
@@ -331,9 +378,9 @@ function classifyStatus(
 }
 
 /**
- * Variants with no matching failure code (bad request, invalid prompt, model
- * not found, content policy, budget, other) stay unclassified and fall
- * through to the code, status and message rules.
+ * Variants with no matching failure code (bad request, invalid prompt,
+ * content policy, budget, other) stay unclassified and fall through to the
+ * code, status and message rules.
  */
 function classifyCodexErrorInfo(
   info: CodexErrorInfoSummary,
@@ -357,6 +404,8 @@ function classifyCodexErrorInfo(
       return rejected(kind);
     case 'contextWindowExceeded':
       return 'context_overflow';
+    case 'modelNotFound':
+      return 'model_unavailable';
     case 'httpConnectionFailed':
     case 'responseStreamConnectionFailed':
     case 'responseStreamDisconnected':
@@ -436,6 +485,17 @@ function classifyMessage(
     )
   )
     return 'context_overflow';
+  // A named model that is missing or out of reach: Anthropic's
+  // `not_found_error` text (`model: claude-…`), OpenAI's "The model `x` does
+  // not exist or you do not have access to it", Claude Code's "selected model
+  // (x) … may not exist", Codex's "model is not supported" for an account.
+  if (
+    /^\s*model:\s*\S+\s*$/i.test(message) ||
+    /\bmodels?\b.{0,80}\b(does not exist|doesn't exist|may not exist|not found|is not supported|do(es)? not have access)\b/i.test(
+      message,
+    )
+  )
+    return 'model_unavailable';
   if (/\b(overloaded|over capacity|server busy)\b/i.test(message)) return 'overloaded';
   if (/\b(rate[ _-]?limit|too many requests)\b/i.test(message)) return 'rate_limited';
   if (/\b(timed? ?out|deadline exceeded|etimedout)\b/i.test(message)) return 'timeout';
@@ -480,6 +540,8 @@ function recovery(code: ProviderFailureCode, kind: ProviderCredentialKind): Prov
       return 'repair_runtime';
     case 'context_overflow':
       return 'reduce_context';
+    case 'model_unavailable':
+      return 'choose_model';
     case 'unknown':
       return 'inspect_error';
     default:

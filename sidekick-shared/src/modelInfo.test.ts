@@ -21,6 +21,8 @@ import {
   getPricingCatalogInfo,
   costSourceFromPricingProvenance,
   mergeCostComponents,
+  COST_SOURCES,
+  MOVING_MODEL_ALIASES,
   _setPricingOverrides,
   _clearPricingOverrides,
   _getPricingOverrides,
@@ -1593,5 +1595,58 @@ describe('long-context pricing tiers', () => {
     _setPricingOverrides({ 'catalog-model': catalog });
     (catalog.tiers as Array<{ outputCostPerMillion: number }>)[0].outputCostPerMillion = 1_000;
     expect(_getPricingOverrides()['catalog-model'].tiers![0].outputCostPerMillion).toBe(7.5);
+  });
+});
+
+describe('runtime tuples', () => {
+  it('lists every cost source and maps every pricing provenance into it', async () => {
+    const { PRICING_PROVENANCES } = await import('./usageNormalization');
+    expect(COST_SOURCES).toEqual(['reported', 'estimated', 'unpriced']);
+    expect(PRICING_PROVENANCES).toEqual([
+      'provider-reported',
+      'explicit-pricing',
+      'model-catalog',
+      'unpriced',
+    ]);
+    for (const provenance of PRICING_PROVENANCES) {
+      expect(COST_SOURCES).toContain(costSourceFromPricingProvenance(provenance));
+    }
+  });
+
+  it('exposes the moving aliases isMovingModelAlias matches, sorted and frozen', () => {
+    expect(Object.isFrozen(MOVING_MODEL_ALIASES)).toBe(true);
+    expect([...MOVING_MODEL_ALIASES]).toEqual([...MOVING_MODEL_ALIASES].sort());
+    for (const alias of MOVING_MODEL_ALIASES) {
+      expect(isMovingModelAlias(alias)).toBe(true);
+      expect(isMovingModelAlias(` ${alias.toUpperCase()}[1m] `)).toBe(true);
+    }
+    expect(MOVING_MODEL_ALIASES).toEqual(
+      expect.arrayContaining(['auto', 'default', 'fable', 'mythos', 'opusplan', 'sonnet']),
+    );
+    // Tags match by pattern, not through the list.
+    expect(MOVING_MODEL_ALIASES).not.toContain('claude-3-5-sonnet-latest');
+    expect(isMovingModelAlias('claude-3-5-sonnet-latest')).toBe(true);
+    expect(isMovingModelAlias('constructor')).toBe(false);
+    expect(isMovingModelAlias('toString')).toBe(false);
+  });
+});
+
+describe('mergeCostComponents with unknown token counts', () => {
+  it('lets an unpriced component with unknown tokens taint the merge', () => {
+    expect(
+      mergeCostComponents([
+        { source: 'estimated', tokens: 100 },
+        { source: 'unpriced', tokens: 0, tokensUnknown: true },
+      ]),
+    ).toBe('unpriced');
+    expect(
+      mergeCostComponents([
+        { source: 'estimated', tokens: 100 },
+        { source: 'unpriced', tokens: 0 },
+      ]),
+    ).toBe('estimated');
+    expect(mergeCostComponents([{ source: 'reported', tokens: 0, tokensUnknown: true }])).toBe(
+      'reported',
+    );
   });
 });

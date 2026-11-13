@@ -23,6 +23,7 @@ export type {
 // One-call pricing of raw provider usage objects.
 export {
   RAW_USAGE_FORMATS,
+  PRICING_PROVENANCES,
   normalizeRawProviderUsage,
   priceProviderUsage,
 } from './usageNormalization';
@@ -1429,6 +1430,8 @@ export {
   MODEL_PROVIDER_IDS,
   canonicalModelId,
   isMovingModelAlias,
+  MOVING_MODEL_ALIASES,
+  COST_SOURCES,
   registerModelPricing,
   clearRegisteredModelPricing,
   getPricingCatalogInfo,
@@ -1582,10 +1585,7 @@ export {
   providerRetryAfterSchema,
   providerFailureDiagnosisSchema,
 } from './schemas/providerFailure';
-export {
-  PROVIDER_FAILURE_DIAGNOSIS_BOUNDS,
-  boundedProviderFailureDiagnosisSchema,
-} from './schemas/providerFailure';
+export { boundedProviderFailureDiagnosisSchema } from './schemas/providerFailure';
 
 // Schemas — Zod runtime validation for account status
 export {
@@ -1657,6 +1657,7 @@ export {
   PROVIDER_AUTHENTICATION_STATES,
   PROVIDER_CREDENTIAL_KINDS,
   PROVIDER_FAILURE_CODES,
+  PROVIDER_FAILURE_DIAGNOSIS_BOUNDS,
   PROVIDER_FAILURE_EVIDENCE_SOURCES,
   PROVIDER_RECOVERY_ACTIONS,
   CODEX_ERROR_INFO_KINDS,
