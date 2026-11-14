@@ -357,7 +357,13 @@ const SESSION_META_IDENTITY_FIELDS = [
   'multi_agent_version',
 ] as const;
 
-function sessionMetaIdentity(meta: CodexSessionMeta): CodexSessionMeta {
+/**
+ * The identity fields of a `session_meta` payload (see the parser's
+ * `sessionMeta: 'identity'` option).
+ *
+ * @internal
+ */
+export function sessionMetaIdentity(meta: CodexSessionMeta): CodexSessionMeta {
   const kept: Record<string, unknown> = {};
   for (const field of SESSION_META_IDENTITY_FIELDS) {
     const value = (meta as unknown as Record<string, unknown>)[field];

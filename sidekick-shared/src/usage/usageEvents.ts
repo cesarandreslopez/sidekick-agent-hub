@@ -28,6 +28,12 @@
  * so readers of different versions sharing the directory never overwrite each
  * other's files; pruning ages out every version's files alike.
  *
+ * Sessions are read in bounded steps (1 MiB) with a yield to the event loop
+ * between them, so one large session never blocks a host for its whole size.
+ * A deadline or an abort can stop a read inside a session; with the cache on,
+ * the progress is kept in that session's cache file (a *partial* entry, never
+ * served as a result) and the next collection continues from it.
+ *
  * Node-only: reads session files and the cache directory.
  *
  * @module usage/usageEvents
@@ -43,7 +49,18 @@ import type {
   ProviderId,
   SessionProviderBase,
   SessionProviderDiagnostic,
+  SessionReader,
 } from '../providers/types';
+import {
+  DEFAULT_READ_CHUNK_BYTES,
+  isBoundedReader,
+  type BoundedSessionReader,
+} from '../providers/boundedReader';
+import { yieldToEventLoop } from '../providers/readerDrain';
+import type { FileContinuityState } from '../fileContinuity';
+import { sessionMetaIdentity } from '../parsers/codexParser';
+import type { CodexSessionMeta } from '../types/codex';
+import type { SessionEvent } from '../types/sessionEvent';
 import { listSessionPreviewsAsync } from '../sessionPreviews';
 import type { SessionPreview, SessionScopeMode } from '../sessionPreviews';
 import { SYNTHETIC_MODEL } from './claudeUsageDedupe';
@@ -75,6 +92,9 @@ import { createSessionProvidersFrom } from '../providers/sessionProviderRegistry
  * move to a versioned name (`<provider>--<session>.v3.json`). v4: events keep
  * the prompt size (`rp`) only when they are one model call's, so a Codex
  * difference of running totals no longer selects a long-context tier.
+ * (0.33.1 adds partial entries to v4 without a bump: their fingerprint,
+ * `partial:<fingerprint>`, never matches a session's, so earlier v4 readers
+ * treat them as a miss and overwrite them.)
  */
 export const USAGE_CACHE_VERSION = 4;
 /**
@@ -227,10 +247,18 @@ export interface CollectUsageEventsOptions {
   listing?: SessionListing;
   /**
    * Per-call limits on the sessions read from disk (cache hits are free and
-   * never counted). A session is never split: the call stops before the
-   * session that would pass a bound, returns `hasMore: true`, and the
-   * returned `cursor` continues from there. The first read of a call always
-   * proceeds. Without `bounds` (and `cursor`) every session is read.
+   * never counted). A result never holds part of a session: the call stops
+   * before the session that would pass a bound, returns `hasMore: true`, and
+   * the returned `cursor` continues from there. `maxSessions`,
+   * `maxTotalBytes` and `maxEvents` are checked before each session, and the
+   * first read of a call always proceeds. `deadlineMs` is also checked
+   * between the 1 MiB steps a session is read in (0.33.1+), so it can stop
+   * a call inside a large session: with the cache on, what was read is kept
+   * and the next call continues that session, which then comes back whole.
+   * Every call still reads at least one complete line (or finishes a
+   * session). Without the cache (`noCache`), the first session of a call is
+   * always read to its end and a later one the deadline stops is read again
+   * by the next call. Without `bounds` (and `cursor`) every session is read.
    */
   bounds?: UsageEventsBounds;
   /**
@@ -249,10 +277,13 @@ export interface CollectUsageEventsOptions {
   noCache?: boolean;
   onDiagnostic?: (diagnostic: SessionProviderDiagnostic) => void;
   /**
-   * Stops the collection before listing and between sessions; the promise
-   * rejects with the signal's reason (an `AbortError` by default). Sessions
-   * read before the abort keep their cache entries; no partial session is
-   * cached.
+   * Stops the collection before listing, between sessions, and between the
+   * steps a session is read in; the promise rejects with the signal's reason
+   * (an `AbortError` by default). Sessions read before the abort keep their
+   * cache entries. A session the abort interrupts is never returned or
+   * cached as complete; with the cache on, what was read of it is kept and
+   * the next call continues it (so a short `AbortSignal.timeout()` per call
+   * still gets through a large session over several calls).
    */
   signal?: AbortSignal;
 }
@@ -270,11 +301,18 @@ export interface CollectUsageEventsStats {
 export interface UsageEventsBounds {
   /** Sessions read from disk (cache misses). */
   maxSessions?: number;
-  /** Bytes of the session files (and Claude Code subagent transcripts) read from disk. */
+  /**
+   * Bytes of the session files (and Claude Code subagent transcripts) read
+   * from disk; a session continued from kept progress counts only its
+   * unread rest.
+   */
   maxTotalBytes?: number;
   /** Events in the window from the sessions read from disk. */
   maxEvents?: number;
-  /** Wall-clock budget, checked before each read from disk. */
+  /**
+   * Wall-clock budget, checked before each read from disk and between the
+   * steps of one (see `bounds`).
+   */
   deadlineMs?: number;
 }
 
@@ -396,6 +434,35 @@ interface UsageCacheFile {
   pm?: Array<[number, number]>;
   /** Claude Code: start (first record, ms) of each subagent transcript, by agent id. */
   as?: Record<string, number | null>;
+  /**
+   * Progress of a session a deadline or an abort interrupted (0.33.1+). An
+   * entry with it has no events, and a fingerprint (`partial:<fingerprint>`)
+   * no session ever has, so no reader takes it for a complete entry; the
+   * next collection continues the session from it.
+   */
+  partial?: PartialUsageState;
+}
+
+/** How far an interrupted read of one session got, per transcript. */
+interface PartialUsageState {
+  v: 1;
+  /** Session key of the session (guards against a cache-file name collision). */
+  k: string;
+  /** Transcripts read so far, main transcript first; any not listed is read from offset 0. */
+  tx: PartialTranscript[];
+}
+
+interface PartialTranscript {
+  /** `''` for the main transcript, else the subagent transcript's file name. */
+  n: string;
+  /** Committed offset: everything before it was read. */
+  p: number;
+  /** The file the offset refers to, to notice a truncation, rewrite, or replacement. */
+  c: FileContinuityState;
+  /** Reader state at `p` (`SessionReader.getResumeState()`). */
+  r?: unknown;
+  /** Usage events of `[0, p)`, in the order read. */
+  e: CachedUsageEvent[];
 }
 
 export function getUsageCacheDir(): string {
@@ -608,64 +675,308 @@ function sessionFingerprint(preview: SessionPreview, subagents: readonly Subagen
   return `${base}|${subagents.map((f) => `${f.name}:${f.sizeBytes}:${f.modifiedAt}`).join(',')}`;
 }
 
-function readTranscriptUsage(
-  provider: SessionProviderBase,
-  filePath: string,
-  cached: CachedUsageEvent[],
-  agentId?: string,
-): void {
-  const reader = provider.createReader(filePath);
-  const events = reader.readAll();
-  reader.flush();
-  // A correction tops up the call its message already recorded, so it merges
-  // into that record instead of counting as another call.
-  const byMessageId = new Map<string, CachedUsageEvent>();
-  for (const event of events) {
-    const usage = extractNormalizedUsage(event);
-    if (!usage) continue;
-    const messageId = event.message?.id;
-    const target =
-      event.message?.usageKind === 'correction' && messageId
-        ? byMessageId.get(messageId)
-        : undefined;
-    if (target) {
-      target.i += usage.uncachedInputTokens;
-      target.o += usage.outputTokens;
-      target.cw += usage.cacheWriteTokens;
-      target.cr += usage.cacheReadTokens;
-      target.bo += usage.billableOutputTokens;
-      target.tt += usage.totalTokens;
-      if (usage.reasoningTokens > 0) target.rt = (target.rt ?? 0) + usage.reasoningTokens;
-      // The correction names its whole call's prompt, which the merged record now is.
-      if (usage.requestPromptTokens !== undefined && usage.requestPromptTokens > 0) {
-        target.rp = usage.requestPromptTokens;
+/**
+ * Usage of one transcript, reduced as its events stream in: one record per
+ * model call, a correction merged into the call its message already
+ * recorded. Seeded with the records of a read interrupted earlier, it
+ * continues that read.
+ */
+class TranscriptUsageReducer {
+  readonly events: CachedUsageEvent[];
+  private readonly byMessageId = new Map<string, CachedUsageEvent>();
+
+  constructor(
+    private readonly agentId: string | undefined,
+    prior: readonly CachedUsageEvent[] = [],
+  ) {
+    this.events = prior.map((event) => ({ ...event }));
+    // Only Claude Code messages are corrected, and they keep their id (`rid`).
+    for (const event of this.events) if (event.rid) this.byMessageId.set(event.rid, event);
+  }
+
+  add(batch: readonly SessionEvent[]): void {
+    for (const event of batch) {
+      const usage = extractNormalizedUsage(event);
+      if (!usage) continue;
+      const messageId = event.message?.id;
+      // A correction tops up the call its message already recorded, so it
+      // merges into that record instead of counting as another call.
+      const target =
+        event.message?.usageKind === 'correction' && messageId
+          ? this.byMessageId.get(messageId)
+          : undefined;
+      if (target) {
+        target.i += usage.uncachedInputTokens;
+        target.o += usage.outputTokens;
+        target.cw += usage.cacheWriteTokens;
+        target.cr += usage.cacheReadTokens;
+        target.bo += usage.billableOutputTokens;
+        target.tt += usage.totalTokens;
+        if (usage.reasoningTokens > 0) target.rt = (target.rt ?? 0) + usage.reasoningTokens;
+        // The correction names its whole call's prompt, which the merged record now is.
+        if (usage.requestPromptTokens !== undefined && usage.requestPromptTokens > 0) {
+          target.rp = usage.requestPromptTokens;
+        }
+        continue;
       }
-      continue;
+      const timestamp = Date.parse(event.timestamp);
+      if (!Number.isFinite(timestamp)) continue;
+      const record = cachedEventFromUsage(
+        usage,
+        timestamp,
+        event.message?.model ?? usage.model ?? 'unknown',
+        messageId,
+        this.agentId,
+      );
+      this.events.push(record);
+      if (messageId) this.byMessageId.set(messageId, record);
     }
-    const timestamp = Date.parse(event.timestamp);
-    if (!Number.isFinite(timestamp)) continue;
-    const record = cachedEventFromUsage(
-      usage,
-      timestamp,
-      event.message?.model ?? usage.model ?? 'unknown',
-      messageId,
-      agentId,
-    );
-    cached.push(record);
-    if (messageId) byMessageId.set(messageId, record);
+  }
+
+  reset(): void {
+    this.events.length = 0;
+    this.byMessageId.clear();
   }
 }
 
-function readSessionUsage(
+/** Bytes per read step; changed only by {@link __usageEventsTesting}. */
+let readChunkBytes = DEFAULT_READ_CHUNK_BYTES;
+
+/** Test hooks; not part of the public entry points. */
+export const __usageEventsTesting = {
+  /** Bytes per read step (`null` restores the default 1 MiB). */
+  setReadChunkBytes(bytes: number | null): void {
+    readChunkBytes = bytes ?? DEFAULT_READ_CHUNK_BYTES;
+  },
+};
+
+/** What {@link readSessionUsage} needs from the collection it runs in. */
+interface SessionReadRun {
+  /** Progress of an earlier interrupted read of this session. */
+  resume: PartialUsageState | undefined;
+  /** Whether progress can be kept (the cache is on). */
+  persist: boolean;
+  signal: AbortSignal | undefined;
+  /** The call's deadline has passed. */
+  deadlinePassed(): boolean;
+  /** An earlier session of this call was read to its end (or failed). */
+  callProgress(): boolean;
+  /** Stores the progress of this session. */
+  savePartial(state: PartialUsageState): Promise<void>;
+}
+
+type SessionReadOutcome =
+  | { kind: 'complete'; events: CachedUsageEvent[] }
+  | { kind: 'stopped'; saved: boolean };
+
+/** One transcript of a session being read. */
+interface TranscriptRead {
+  name: string;
+  reader: SessionReader;
+  bounded: BoundedSessionReader | null;
+  reducer: TranscriptUsageReducer;
+  /** Committed offset this call started from (0 after a restart). */
+  base: number;
+}
+
+/**
+ * Reader state to persist, without what usage never needs again: a Codex
+ * rollout's full `session_meta` (instructions, tool lists) is cut down to
+ * the fields that identify the session.
+ */
+function persistableResumeState(provider: ProviderId, reader: SessionReader): unknown {
+  const state = reader.getResumeState?.();
+  if (provider !== 'codex' || typeof state !== 'object' || state === null) return state;
+  const meta = (state as { sessionMeta?: CodexSessionMeta | null }).sessionMeta;
+  return meta ? { ...state, sessionMeta: sessionMetaIdentity(meta) } : state;
+}
+
+/**
+ * Reads a session's usage (main transcript, then Claude Code subagent
+ * transcripts by name) in bounded steps, yielding between them.
+ *
+ * Between steps it may stop: when the call's deadline has passed and either
+ * an earlier session of the call already finished, or this read committed at
+ * least one more line that can be kept. So every call makes progress, even
+ * past a line longer than a step. Kept progress (`savePartial`) is per
+ * transcript: offset, reader state, continuity, and the usage so far; the
+ * next call continues each transcript where it stopped, or starts it over if
+ * the file was truncated, rewritten, or replaced since. An abort keeps
+ * progress the same way, then rejects.
+ *
+ * Readers without bounded steps (OpenCode) are read whole, and so is a
+ * compressed rollout within one call: neither can resume.
+ */
+async function readSessionUsage(
   provider: SessionProviderBase,
   preview: SessionPreview,
+  sessionKey: string,
   subagents: readonly SubagentFile[],
-): CachedUsageEvent[] {
-  const cached: CachedUsageEvent[] = [];
-  readTranscriptUsage(provider, preview.filePath, cached);
-  for (const file of subagents) readTranscriptUsage(provider, file.path, cached, file.agentId);
-  cached.sort((a, b) => a.t - b.t);
-  return cached;
+  run: SessionReadRun,
+): Promise<SessionReadOutcome> {
+  const specs = [
+    { name: '', path: preview.filePath, agentId: undefined as string | undefined },
+    ...subagents.map((file) => ({ name: file.name, path: file.path, agentId: file.agentId })),
+  ];
+  const saved = new Map((run.resume?.tx ?? []).map((tx) => [tx.n, tx]));
+  const reads: TranscriptRead[] = [];
+  let persistable = run.persist;
+  let advanced = false;
+  let steps = 0;
+
+  const build = (): PartialUsageState => {
+    const byName = new Map(reads.map((read) => [read.name, read]));
+    const tx: PartialTranscript[] = [];
+    for (const spec of specs) {
+      const read = byName.get(spec.name);
+      if (!read) {
+        // Not reached in this call: keep what an earlier call read.
+        const earlier = saved.get(spec.name);
+        if (earlier) tx.push(earlier);
+        continue;
+      }
+      const continuity = read.bounded?.continuityState?.() ?? null;
+      if (!continuity) continue;
+      const resume = persistableResumeState(preview.provider, read.reader);
+      tx.push({
+        n: spec.name,
+        p: read.reader.getPosition(),
+        c: continuity,
+        ...(resume !== undefined ? { r: resume } : {}),
+        e: read.reducer.events,
+      });
+    }
+    return { v: 1, k: sessionKey, tx };
+  };
+
+  const mayStop = () => run.deadlinePassed() && (run.callProgress() || (persistable && advanced));
+
+  const stop = async (): Promise<SessionReadOutcome> => {
+    if (!persistable || !advanced) return { kind: 'stopped', saved: false };
+    await run.savePartial(build());
+    return { kind: 'stopped', saved: true };
+  };
+
+  /** Between two steps: yield, then honor an abort or the deadline. */
+  const between = async (): Promise<SessionReadOutcome | null> => {
+    await yieldToEventLoop();
+    if (run.signal?.aborted) {
+      if (persistable && advanced) await run.savePartial(build());
+      run.signal.throwIfAborted();
+    }
+    return mayStop() ? stop() : null;
+  };
+
+  for (const spec of specs) {
+    const reader = provider.createReader(spec.path);
+    if (!isBoundedReader(reader)) {
+      // Read whole; such a reader cannot resume, so nothing of this session is kept.
+      persistable = false;
+      if (steps > 0) {
+        const stopped = await between();
+        if (stopped) return stopped;
+      }
+      const reducer = new TranscriptUsageReducer(spec.agentId);
+      const events = reader.readAll();
+      reader.flush();
+      reducer.add(events);
+      reads.push({ name: spec.name, reader, bounded: null, reducer, base: 0 });
+      steps += 1;
+      continue;
+    }
+    if (typeof reader.continuityState !== 'function') persistable = false;
+
+    let reducer = new TranscriptUsageReducer(spec.agentId);
+    let base = 0;
+    const earlier = persistable ? saved.get(spec.name) : undefined;
+    if (earlier) {
+      // Continue where the earlier call stopped; any doubt starts the transcript over.
+      reader.seekTo(earlier.p);
+      const restored =
+        (reader.restoreResumeState ? reader.restoreResumeState(earlier.r) : true) &&
+        reader.restoreContinuity?.(earlier.c) === true;
+      if (restored) {
+        reducer = new TranscriptUsageReducer(spec.agentId, earlier.e);
+        base = earlier.p;
+      } else {
+        reader.reset();
+      }
+    }
+    const read: TranscriptRead = { name: spec.name, reader, bounded: reader, reducer, base };
+    reads.push(read);
+    await reader.prepareBoundedRead?.();
+
+    for (;;) {
+      if (steps > 0) {
+        const stopped = await between();
+        if (stopped) return stopped;
+      }
+      const step = reader.readNewBounded(readChunkBytes);
+      steps += 1;
+      if (reader.wasTruncated()) {
+        // The file is no longer the one the earlier events came from.
+        read.reducer.reset();
+        read.base = 0;
+      }
+      read.reducer.add(step.events);
+      if (reader.getPosition() > read.base) advanced = true;
+      if (step.done) break;
+    }
+  }
+
+  // Everything is read. Past the deadline, keep it and finish next call
+  // rather than start the prompt-ordinal pass late.
+  if (persistable && mayStop()) return stop();
+
+  const events: CachedUsageEvent[] = [];
+  for (const read of reads) {
+    // A trailing line without a newline counts as readAll() + flush() count it.
+    if (read.bounded) read.reducer.add(read.bounded.finishBounded());
+    events.push(...read.reducer.events);
+  }
+  events.sort((a, b) => a.t - b.t);
+  return { kind: 'complete', events };
+}
+
+/** A partial entry's progress when it is well formed and for this session; else undefined. */
+function validPartial(value: unknown, sessionKey: string): PartialUsageState | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const state = value as Partial<PartialUsageState>;
+  if (state.v !== 1 || state.k !== sessionKey || !Array.isArray(state.tx)) return undefined;
+  const names = new Set<string>();
+  for (const tx of state.tx as unknown[]) {
+    if (typeof tx !== 'object' || tx === null) return undefined;
+    const { n, p, c, e } = tx as Partial<PartialTranscript>;
+    if (typeof n !== 'string' || names.has(n)) return undefined;
+    names.add(n);
+    if (!Number.isInteger(p) || (p as number) < 0) return undefined;
+    if (typeof c !== 'object' || c === null || !Array.isArray(e)) return undefined;
+    if (!e.every(isCachedUsageEvent)) return undefined;
+  }
+  return state as PartialUsageState;
+}
+
+function isCachedUsageEvent(value: unknown): value is CachedUsageEvent {
+  if (typeof value !== 'object' || value === null) return false;
+  const event = value as Record<string, unknown>;
+  return (
+    typeof event.m === 'string' &&
+    (['t', 'i', 'o', 'cw', 'cr', 'bo', 'tt'] as const).every(
+      (field) => typeof event[field] === 'number' && Number.isFinite(event[field]),
+    )
+  );
+}
+
+/** Bytes of a session not read yet: whole files, less what a partial entry already covers. */
+function remainingSessionBytes(
+  preview: SessionPreview,
+  subagents: readonly SubagentFile[],
+  resume: PartialUsageState | undefined,
+): number {
+  const done = new Map((resume?.tx ?? []).map((tx) => [tx.n, tx.p]));
+  let bytes = Math.max(0, preview.sizeBytes - (done.get('') ?? 0));
+  for (const file of subagents) bytes += Math.max(0, file.sizeBytes - (done.get(file.name) ?? 0));
+  return bytes;
 }
 
 /**
@@ -748,6 +1059,8 @@ function validAgentStarts(value: unknown): Record<string, number | null> | undef
  * new entry has the fields).
  */
 function cacheEntryComplete(entry: UsageCacheFile): boolean {
+  // An interrupted read: progress to continue, not a result.
+  if (entry.partial !== undefined) return false;
   if (
     entry.provider === 'claude-code' &&
     entry.events.some((event) => typeof event.sa === 'string')
@@ -785,17 +1098,15 @@ async function codexSessionSubagent(
   };
 }
 
-function yieldToEventLoop(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
-}
-
 /**
  * Collect priced usage events for every session touched in the window.
  *
  * Sessions are enumerated with `listSessionPreviewsAsync` (the `since`
  * cutoff applies to the session mtime there and to the event timestamp
- * here), read once each unless the cache already holds their fingerprint,
- * and yielded between reads so long-lived hosts stay responsive.
+ * here), read once each unless the cache already holds their fingerprint.
+ * Each session is read in 1 MiB steps with a yield between them, so a
+ * long-lived host stays responsive even while one large session is read,
+ * and `bounds.deadlineMs` / `signal` can stop inside it (see `bounds`).
  */
 export async function collectUsageEvents(
   options: CollectUsageEventsOptions,
@@ -973,13 +1284,16 @@ async function collectWithProviders(
   let missEvents = 0;
   let wroteCache = false;
   let stoppedAt: number | null = null;
+  /** A session read from disk in this call finished (or failed). */
+  let callProgress = false;
+
+  const deadlinePassed = () =>
+    bounds?.deadlineMs !== undefined && Date.now() - startedAt >= bounds.deadlineMs;
 
   const boundReached = (sessionBytes: number): UsageEventsBound | null => {
     // The first miss of a call always proceeds, so every call makes progress.
     if (!bounds || cacheMisses === 0) return null;
-    if (bounds.deadlineMs !== undefined && Date.now() - startedAt >= bounds.deadlineMs) {
-      return 'deadline';
-    }
+    if (deadlinePassed()) return 'deadline';
     if (bounds.maxSessions !== undefined && cacheMisses >= bounds.maxSessions) return 'maxSessions';
     if (bounds.maxEvents !== undefined && missEvents >= bounds.maxEvents) return 'maxEvents';
     if (bounds.maxTotalBytes !== undefined && missBytes + sessionBytes > bounds.maxTotalBytes) {
@@ -1010,8 +1324,9 @@ async function collectWithProviders(
     let agentStarts: Record<string, number | null> | undefined;
     let project = preview.workspacePath;
     let fromCache = false;
+    let cached: UsageCacheFile | null = null;
     if (useCache) {
-      const cached = readCache(filePath);
+      cached = readCache(filePath);
       if (
         cached &&
         cached.fingerprint === fingerprint &&
@@ -1030,8 +1345,12 @@ async function collectWithProviders(
     }
 
     if (!cachedEvents) {
-      const sessionBytes =
-        preview.sizeBytes + subagentFiles.reduce((sum, file) => sum + file.sizeBytes, 0);
+      // What an interrupted earlier read of this session got through.
+      const resume =
+        cached && cached.sessionId === preview.sessionId
+          ? validPartial(cached.partial, key)
+          : undefined;
+      const sessionBytes = remainingSessionBytes(preview, subagentFiles, resume);
       const stop = boundReached(sessionBytes);
       if (stop) {
         boundsHit.add(stop);
@@ -1040,9 +1359,37 @@ async function collectWithProviders(
       }
       cacheMisses += 1;
       missBytes += sessionBytes;
+      let outcome: SessionReadOutcome;
       try {
-        cachedEvents = readSessionUsage(provider, preview, subagentFiles);
+        outcome = await readSessionUsage(provider, preview, key, subagentFiles, {
+          resume,
+          persist: useCache,
+          signal,
+          deadlinePassed,
+          callProgress: () => callProgress,
+          savePartial: async (state) => {
+            const record: UsageCacheFile = {
+              version: USAGE_CACHE_VERSION,
+              provider: preview.provider,
+              sessionId: preview.sessionId,
+              // No session has this fingerprint, so no reader takes it as complete.
+              fingerprint: `partial:${fingerprint}`,
+              project,
+              events: [],
+              partial: state,
+            };
+            try {
+              await atomicWriteJson(filePath, record);
+              wroteCache = true;
+            } catch {
+              // Progress is an accelerator too; losing it costs a re-read.
+            }
+          },
+        });
       } catch (error) {
+        // An abort is the caller's, not a read failure.
+        signal?.throwIfAborted();
+        callProgress = true;
         const diagnostic: SessionProviderDiagnostic = {
           providerId: preview.provider,
           kind: 'read_failed',
@@ -1056,6 +1403,14 @@ async function collectWithProviders(
         options.onDiagnostic?.(diagnostic);
         continue;
       }
+      if (outcome.kind === 'stopped') {
+        // The deadline stopped this session partway; the next call continues it.
+        boundsHit.add('deadline');
+        stoppedAt = position;
+        break;
+      }
+      callProgress = true;
+      cachedEvents = outcome.events;
       // Ordinals and origin are best-effort: a failure costs only the cache write.
       const ordinals = await addPromptOrdinals(preview, cachedEvents);
       marks = ordinals.marks;

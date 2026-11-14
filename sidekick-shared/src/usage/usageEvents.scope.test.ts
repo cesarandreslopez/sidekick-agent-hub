@@ -32,6 +32,7 @@ import { ClaudeCodeProvider } from '../providers/claudeCode';
 import { CodexProvider } from '../providers/codex';
 import type { SessionProviderBase } from '../providers/types';
 import { listSessionPreviewsAsync } from '../sessionPreviews';
+import type { SessionEvent } from '../types/sessionEvent';
 import { createSessionLogFixtures, writeJsonl, type Row } from '../testing/sessionLogFixtures';
 import { collectUsageEvents } from './usageEvents';
 
@@ -151,9 +152,7 @@ describe('collectUsageEvents scope', () => {
     const createReader = claude.createReader.bind(claude);
     vi.spyOn(claude, 'createReader').mockImplementation((filePath) => {
       const reader = createReader(filePath);
-      const readAll = reader.readAll.bind(reader);
-      reader.readAll = () => {
-        const events = readAll();
+      const withSynthetic = (events: SessionEvent[]): SessionEvent[] => {
         const real = events.find((event) => event.message?.usage);
         return real
           ? [
@@ -165,6 +164,12 @@ describe('collectUsageEvents scope', () => {
               },
             ]
           : events;
+      };
+      // collectUsageEvents reads in bounded steps; add the placeholder to each step.
+      const readNewBounded = reader.readNewBounded!.bind(reader);
+      reader.readNewBounded = (maxBytes: number) => {
+        const step = readNewBounded(maxBytes);
+        return { ...step, events: withSynthetic(step.events) };
       };
       return reader;
     });
