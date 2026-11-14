@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Codex `cache_write_input_tokens`.** The rollout parser (including call deltas and resume state), `providers/codex`, the compressed-rollout reader, the JSONL follow watcher and `normalizeRawProviderUsage('codex')` now take cache writes out of input and bill them at the model's write rate (GPT-6.x: 1.25× input), matching prompt history and the headless parser. A delta adds writes only when both totals carry the field. `USAGE_CACHE_VERSION` stays 4: sessions recorded so far report no writes, and a session that grows is re-read whole.
 - **`decodeCodexErrorInfo()`** keeps a valid `httpStatusCode` on `{ kind: 'other', rawKind }`, and `diagnoseProviderFailure()` now classifies such an error by that status.
 
+- **`readAgentVersion()`, `captureJsonlCheckpoint()` and `verifyJsonlCheckpoint()` refuse anything but a regular file.** They open non-blocking, so a FIFO at the path returns `null` / `false` instead of blocking until a writer appears.
+
 ### Added
 
 - **Provider failures:** the `model_unavailable` code and `choose_model` recovery action (`retryable: false`), from Codex `modelNotFound`, `model_not_found` codes, Anthropic's `model: <id>` not-found message and "model … does not exist / not found / not supported" text. `PROVIDER_FAILURE_DIAGNOSIS_BOUNDS` is also exported from `sidekick-shared/providerFailure` (still one module), as the same object `/schemas` exports.
