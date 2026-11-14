@@ -22,6 +22,7 @@ import {
 } from 'sidekick-shared';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import type { Command } from 'commander';
+import { sessionProviderChoice } from '../options';
 
 declare const __CLI_VERSION__: string;
 
@@ -252,10 +253,8 @@ export function createMcpFactsServer(options: McpFactsOptions): McpServer {
 
 export async function mcpAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
-  const provider =
-    globalOpts.provider && globalOpts.provider !== 'auto'
-      ? (globalOpts.provider as ProviderId)
-      : undefined;
+  const choice = sessionProviderChoice(globalOpts.provider || undefined);
+  const provider: ProviderId | undefined = choice && choice !== 'auto' ? choice : undefined;
   const server = createMcpFactsServer({
     cwd: (globalOpts.project as string | undefined) || process.cwd(),
     providerId: provider,

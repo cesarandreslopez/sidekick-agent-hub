@@ -210,7 +210,10 @@ function parseProviderFilter(value: unknown): QuotaHistoryRuntimeProvider | 'aut
   if (lower === 'claude' || lower === 'claude-code') return 'claude';
   if (lower === 'codex') return 'codex';
   if (lower === 'zai' || lower === 'z.ai') return 'zai';
-  return 'auto';
+  if (lower === 'auto' || lower === 'all') return 'auto';
+  throw new Error(
+    `--provider ${value} has no quota history. Use claude, codex, zai, or all (the default).`,
+  );
 }
 
 function clampWeeks(value: unknown): number {

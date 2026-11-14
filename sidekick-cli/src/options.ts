@@ -7,14 +7,50 @@
 
 import { Option } from 'commander';
 
-/** Root/session provider: which CLI agent's sessions to read. */
+/** The session providers a reading command accepts for `--provider`. */
+export const SESSION_PROVIDER_CHOICES = ['claude-code', 'opencode', 'codex', 'auto'] as const;
+export type SessionProviderChoice = (typeof SESSION_PROVIDER_CHOICES)[number];
+
+/**
+ * Every `--provider` value some command accepts: the session providers, plus
+ * `zai` (quota), the `claude` / `z.ai` aliases (quota history), and `all`
+ * (accounts). Commander parses the root option wherever it appears on the
+ * line, so a subcommand's own `--provider` choices are never consulted; the
+ * root list has to admit them all, and each command then checks the value it
+ * received (`sessionProviderChoice()` for the session readers).
+ */
+export const ROOT_PROVIDER_CHOICES = [
+  ...SESSION_PROVIDER_CHOICES,
+  'zai',
+  'z.ai',
+  'claude',
+  'all',
+] as const;
+
+/** Root provider option; the per-command checks narrow it. */
 export function rootProviderOption(): Option {
-  return new Option('--provider <id>', 'Session provider (default: auto)').choices([
-    'claude-code',
-    'opencode',
-    'codex',
-    'auto',
-  ]);
+  return new Option(
+    '--provider <id>',
+    'Session provider: claude-code, opencode, codex, or auto (default); quota, quota history, and accounts accept more',
+  ).choices([...ROOT_PROVIDER_CHOICES]);
+}
+
+/**
+ * The session provider a reading command was given, or a thrown error naming
+ * the accepted values when it was given one only another command accepts
+ * (`zai`, `all`, …). `undefined` and `auto` mean "detect".
+ */
+export function sessionProviderChoice(value: unknown): SessionProviderChoice | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (
+    typeof value === 'string' &&
+    (SESSION_PROVIDER_CHOICES as readonly string[]).includes(value)
+  ) {
+    return value as SessionProviderChoice;
+  }
+  throw new Error(
+    `--provider ${String(value)} is not a session provider for this command. Use claude-code, opencode, codex, or auto.`,
+  );
 }
 
 /** Quota provider: adds zai, which is quota-only. */
@@ -71,7 +107,7 @@ export function mapMotionOption(): Option {
 export function mapLabelsOption(): Option {
   return new Option(
     '--labels <mode>',
-    "Label detail: names, descriptive (adds the agent's short descriptions), or none (default: descriptive for text, names for files)",
+    "Label detail: names, descriptive (adds the agent's short descriptions), or none (default: descriptive for text and --follow, names for SVG and JSON)",
   ).choices(['names', 'descriptive', 'none']);
 }
 

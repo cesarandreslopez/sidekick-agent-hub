@@ -24,6 +24,7 @@ import {
   quotaProviderOption,
   reportThemeOption,
   rootProviderOption,
+  sessionProviderChoice,
   tasksStatusOption,
 } from './options';
 import { detectProvider } from 'sidekick-shared';
@@ -100,8 +101,9 @@ export function resolveProviderId(
   opts: { provider?: string },
   defaultProvider: ProviderId | 'auto' = 'auto',
 ): ProviderId {
-  if (opts.provider && opts.provider !== 'auto') {
-    return opts.provider as ProviderId;
+  const choice = sessionProviderChoice(opts.provider || undefined);
+  if (choice && choice !== 'auto') {
+    return choice;
   }
   if (defaultProvider !== 'auto') {
     return defaultProvider;
