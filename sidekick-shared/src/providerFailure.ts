@@ -436,6 +436,18 @@ function isRetryable(
   }
 }
 
+/**
+ * Error text naming a model that is missing or out of reach. Literal patterns
+ * (no top-level calls) so bundlers can drop them with the classifier. A model
+ * id is `[A-Za-z0-9][\w.:/@-]{0,99}`, optionally quoted.
+ */
+const MODEL_UNAVAILABLE_MESSAGES: readonly RegExp[] = [
+  /^\s*model:\s*\S+\s*$/i,
+  /\bmodel\s+[`'"(]?[A-Za-z0-9][\w.:/@-]{0,99}[`'")]?\s+(?:does not exist|doesn't exist|is not found|not found|is not supported|is not available)\b/i,
+  /[`'"][A-Za-z0-9][\w.:/@-]{0,99}[`'"]\s+model\s+(?:does not exist|doesn't exist|is not found|not found|is not supported|is not available)\b/i,
+  /\bselected model\s*\([^)\s]{1,100}\)[^.]{0,40}\.?\s*it may not exist\b/i,
+];
+
 function classifyMessage(
   message: string,
   kind: ProviderCredentialKind,
@@ -485,17 +497,6 @@ function classifyMessage(
     )
   )
     return 'context_overflow';
-  // A named model that is missing or out of reach: Anthropic's
-  // `not_found_error` text (`model: claude-…`), OpenAI's "The model `x` does
-  // not exist or you do not have access to it", Claude Code's "selected model
-  // (x) … may not exist", Codex's "model is not supported" for an account.
-  if (
-    /^\s*model:\s*\S+\s*$/i.test(message) ||
-    /\bmodels?\b.{0,80}\b(does not exist|doesn't exist|may not exist|not found|is not supported|do(es)? not have access)\b/i.test(
-      message,
-    )
-  )
-    return 'model_unavailable';
   if (/\b(overloaded|over capacity|server busy)\b/i.test(message)) return 'overloaded';
   if (/\b(rate[ _-]?limit|too many requests)\b/i.test(message)) return 'rate_limited';
   if (/\b(timed? ?out|deadline exceeded|etimedout)\b/i.test(message)) return 'timeout';
@@ -513,6 +514,15 @@ function classifyMessage(
     )
   )
     return 'runtime_unavailable';
+  // A named model that is missing or out of reach, checked last so that a
+  // transient, runtime or other failure merely mentioning a model keeps its
+  // own diagnosis. The model must be named next to the phrase: Anthropic's
+  // `not_found_error` text (`model: claude-…`), OpenAI's "The model `x` does
+  // not exist or you do not have access to it", Claude Code's "selected model
+  // (x) … may not exist", and Codex's "The 'x' model is not supported" for an
+  // account.
+  if (MODEL_UNAVAILABLE_MESSAGES.some((pattern) => pattern.test(message)))
+    return 'model_unavailable';
   return undefined;
 }
 

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { classifyAgentTranscriptPath, readAgentModel, readAgentVersion } from './agentPaths';
 
@@ -324,5 +325,31 @@ describe('readAgentModel', () => {
     fs.symlinkSync(target, link);
     expect(readAgentModel(link)).toMatchObject({ model: 'claude-opus-5-5' });
     expect(readAgentModel(link, { noFollow: true })).toBeNull();
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('readers given something other than a file', () => {
+  it('return null for a FIFO without blocking, with or without noFollow', () => {
+    const fifo = path.join(root, 'fifo.jsonl');
+    execFileSync('mkfifo', [fifo]);
+    expect(readAgentVersion(fifo)).toBeNull();
+    expect(readAgentVersion(fifo, { noFollow: true })).toBeNull();
+    expect(readAgentModel(fifo, { noFollow: true })).toBeNull();
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('classifyAgentTranscriptPath with realpath', () => {
+  it('classifies a relative transcript not written yet under a symlinked base', () => {
+    const real = path.join(root, 'real-project');
+    fs.mkdirSync(real, { recursive: true });
+    const linked = path.join(root, 'linked-project');
+    fs.symlinkSync(real, linked);
+    const relative = path.join('projects', '-p', 'new.jsonl');
+    const env = { CLAUDE_CONFIG_DIR: '', HOME: root };
+    for (const realpath of [false, true]) {
+      expect(
+        classifyAgentTranscriptPath(relative, { env, baseDirs: [linked], realpath }),
+      ).toMatchObject({ provider: 'claude-code', kind: 'session', sessionId: 'new' });
+    }
   });
 });

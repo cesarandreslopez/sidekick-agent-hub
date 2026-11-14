@@ -8,6 +8,7 @@ import {
   appendFileSync,
   truncateSync,
 } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -606,6 +607,16 @@ describe('createJsonlTail read()', () => {
 
 describe('captureJsonlCheckpoint / verifyJsonlCheckpoint', () => {
   const content = '{"type":"one"}\n{"type":"two"}\n';
+
+  it.skipIf(process.platform === 'win32')('refuses a FIFO without blocking', () => {
+    const fifo = path.join(path.dirname(makeJsonlFile()), 'pipe.jsonl');
+    execFileSync('mkfifo', [fifo]);
+    expect(captureJsonlCheckpoint(fifo, 0)).toBeNull();
+    expect(captureJsonlCheckpoint(fifo, 0, { noFollow: true })).toBeNull();
+    expect(
+      verifyJsonlCheckpoint(fifo, { version: 1, offset: 0, identity: null, prefixDigest: null }),
+    ).toBe(false);
+  });
   const firstLine = Buffer.byteLength('{"type":"one"}\n');
 
   it('captures what a tail checkpoints at the same offset, and verifies it', () => {

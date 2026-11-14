@@ -141,12 +141,23 @@ function validHomes(homes: readonly string[] | undefined): string[] | undefined 
   );
 }
 
+/**
+ * `target` with symlinks resolved when `realpath` is set. A path that does not
+ * exist yet (a transcript before its first write) resolves its deepest
+ * existing ancestor and keeps the rest, so it still compares equal to a
+ * resolved home.
+ */
 function canonical(target: string, realpath: boolean | undefined): string {
   if (!realpath) return target;
-  try {
-    return fs.realpathSync.native(target);
-  } catch {
-    return target;
+  for (let dir = target, rest = ''; ; ) {
+    try {
+      return path.join(fs.realpathSync.native(dir), rest);
+    } catch {
+      const parent = path.dirname(dir);
+      if (parent === dir) return target;
+      rest = path.join(path.basename(dir), rest);
+      dir = parent;
+    }
   }
 }
 

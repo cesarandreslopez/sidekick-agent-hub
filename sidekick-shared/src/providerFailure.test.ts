@@ -1151,8 +1151,31 @@ describe('model_unavailable', () => {
     ['a missing runtime', { message: 'codex CLI not found' }],
     ['a missing thread', { message: 'Thread abc not found' }],
     ['a transient outage', { message: 'The model is overloaded. Please try again later.' }],
+    [
+      'a rate limit that names a model',
+      { message: 'Rate limit reached for model gpt-4o; file not found' },
+    ],
+    [
+      'a timeout that names a model',
+      { message: 'Request timed out waiting for model; session not found' },
+    ],
+    [
+      'a missing runtime after a model name',
+      { message: 'Default model gpt-5: codex executable not found in PATH' },
+    ],
+    ['a missing MCP server', { message: 'Model Context Protocol server "github" not found' }],
+    ['a catalog fetch', { message: 'Failed to fetch models.dev catalog: 404 Not Found' }],
   ])('does not claim %s', (_label, error) => {
     expect(diagnose(error).diagnosis).not.toBe('model_unavailable');
+  });
+
+  it('leaves transient failures that name a model retryable', () => {
+    expect(
+      diagnose({ message: 'Rate limit reached for model gpt-4o; file not found' }),
+    ).toMatchObject({ diagnosis: 'rate_limited', retryable: true });
+    expect(
+      diagnose({ message: 'Default model gpt-5: codex executable not found in PATH' }).diagnosis,
+    ).toBe('runtime_unavailable');
   });
 });
 

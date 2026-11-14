@@ -128,6 +128,17 @@ describe('findClaudeSessionFile', () => {
     expect(findClaudeSessionFile('missing', { homes: { claudeHomes: [claudeHome()] } })).toBeNull();
   });
 
+  it('treats an Infinity budget as no limit', () => {
+    const home = path.join(root, 'claude-many');
+    for (let i = 0; i < 6; i++)
+      fs.mkdirSync(path.join(home, 'projects', `p${i}`), { recursive: true });
+    const file = path.join(home, 'projects', 'p5', 'late.jsonl');
+    fs.writeFileSync(file, '{}\n');
+    const homes = { claudeHomes: [home] };
+    expect(findClaudeSessionFile('late', { homes, maxProjectDirs: Infinity })).toBe(file);
+    expect(findClaudeSessionFile('late', { homes, maxProjectDirs: 0 })).toBeNull();
+  });
+
   it('refuses ids that are not one file name, and never throws', () => {
     touch(path.join(claudeHome(), 'projects', '-a', 'x.jsonl'), 1_000);
     for (const id of ['../x', 'a/b', 'a\\b', '.hidden', '', 'x'.repeat(300)]) {

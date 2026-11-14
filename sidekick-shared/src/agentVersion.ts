@@ -147,9 +147,16 @@ function readWindows(
     const windowBytes = Number.isFinite(requested)
       ? Math.min(MAX_WINDOW_BYTES, Math.max(256, Math.floor(requested)))
       : DEFAULT_AGENT_VERSION_WINDOW_BYTES;
-    const noFollow = options.noFollow ? fs.constants.O_NOFOLLOW : undefined;
-    fd = fs.openSync(filePath, noFollow ? fs.constants.O_RDONLY | noFollow : 'r');
-    const size = fs.fstatSync(fd).size;
+    // Non-blocking, so a FIFO at the path cannot stall the open; anything but
+    // a regular file is then refused.
+    const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = fs.constants;
+    let flags = O_RDONLY;
+    if (options.noFollow && typeof O_NOFOLLOW === 'number') flags |= O_NOFOLLOW;
+    if (typeof O_NONBLOCK === 'number') flags |= O_NONBLOCK;
+    fd = fs.openSync(filePath, flags);
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return null;
+    const size = stat.size;
     if (size <= 0) return null;
     const provider: AgentVersionProvider = isRolloutFile(name) ? 'codex' : 'claude-code';
     const headLength = Math.min(size, windowBytes);

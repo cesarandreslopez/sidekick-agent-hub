@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CodexRolloutParser } from './parsers/codexParser';
+import { CodexRolloutParser, resolveCodexCallUsage } from './parsers/codexParser';
 import { collectPromptHistory } from './promptHistory';
 import { parseCodexExecEvent } from './headless/codexExecJson';
 import { calculateNormalizedUsageCost, priceProviderUsage } from './usageNormalization';
@@ -134,6 +134,11 @@ describe('Codex cache writes', () => {
       cacheWriteTokens: 0,
       outputTokens: 20,
     });
+    // The delta itself carries no cache-write key when neither total has one.
+    const { usage } = resolveCodexCallUsage({ total_token_usage: second }, first);
+    expect(usage).not.toBeNull();
+    expect(Object.prototype.hasOwnProperty.call(usage, 'cache_write_input_tokens')).toBe(false);
+    expect(usage).toMatchObject({ input_tokens: 150, cached_input_tokens: 60, output_tokens: 20 });
   });
 
   it('subtracts cache writes from a total-only delta too', () => {

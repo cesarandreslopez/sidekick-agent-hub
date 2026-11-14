@@ -302,6 +302,19 @@ function readOnlyFlags(noFollow: boolean | undefined): string | number {
 }
 
 /**
+ * Flags for a one-shot read of a path the caller may not control: also
+ * non-blocking where defined, so a FIFO cannot stall the open (the caller
+ * then refuses anything but a regular file).
+ */
+function oneShotReadFlags(noFollow: boolean | undefined): number {
+  const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK } = fs.constants;
+  let flags = O_RDONLY;
+  if (noFollow && typeof O_NOFOLLOW === 'number') flags |= O_NOFOLLOW;
+  if (typeof O_NONBLOCK === 'number') flags |= O_NONBLOCK;
+  return flags;
+}
+
+/**
  * Records a {@link JsonlTailCheckpoint} for byte `offset` of `filePath`
  * without a tail, for readers that keep their own offset (a snapshot that
  * stores a reader position, for example). The checkpoint carries the file's
@@ -321,9 +334,9 @@ export function captureJsonlCheckpoint(
   if (!Number.isSafeInteger(offset) || offset < 0) return null;
   let fd: number | null = null;
   try {
-    fd = fs.openSync(filePath, readOnlyFlags(options.noFollow));
+    fd = fs.openSync(filePath, oneShotReadFlags(options.noFollow));
     const stat = fs.fstatSync(fd);
-    if (offset > stat.size) return null;
+    if (!stat.isFile() || offset > stat.size) return null;
     if (offset > 0 && readAt(fd, offset - 1, 1)[0] !== 0x0a) return null;
     return checkpointOf(offset, stat, fileHeadOf(readPrefix(fd, stat)));
   } catch {
@@ -350,8 +363,9 @@ export function verifyJsonlCheckpoint(
   if (parsed === null) return false;
   let fd: number | null = null;
   try {
-    fd = fs.openSync(filePath, readOnlyFlags(options.noFollow));
+    fd = fs.openSync(filePath, oneShotReadFlags(options.noFollow));
     const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return false;
     return checkpointMatches(parsed, fd, stat, readPrefix(fd, stat));
   } catch {
     return false;

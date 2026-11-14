@@ -53,8 +53,8 @@ export interface FindClaudeSessionFileOptions extends LookupHomesOptions {
   workspacePath?: string;
   /**
    * Upper bound on project folders the scan checks, across homes (default
-   * {@link DEFAULT_MAX_CLAUDE_PROJECT_DIRS}). The workspace check does not
-   * count against it.
+   * {@link DEFAULT_MAX_CLAUDE_PROJECT_DIRS}; `Infinity` for no limit). The
+   * workspace check does not count against it.
    */
   maxProjectDirs?: number;
 }
@@ -70,7 +70,7 @@ export interface LocateCodexRolloutFileOptions extends LookupHomesOptions {
   includeArchived?: boolean;
   /** Also match a compressed rollout (`.jsonl.zst`) when no `.jsonl` exists (default false). */
   includeCompressed?: boolean;
-  /** Upper bound on directories the fallback walk lists, across homes (default 5000). */
+  /** Upper bound on directories the fallback walk lists, across homes (default 5000; `Infinity` for no limit). */
   maxDirs?: number;
 }
 
@@ -82,7 +82,9 @@ function validHomes(homes: readonly string[] | undefined): string[] | undefined 
   );
 }
 
+/** A scan limit: a nonnegative count, `Infinity` for none, else `fallback`. */
 function budget(value: number | undefined, fallback: number): number {
+  if (value === Number.POSITIVE_INFINITY) return Number.MAX_SAFE_INTEGER;
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.max(0, Math.floor(value))
     : fallback;
