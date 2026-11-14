@@ -72,7 +72,12 @@ export async function searchSessions(
     if (seen.has(file.path)) continue;
     seen.add(file.path);
     try {
-      const hits = provider.searchInSession(file.path, query, maxResults - results.length);
+      const budget = maxResults - results.length;
+      // The streaming variant reads in chunks and yields between them, so
+      // one large session does not block the event loop.
+      const hits = provider.searchInSessionAsync
+        ? await provider.searchInSessionAsync(file.path, query, budget, { signal: options.signal })
+        : provider.searchInSession(file.path, query, budget);
       for (const hit of hits.slice(0, maxResults - results.length)) {
         results.push({
           providerId: provider.id,

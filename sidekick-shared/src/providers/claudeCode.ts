@@ -18,6 +18,7 @@ import type {
   SessionContextSnapshot,
 } from '../context/sessionContext';
 import { JsonlParser } from '../parsers/jsonl';
+import { forEachLineAsync, searchSnippet } from '../search/searchLines';
 import { FileContinuity, type FileContinuityState } from '../fileContinuity';
 import {
   boundedReadLimit,
@@ -117,6 +118,39 @@ function extractSearchableText(event: Record<string, unknown>): string {
   }
 
   return '';
+}
+
+/** The project a Claude Code transcript belongs to, from its directory name. */
+function claudeSearchProjectPath(sessionPath: string): string {
+  return decodeEncodedPath(path.basename(path.dirname(sessionPath)));
+}
+
+/** The search hit one transcript line yields for `query`, or `null`. */
+function matchClaudeSearchLine(
+  line: string,
+  query: string,
+  queryLower: string,
+  sessionPath: string,
+  projectPath: string,
+): SearchHit | null {
+  if (!line.trim() || !line.toLowerCase().includes(queryLower)) return null;
+  try {
+    const event = JSON.parse(line);
+    const text = extractSearchableText(event);
+    if (!text) return null;
+    const snippet = searchSnippet(text, query, queryLower);
+    if (snippet === null) return null;
+    return {
+      sessionPath,
+      line: snippet,
+      eventType: event.type || 'unknown',
+      timestamp: event.timestamp || '',
+      projectPath,
+    };
+  } catch {
+    // Skip malformed JSON
+    return null;
+  }
 }
 
 /**
@@ -664,44 +698,44 @@ export class ClaudeCodeProvider implements SessionProviderBase {
     try {
       const content = fs.readFileSync(sessionPath, 'utf8');
       const lines = content.split('\n');
-      const projectDir = path.basename(path.dirname(sessionPath));
-      const projectPath = decodeEncodedPath(projectDir);
+      const projectPath = claudeSearchProjectPath(sessionPath);
 
       for (const line of lines) {
         if (results.length >= maxResults) break;
-        if (!line.trim() || !line.toLowerCase().includes(queryLower)) continue;
-
-        try {
-          const event = JSON.parse(line);
-          const text = extractSearchableText(event);
-          if (!text) continue;
-
-          const textLower = text.toLowerCase();
-          const matchIdx = textLower.indexOf(queryLower);
-          if (matchIdx < 0) continue;
-
-          const start = Math.max(0, matchIdx - 40);
-          const end = Math.min(text.length, matchIdx + query.length + 40);
-          const snippet =
-            (start > 0 ? '...' : '') +
-            text.substring(start, end) +
-            (end < text.length ? '...' : '');
-
-          results.push({
-            sessionPath,
-            line: snippet.replace(/\n/g, ' '),
-            eventType: event.type || 'unknown',
-            timestamp: event.timestamp || '',
-            projectPath,
-          });
-        } catch {
-          // Skip malformed JSON
-        }
+        const hit = matchClaudeSearchLine(line, query, queryLower, sessionPath, projectPath);
+        if (hit) results.push(hit);
       }
     } catch {
       // Skip unreadable files
     }
 
+    return results;
+  }
+
+  async searchInSessionAsync(
+    sessionPath: string,
+    query: string,
+    maxResults: number,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<SearchHit[]> {
+    const results: SearchHit[] = [];
+    if (maxResults <= 0) return results;
+    const queryLower = query.toLowerCase();
+    const projectPath = claudeSearchProjectPath(sessionPath);
+    try {
+      await forEachLineAsync(
+        sessionPath,
+        (line) => {
+          const hit = matchClaudeSearchLine(line, query, queryLower, sessionPath, projectPath);
+          if (hit) results.push(hit);
+          return results.length < maxResults;
+        },
+        { signal: options.signal },
+      );
+    } catch {
+      // Skip unreadable files
+      return [];
+    }
     return results;
   }
 

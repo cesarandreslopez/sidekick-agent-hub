@@ -32,10 +32,12 @@ import {
 import {
   canReadCompressedRollouts,
   isCompressedRolloutPath,
+  readRolloutBufferAsync,
   readRolloutHeadAsync,
   readRolloutText,
   resolveRolloutPath,
 } from './compressedRollouts';
+import { forEachLineAsync, searchSnippet } from '../search/searchLines';
 import { CompressedCodexRolloutReader } from './codexCompressedReader';
 import { discoverCodexSubagents } from './codexSubagents';
 import { codexRolloutOrigin } from '../parsers/codexRolloutOrigin';
@@ -306,6 +308,27 @@ function extractSearchableText(line: CodexRolloutLine): string {
 
     default:
       return '';
+  }
+}
+
+/** What a search hit takes from one rollout line matching `query`, or `null`. */
+function matchCodexSearchLine(
+  line: string,
+  query: string,
+  queryLower: string,
+): Pick<SearchHit, 'line' | 'eventType' | 'timestamp'> | null {
+  if (!line.trim()) return null;
+  if (!line.toLowerCase().includes(queryLower)) return null;
+  try {
+    const parsed = JSON.parse(line) as CodexRolloutLine;
+    const text = extractSearchableText(parsed);
+    if (!text) return null;
+    const snippet = searchSnippet(text, query, queryLower);
+    if (snippet === null) return null;
+    return { line: snippet, eventType: parsed.type, timestamp: parsed.timestamp || '' };
+  } catch {
+    // Skip malformed JSON
+    return null;
   }
 }
 
@@ -1269,43 +1292,53 @@ export class CodexProvider implements SessionProviderBase {
 
       for (const line of lines) {
         if (results.length >= maxResults) break;
-        if (!line.trim()) continue;
-
-        const lineLower = line.toLowerCase();
-        if (!lineLower.includes(queryLower)) continue;
-
-        try {
-          const parsed = JSON.parse(line) as CodexRolloutLine;
-          const text = extractSearchableText(parsed);
-          if (!text) continue;
-
-          const textLower = text.toLowerCase();
-          const matchIdx = textLower.indexOf(queryLower);
-          if (matchIdx < 0) continue;
-
-          const start = Math.max(0, matchIdx - 40);
-          const end = Math.min(text.length, matchIdx + query.length + 40);
-          const snippet =
-            (start > 0 ? '...' : '') +
-            text.substring(start, end) +
-            (end < text.length ? '...' : '');
-
-          results.push({
-            sessionPath,
-            line: snippet.replace(/\n/g, ' '),
-            eventType: parsed.type,
-            timestamp: parsed.timestamp || '',
-            projectPath: readSessionCwd(sessionPath) || sessionPath,
-          });
-        } catch {
-          // Skip malformed JSON
-        }
+        const match = matchCodexSearchLine(line, query, queryLower);
+        if (!match) continue;
+        results.push({
+          sessionPath,
+          ...match,
+          projectPath: readSessionCwd(sessionPath) || sessionPath,
+        });
       }
     } catch {
       // Skip unreadable files
     }
 
     return results;
+  }
+
+  async searchInSessionAsync(
+    sessionPath: string,
+    query: string,
+    maxResults: number,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<SearchHit[]> {
+    const matches: Array<Omit<SearchHit, 'sessionPath' | 'projectPath'>> = [];
+    if (maxResults <= 0) return [];
+    const queryLower = query.toLowerCase();
+    try {
+      // A compressed rollout is decompressed off the main thread, then
+      // scanned in chunks like a plain one.
+      const source = isCompressedRolloutPath(sessionPath)
+        ? await readRolloutBufferAsync(sessionPath, { onDiagnostic: this.onDiagnostic })
+        : sessionPath;
+      if (source === null) return [];
+      await forEachLineAsync(
+        source,
+        (line) => {
+          const match = matchCodexSearchLine(line, query, queryLower);
+          if (match) matches.push(match);
+          return matches.length < maxResults;
+        },
+        { signal: options.signal },
+      );
+    } catch {
+      // Skip unreadable files
+      return [];
+    }
+    if (matches.length === 0) return [];
+    const projectPath = (await readSessionCwdAsync(sessionPath).catch(() => null)) || sessionPath;
+    return matches.map((match) => ({ sessionPath, ...match, projectPath }));
   }
 
   getProjectsBaseDir(): string {

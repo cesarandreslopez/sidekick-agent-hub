@@ -16,9 +16,13 @@
  */
 
 import { sessionSummaryFromStats } from '../historicalStore';
-import type { SessionProviderBase, SessionProviderDiagnostic } from '../providers/types';
+import type {
+  SessionFileStats,
+  SessionProviderBase,
+  SessionProviderDiagnostic,
+} from '../providers/types';
 import { listSessionPreviewsAsync } from '../sessionPreviews';
-import { readSessionFileStats } from '../sessionStats';
+import { readSessionFileStatsAsync } from '../sessionStats';
 import type { SessionSummary } from '../types/historicalData';
 
 /** Files modified more recently than this are skipped: they may still be live. */
@@ -41,6 +45,14 @@ export interface ImportSessionHistoryOptions {
   /** Record a file as imported (called after `applySummary`, and alone for usage-free files). */
   markImported: (filePath: string) => void;
   onProgress?: (loaded: number, total: number) => void;
+  /**
+   * Stops the import before listing, between sessions, and between the
+   * bounded read steps of one session. The promise still resolves, with
+   * the counts so far and `aborted: true`; the session being read when the
+   * signal fired is neither applied nor marked imported, so the next run
+   * reads it again.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ImportSessionHistoryResult {
@@ -56,10 +68,24 @@ export interface ImportSessionHistoryResult {
   /** Messages across the imported sessions. */
   messagesImported: number;
   diagnostics: SessionProviderDiagnostic[];
+  /** Set when `signal` stopped the import before every listed file was handled. */
+  aborted?: true;
 }
 
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+function emptyResult(): ImportSessionHistoryResult {
+  return {
+    filesFound: 0,
+    filesProcessed: 0,
+    filesSkipped: 0,
+    filesUnavailable: 0,
+    sessionsImported: 0,
+    messagesImported: 0,
+    diagnostics: [],
+  };
 }
 
 export async function importSessionHistory(
@@ -67,6 +93,8 @@ export async function importSessionHistory(
 ): Promise<ImportSessionHistoryResult> {
   const now = options.now ?? new Date();
   const threshold = options.activeFileThresholdMs ?? ACTIVE_SESSION_MTIME_THRESHOLD_MS;
+  const signal = options.signal;
+  if (signal?.aborted) return { ...emptyResult(), aborted: true };
   const listed = await listSessionPreviewsAsync(options.providers, {
     since: options.since,
     workspacePath: options.workspacePath,
@@ -74,18 +102,18 @@ export async function importSessionHistory(
   });
   const providerById = new Map(options.providers.map((provider) => [provider.id, provider]));
   const result: ImportSessionHistoryResult = {
+    ...emptyResult(),
     filesFound: listed.previews.length,
-    filesProcessed: 0,
-    filesSkipped: 0,
-    filesUnavailable: 0,
-    sessionsImported: 0,
-    messagesImported: 0,
     diagnostics: [...listed.diagnostics],
   };
   const total = listed.previews.length;
   let loaded = 0;
 
   for (const preview of listed.previews) {
+    if (signal?.aborted) {
+      result.aborted = true;
+      break;
+    }
     loaded += 1;
     const provider = providerById.get(preview.provider);
     const modifiedMs = Date.parse(preview.modifiedAt);
@@ -96,7 +124,16 @@ export async function importSessionHistory(
       continue;
     }
 
-    const stats = readSessionFileStats(provider, preview.filePath);
+    let stats: SessionFileStats;
+    try {
+      // Read in bounded steps, yielding between them, so one large session
+      // does not block the host's event loop.
+      stats = await readSessionFileStatsAsync(provider, preview.filePath, { signal });
+    } catch (error) {
+      if (!signal?.aborted) throw error;
+      result.aborted = true;
+      break;
+    }
     result.filesProcessed += 1;
     if (stats.availability === 'unavailable') {
       result.filesUnavailable += 1;

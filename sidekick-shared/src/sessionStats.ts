@@ -10,6 +10,7 @@
  */
 
 import { EventAggregator } from './aggregation/EventAggregator';
+import { drainReader } from './providers/readerDrain';
 import type { EventAggregatorOptions } from './aggregation/types';
 import type {
   ProviderId,
@@ -79,63 +80,97 @@ export function firstUserPrompt(
   return null;
 }
 
+/**
+ * Session stats built up batch by batch: the events go through the shared
+ * aggregator as they arrive, so a session read in steps never has to be
+ * held whole. `finish()` gives what {@link computeSessionFileStats} gives
+ * for all the events added, in order.
+ *
+ * @internal
+ */
+export class SessionFileStatsAccumulator {
+  private readonly aggregator: EventAggregator;
+  private label: string | null = null;
+  private count = 0;
+
+  constructor(options: Pick<ComputeSessionFileStatsOptions, 'providerId' | 'computeContextSize'>) {
+    this.aggregator = new EventAggregator({
+      providerId: options.providerId,
+      computeContextSize: options.computeContextSize,
+    });
+  }
+
+  /** Events added so far. */
+  get eventCount(): number {
+    return this.count;
+  }
+
+  add(events: readonly SessionEvent[]): void {
+    for (const event of events) this.aggregator.processEvent(event);
+    this.count += events.length;
+    // The session's first prompt is the first one any batch holds.
+    if (this.label === null) this.label = firstUserPrompt(events);
+  }
+
+  finish(options: ComputeSessionFileStatsOptions): SessionFileStats {
+    const metrics = this.aggregator.getMetrics();
+
+    const modelUsage: SessionFileStats['modelUsage'] = {};
+    for (const model of metrics.modelStats) {
+      // `tokens` is the aggregator's cache-inclusive total for the model, the
+      // same figure `summarizeTokens().total` reports.
+      modelUsage[model.model] = {
+        calls: model.calls,
+        tokens: model.tokens,
+        costUsd: model.cost,
+        priced: model.priced !== false,
+      };
+    }
+
+    const toolUsage: SessionFileStats['toolUsage'] = {};
+    const toolFailures: SessionFileStats['toolFailures'] = {};
+    for (const tool of metrics.toolStats) {
+      toolUsage[tool.name] = tool.successCount + tool.failureCount + tool.pendingCount;
+      if (tool.failureCount > 0) toolFailures[tool.name] = tool.failureCount;
+    }
+
+    return {
+      providerId: options.providerId,
+      sessionId: options.sessionId,
+      filePath: options.filePath,
+      label: options.label ?? this.label,
+      startTime: metrics.sessionStartTime ?? '',
+      endTime: metrics.lastEventTime ?? '',
+      messageCount: metrics.messageCount,
+      tokens: {
+        input: metrics.tokens.inputTokens,
+        output: metrics.tokens.outputTokens,
+        cacheWrite: metrics.tokens.cacheWriteTokens,
+        cacheRead: metrics.tokens.cacheReadTokens,
+      },
+      modelUsage,
+      toolUsage,
+      toolFailures,
+      compactionEstimate: metrics.compactionCount,
+      truncationCount: metrics.truncationCount,
+      costUsd: metrics.tokens.costUsd,
+      costProvenance: metrics.tokens.costProvenance,
+      unpricedCalls: metrics.tokens.unpricedCalls,
+      availability: options.availability ?? 'full',
+      ...(options.unavailableReason ? { unavailableReason: options.unavailableReason } : {}),
+      reportedCost: metrics.tokens.costUsd,
+    };
+  }
+}
+
 /** Compute stats for an already-read event array through the shared aggregator. */
 export function computeSessionFileStats(
   events: readonly SessionEvent[],
   options: ComputeSessionFileStatsOptions,
 ): SessionFileStats {
-  const aggregator = new EventAggregator({
-    providerId: options.providerId,
-    computeContextSize: options.computeContextSize,
-  });
-  for (const event of events) aggregator.processEvent(event);
-  const metrics = aggregator.getMetrics();
-
-  const modelUsage: SessionFileStats['modelUsage'] = {};
-  for (const model of metrics.modelStats) {
-    // `tokens` is the aggregator's cache-inclusive total for the model, the
-    // same figure `summarizeTokens().total` reports.
-    modelUsage[model.model] = {
-      calls: model.calls,
-      tokens: model.tokens,
-      costUsd: model.cost,
-      priced: model.priced !== false,
-    };
-  }
-
-  const toolUsage: SessionFileStats['toolUsage'] = {};
-  const toolFailures: SessionFileStats['toolFailures'] = {};
-  for (const tool of metrics.toolStats) {
-    toolUsage[tool.name] = tool.successCount + tool.failureCount + tool.pendingCount;
-    if (tool.failureCount > 0) toolFailures[tool.name] = tool.failureCount;
-  }
-
-  return {
-    providerId: options.providerId,
-    sessionId: options.sessionId,
-    filePath: options.filePath,
-    label: options.label ?? firstUserPrompt(events),
-    startTime: metrics.sessionStartTime ?? '',
-    endTime: metrics.lastEventTime ?? '',
-    messageCount: metrics.messageCount,
-    tokens: {
-      input: metrics.tokens.inputTokens,
-      output: metrics.tokens.outputTokens,
-      cacheWrite: metrics.tokens.cacheWriteTokens,
-      cacheRead: metrics.tokens.cacheReadTokens,
-    },
-    modelUsage,
-    toolUsage,
-    toolFailures,
-    compactionEstimate: metrics.compactionCount,
-    truncationCount: metrics.truncationCount,
-    costUsd: metrics.tokens.costUsd,
-    costProvenance: metrics.tokens.costProvenance,
-    unpricedCalls: metrics.tokens.unpricedCalls,
-    availability: options.availability ?? 'full',
-    ...(options.unavailableReason ? { unavailableReason: options.unavailableReason } : {}),
-    reportedCost: metrics.tokens.costUsd,
-  };
+  const accumulator = new SessionFileStatsAccumulator(options);
+  accumulator.add(events);
+  return accumulator.finish(options);
 }
 
 /** The aggregator's context-size hook for a provider, or undefined for the default formula. */
@@ -208,5 +243,78 @@ export function readSessionFileStats(
     label: options.resolveLabel?.() ?? undefined,
     computeContextSize: providerContextSizeFn(provider),
     availability: reader.wasTruncated() ? 'partial' : 'full',
+  });
+}
+
+/** Options for {@link readSessionFileStatsAsync}. */
+export interface ReadSessionFileStatsAsyncOptions extends ReadSessionFileStatsOptions {
+  /** Checked between read steps; an abort rejects with the signal's reason. */
+  signal?: AbortSignal;
+  /** Bytes per read step (default 1 MiB). */
+  chunkBytes?: number;
+}
+
+/**
+ * {@link readSessionFileStats} reading the session in bounded steps and
+ * yielding to the event loop between them, with each step's events
+ * aggregated as they arrive. Same stats for the same file; a file that is
+ * truncated, rewritten, or replaced mid-read is counted again from its
+ * start and reported `partial`.
+ *
+ * @internal
+ */
+export async function readSessionFileStatsAsync(
+  provider: SessionProviderBase,
+  sessionPath: string,
+  options: ReadSessionFileStatsAsyncOptions = {},
+): Promise<SessionFileStats> {
+  const base = {
+    providerId: provider.id,
+    sessionId: provider.getSessionId(sessionPath),
+    filePath: sessionPath,
+  };
+  const computeContextSize = providerContextSizeFn(provider);
+  const freshAccumulator = () =>
+    new SessionFileStatsAccumulator({ providerId: provider.id, computeContextSize });
+
+  let reader: SessionReader;
+  let accumulator = freshAccumulator();
+  let restarted = false;
+  try {
+    reader = provider.createReader(sessionPath);
+    await drainReader(reader, {
+      chunkBytes: options.chunkBytes,
+      fromStart: true,
+      flush: true,
+      signal: options.signal,
+      onReset: () => {
+        // The file changed under the read: count it again from its start.
+        accumulator = freshAccumulator();
+        restarted = true;
+      },
+      onEvents: (events) => accumulator.add(events),
+    });
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    return computeSessionFileStats([], {
+      ...base,
+      availability: 'unavailable',
+      unavailableReason: errorMessage(error),
+    });
+  }
+
+  if (accumulator.eventCount === 0 && !reader.exists()) {
+    return computeSessionFileStats([], {
+      ...base,
+      availability: 'unavailable',
+      unavailableReason: describeMissingSource(provider),
+    });
+  }
+
+  return accumulator.finish({
+    ...base,
+    label: options.resolveLabel?.() ?? undefined,
+    computeContextSize,
+    availability: restarted || reader.wasTruncated() ? 'partial' : 'full',
   });
 }

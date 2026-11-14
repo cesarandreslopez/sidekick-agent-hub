@@ -7,6 +7,7 @@ import {
   refreshSessionActivityState,
 } from '../parsers/sessionActivityDetector';
 import { computeSessionFileStats, providerContextSizeFn } from '../sessionStats';
+import { drainReader } from '../providers/readerDrain';
 import { fingerprintString, sessionFingerprintParts } from '../sessionFingerprint';
 
 export type ObservationProvenanceV1 = 'reported' | 'estimated' | 'inferred';
@@ -244,17 +245,32 @@ export function createProviderSessionAdapterV1(
     provider: sessionProvider.id,
     capabilities: providerCapabilities(sessionProvider.id, options.observationOnly === true),
     async discover(cwd) {
-      return Promise.all(
-        sessionProvider.findAllSessions(cwd).map((sessionPath) => adapter.read(sessionPath, cwd)),
-      );
+      // One session at a time: each read holds a whole session's events.
+      const sessions: ObservedAgentSessionV1[] = [];
+      for (const sessionPath of sessionProvider.findAllSessions(cwd)) {
+        sessions.push(await adapter.read(sessionPath, cwd));
+      }
+      return sessions;
     },
     async read(sessionPath, cwd = '') {
       // One reader pass feeds stats, transcript, activity, and the pending
       // request; the reader is flushed so a trailing partial line is included.
+      // It reads in bounded steps, yielding between them, so a large session
+      // does not block the host's event loop.
       const sessionId = sessionProvider.getSessionId(sessionPath);
       const reader = sessionProvider.createReader(sessionPath);
-      const events = reader.readAll();
-      reader.flush();
+      const events: SessionEvent[] = [];
+      await drainReader(reader, {
+        fromStart: true,
+        flush: true,
+        // The file changed under the read: its events start over.
+        onReset: () => {
+          events.length = 0;
+        },
+        onEvents: (batch) => {
+          for (const event of batch) events.push(event);
+        },
+      });
       const stats = computeSessionFileStats(events, {
         providerId: sessionProvider.id,
         sessionId,
@@ -328,6 +344,9 @@ export function createProviderSessionAdapterV1(
       let lastSignature = '';
       let lastFingerprint: string | null = null;
       let lastSession: ObservedAgentSessionV1 | null = null;
+      // A read now spans several turns of the event loop; a poll that fires
+      // meanwhile is skipped rather than starting a second read.
+      let inFlight = false;
       const emitIfChanged = (session: ObservedAgentSessionV1): void => {
         const signature = JSON.stringify({
           activity: session.activity,
@@ -341,7 +360,8 @@ export function createProviderSessionAdapterV1(
         }
       };
       const update = async () => {
-        if (disposed) return;
+        if (disposed || inFlight) return;
+        inFlight = true;
         try {
           const parts = sessionFingerprintParts(sessionProvider, sessionPath);
           const fingerprint = parts ? fingerprintString(parts) : null;
@@ -375,11 +395,14 @@ export function createProviderSessionAdapterV1(
             return;
           }
           const session = await adapter.read(sessionPath, cwd);
+          if (disposed) return;
           lastFingerprint = fingerprint;
           lastSession = session;
           emitIfChanged(session);
         } catch {
           // Observed sources can disappear between polling iterations.
+        } finally {
+          inFlight = false;
         }
       };
       void update();
