@@ -18,7 +18,13 @@ import type {
   SessionContextSnapshot,
 } from '../context/sessionContext';
 import { JsonlParser } from '../parsers/jsonl';
-import { FileContinuity } from '../fileContinuity';
+import { FileContinuity, type FileContinuityState } from '../fileContinuity';
+import {
+  boundedReadLimit,
+  isMissingFileError,
+  READ_SLICE_BYTES,
+  type BoundedReaderInternals,
+} from './boundedReader';
 import type { JsonlTailResetReason } from '../watchers/jsonlTail';
 import {
   ClaudeUsageDeduper,
@@ -159,7 +165,7 @@ function extractClaudeLabelFromPrefix(chunk: string): string | null {
  * Tracks byte position in the file and uses JsonlParser for
  * streaming line-buffered parsing of new content.
  */
-class ClaudeCodeReader implements SessionReader {
+class ClaudeCodeReader implements SessionReader, BoundedReaderInternals {
   private parser: JsonlParser<unknown>;
   private filePosition = 0;
   /** Cursor after the last complete line, safe to persist across restarts. */
@@ -170,6 +176,8 @@ class ClaudeCodeReader implements SessionReader {
   /** Whether the file is still the one the positions refer to. */
   private readonly continuity = new FileContinuity();
   private decoder = new StringDecoder('utf8');
+  /** File size a bounded drain reads up to; `null` outside a drain. */
+  private drainTarget: number | null = null;
   /** Split lines of one response repeat its usage; count each response once. */
   private readonly usageDeduper: ClaudeUsageDeduper;
 
@@ -200,12 +208,44 @@ class ClaudeCodeReader implements SessionReader {
   readNew(): SessionEvent[] {
     this.events = [];
     this._lastReset = null;
+    this.drainTarget = null;
+    try {
+      this.readRange(Number.POSITIVE_INFINITY, false);
+    } catch (error) {
+      console.error(`ClaudeCodeReader: error reading ${this.sessionPath}: ${error}`);
+    }
+    return this.events;
+  }
 
-    let fd: number | null = null;
+  readNewBounded(maxBytes: number): { events: SessionEvent[]; done: boolean } {
+    const limit = boundedReadLimit(maxBytes);
+    this.events = [];
+    this._lastReset = null;
+    const done = this.readRange(limit, true);
+    return { events: this.events, done };
+  }
+
+  /**
+   * Reads up to `maxBytes` past the read position, in slices of at most
+   * {@link READ_SLICE_BYTES}, so neither the buffer nor the decoded text of
+   * a large unread range is ever held whole. A bounded read stops at the
+   * size its drain started with. Returns whether the read reached its end;
+   * a missing file reads as done, other errors throw.
+   */
+  private readRange(maxBytes: number, bounded: boolean): boolean {
+    let fd: number;
     try {
       // Open first and stat the descriptor: the size and identity checked
       // are those of the file actually read, even if the path is replaced.
       fd = fs.openSync(this.sessionPath, 'r');
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        this.drainTarget = null;
+        return true;
+      }
+      throw error;
+    }
+    try {
       const stats = fs.fstatSync(fd);
       const reason = this.continuity.check(fd, stats, this.filePosition, this.committedPosition);
       // Truncated, rewritten, or replaced: what was read no longer describes
@@ -213,38 +253,42 @@ class ClaudeCodeReader implements SessionReader {
       if (reason !== null) this.restart(reason);
       this.continuity.adopt(stats);
 
-      const currentSize = stats.size;
-      // No new content
-      if (currentSize <= this.filePosition) {
-        return this.events;
+      let target = stats.size;
+      if (bounded) {
+        if (this.drainTarget === null) this.drainTarget = stats.size;
+        target = Math.min(this.drainTarget, stats.size);
       }
-
-      // Read new bytes from last position
-      const bufferSize = currentSize - this.filePosition;
-      const buffer = Buffer.alloc(bufferSize);
-      const bytesRead = fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
-
-      const bytes = buffer.subarray(0, bytesRead);
-      const newline = bytes.lastIndexOf(0x0a);
-      if (newline >= 0) this.committedPosition = this.filePosition + newline + 1;
-      const chunk = this.decoder.write(bytes);
-      this.parser.processChunk(chunk);
-      this.filePosition += bytesRead;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException | null)?.code !== 'ENOENT') {
-        console.error(`ClaudeCodeReader: error reading ${this.sessionPath}: ${error}`);
-      }
-    } finally {
-      if (fd !== null) {
-        try {
-          fs.closeSync(fd);
-        } catch {
-          // Ignore close errors.
+      const end = Math.min(target, this.filePosition + maxBytes);
+      let short = false;
+      if (end > this.filePosition) {
+        const buffer = Buffer.allocUnsafe(Math.min(READ_SLICE_BYTES, end - this.filePosition));
+        while (this.filePosition < end) {
+          const length = Math.min(buffer.length, end - this.filePosition);
+          const bytesRead = fs.readSync(fd, buffer, 0, length, this.filePosition);
+          if (bytesRead <= 0) {
+            // Shorter than its stat said: the next read re-checks the file.
+            short = true;
+            break;
+          }
+          const bytes = buffer.subarray(0, bytesRead);
+          const newline = bytes.lastIndexOf(0x0a);
+          if (newline >= 0) this.committedPosition = this.filePosition + newline + 1;
+          // The decoder copies an incomplete trailing character, so the
+          // buffer can be reused for the next slice.
+          this.parser.processChunk(this.decoder.write(bytes));
+          this.filePosition += bytesRead;
         }
       }
+      const done = short || this.filePosition >= target;
+      if (done) this.drainTarget = null;
+      return done;
+    } finally {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // Ignore close errors.
+      }
     }
-
-    return this.events;
   }
 
   /** Starts over from offset 0 of a file that was truncated, rewritten, or replaced. */
@@ -255,6 +299,22 @@ class ClaudeCodeReader implements SessionReader {
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
     this.usageDeduper.reset();
+    // The drain restarts too, at the size the next read finds.
+    this.drainTarget = null;
+  }
+
+  finishBounded(): SessionEvent[] {
+    this.events = [];
+    this.flush();
+    return this.events;
+  }
+
+  continuityState(): FileContinuityState | null {
+    return this.continuity.exportState();
+  }
+
+  restoreContinuity(state: unknown): boolean {
+    return this.continuity.importState(state);
   }
 
   readAll(): SessionEvent[] {
@@ -269,6 +329,7 @@ class ClaudeCodeReader implements SessionReader {
     this.decoder = new StringDecoder('utf8');
     this.usageDeduper.reset();
     this._lastReset = null;
+    this.drainTarget = null;
     this.continuity.forget();
   }
 
@@ -290,6 +351,7 @@ class ClaudeCodeReader implements SessionReader {
   seekTo(position: number): void {
     this.filePosition = position;
     this.committedPosition = position;
+    this.drainTarget = null;
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
     // The position comes from elsewhere (a snapshot): adopt the file the next

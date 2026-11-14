@@ -25,9 +25,16 @@ import type { SessionProviderDiagnostic } from './types';
 export const COMPRESSED_ROLLOUT_SUFFIX = '.jsonl.zst';
 
 type ZstdDecompressSync = (input: Buffer) => Buffer;
+type ZstdDecompressAsync = (input: Buffer) => Promise<Buffer>;
+type ZstdDecompressCallback = (
+  input: Buffer,
+  callback: (error: Error | null, result: Buffer) => void,
+) => void;
 
 /** `undefined`: use the runtime's; `null`: behave as if the runtime lacked it. */
 let decompressOverride: ZstdDecompressSync | null | undefined;
+/** Counts calls that took the asynchronous path (test hook). */
+let asyncDecompressions = 0;
 
 function zstdDecompressSync(): ZstdDecompressSync | null {
   if (decompressOverride !== undefined) return decompressOverride;
@@ -35,11 +42,38 @@ function zstdDecompressSync(): ZstdDecompressSync | null {
   return typeof fn === 'function' ? fn.bind(zlib) : null;
 }
 
+/**
+ * Decompression off the main thread (`zlib.zstdDecompress`, which runs on
+ * the libuv thread pool and ships with `zstdDecompressSync`). A test
+ * override of the synchronous function wins; a runtime with only the
+ * synchronous function falls back to it.
+ */
+function zstdDecompressAsync(): ZstdDecompressAsync | null {
+  if (decompressOverride !== undefined) {
+    const override = decompressOverride;
+    return override ? async (input) => override(input) : null;
+  }
+  const fn = (zlib as unknown as { zstdDecompress?: ZstdDecompressCallback }).zstdDecompress;
+  if (typeof fn !== 'function') {
+    const sync = zstdDecompressSync();
+    return sync ? async (input) => sync(input) : null;
+  }
+  return (input) =>
+    new Promise<Buffer>((resolve, reject) => {
+      asyncDecompressions += 1;
+      fn.call(zlib, input, (error, result) => (error ? reject(error) : resolve(result)));
+    });
+}
+
 /** Test hooks; not part of the public entry points. */
 export const __compressedRolloutTesting = {
   /** Replace the runtime's `zstdDecompressSync` (`null` = unavailable, `undefined` = restore). */
   setDecompress(fn: ZstdDecompressSync | null | undefined): void {
     decompressOverride = fn;
+  },
+  /** How many decompressions ran on the runtime's asynchronous `zstdDecompress`. */
+  asyncDecompressions(): number {
+    return asyncDecompressions;
   },
 };
 
@@ -142,7 +176,28 @@ export function readRolloutText(filePath: string, options?: ReadRolloutOptions):
   return readRolloutBuffer(filePath, options)?.toString('utf8') ?? null;
 }
 
-/** Async twin of {@link readRolloutBuffer}; decompression itself is synchronous. */
+async function decompressAsync(
+  input: Buffer,
+  options: ReadRolloutOptions | undefined,
+): Promise<Buffer | null> {
+  const fn = zstdDecompressAsync();
+  if (!fn) {
+    reportUnavailable(options);
+    return null;
+  }
+  try {
+    return await fn(input);
+  } catch (error) {
+    reportCorrupt(options, error);
+    return null;
+  }
+}
+
+/**
+ * Async twin of {@link readRolloutBuffer}. A compressed rollout is
+ * decompressed off the main thread where the runtime allows (the whole
+ * decompressed content is still held in memory).
+ */
 export async function readRolloutBufferAsync(
   filePath: string,
   options?: ReadRolloutOptions,
@@ -153,7 +208,7 @@ export async function readRolloutBufferAsync(
   } catch {
     return null;
   }
-  return isCompressedRolloutPath(filePath) ? decompress(raw, options) : raw;
+  return isCompressedRolloutPath(filePath) ? decompressAsync(raw, options) : raw;
 }
 
 /** Compressed bytes read per step while looking for a decompressed prefix. */

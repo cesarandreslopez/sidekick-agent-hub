@@ -218,6 +218,29 @@ export interface SessionReaderReset {
 export interface SessionReader {
   /** Read new events since last call. */
   readNew(): SessionEvent[];
+  /**
+   * Reads at most `maxBytes` more of the unread range, so a host can yield
+   * to its event loop between steps instead of blocking for a whole file.
+   * Consecutive calls form a *drain*: the first records the file's size,
+   * and the drain ends (`done: true`) when everything up to that size has
+   * been consumed. Content appended meanwhile waits for the next drain, so
+   * a fast-growing file cannot keep one going. Partial lines carry over
+   * between steps, so the events of a whole drain equal one `readNew()`;
+   * `getPosition()` can stay behind a trailing line with no newline even
+   * when `done`.
+   *
+   * Every step re-checks the file: `wasTruncated()` / `lastReset()` then
+   * describe that step, and any step (not only the first) can restart from
+   * offset 0 when the file was truncated, rewritten, or replaced between
+   * steps. A missing file reads as `{ events: [], done: true }`; other read
+   * errors throw (where `readNew()` returns what it read). `readNew()`,
+   * `readAll()`, `reset()` and `seekTo()` end a drain.
+   *
+   * Optional (0.33.1+): the Claude Code and Codex readers implement it; the
+   * OpenCode readers do not (call `readNew()` instead). `maxBytes` must be
+   * a number > 0.
+   */
+  readNewBounded?(maxBytes: number): { events: SessionEvent[]; done: boolean };
   /** Read all events from start. */
   readAll(): SessionEvent[];
   /** Reset read state (for truncation or re-read). */
@@ -343,6 +366,20 @@ export interface SessionProviderBase {
 
   /** Searches for text within a session file. */
   searchInSession(sessionPath: string, query: string, maxResults: number): SearchHit[];
+
+  /**
+   * {@link searchInSession} reading the file in bounded chunks and yielding
+   * to the event loop between them; same hits in the same order. Stops at
+   * `maxResults`; on abort, resolves with the hits found so far. Optional
+   * (0.33.1+): the Claude Code and Codex providers implement it, and
+   * `searchSessions()` prefers it.
+   */
+  searchInSessionAsync?(
+    sessionPath: string,
+    query: string,
+    maxResults: number,
+    options?: { signal?: AbortSignal },
+  ): Promise<SearchHit[]>;
 
   /** Gets the base projects directory path for cross-session search. */
   getProjectsBaseDir(): string;

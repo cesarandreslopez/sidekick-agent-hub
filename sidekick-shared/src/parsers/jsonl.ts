@@ -4,6 +4,7 @@
  */
 
 import type { ZodType } from 'zod';
+import { splitLines } from './lineSplitter';
 
 /** Minimal session event shape for stats extraction. */
 export interface RawSessionEvent {
@@ -54,12 +55,8 @@ export class JsonlParser<T = RawSessionEvent> {
   }
 
   processChunk(chunk: string): void {
-    this.buffer += chunk;
-    const lines = this.buffer.split('\n');
-    this.buffer = lines.pop() || '';
-    for (const line of lines) {
-      this.parseLine(line);
-    }
+    // Scans only the new chunk, so a long line fed in pieces stays linear.
+    this.buffer = splitLines(this.buffer, chunk, (line) => this.parseLine(line));
   }
 
   flush(): void {

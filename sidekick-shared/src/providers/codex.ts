@@ -57,7 +57,14 @@ import {
   readSessionMeta,
 } from './codexRollouts';
 import { DirectoryListingCache, splitWatchedPath } from './directoryListingCache';
-import { FileContinuity } from '../fileContinuity';
+import { FileContinuity, type FileContinuityState } from '../fileContinuity';
+import { splitLines } from '../parsers/lineSplitter';
+import {
+  boundedReadLimit,
+  isMissingFileError,
+  READ_SLICE_BYTES,
+  type BoundedReaderInternals,
+} from './boundedReader';
 import type { JsonlTailResetReason } from '../watchers/jsonlTail';
 import type {
   ListSessionFilesOptions,
@@ -322,7 +329,7 @@ function extractTextFromUnknownContent(content: unknown): string {
  * Incremental JSONL reader for Codex rollout files.
  * Tracks byte position and feeds lines through CodexRolloutParser.
  */
-class CodexReader implements SessionReader {
+class CodexReader implements SessionReader, BoundedReaderInternals {
   private parser: CodexRolloutParser;
   private filePosition = 0;
   /** Cursor after the last complete line, safe to persist across restarts. */
@@ -344,6 +351,12 @@ class CodexReader implements SessionReader {
    * context instead and clears it.
    */
   private pendingSeek: number | null = null;
+  /** A bounded read has started re-parsing the prefix for `pendingSeek`. */
+  private settling = false;
+  /** File size a bounded drain reads up to; `null` outside a drain. */
+  private drainTarget: number | null = null;
+  /** Lines were parsed since the parser state was last handed on. */
+  private parsedSincePropagate = false;
 
   constructor(
     private readonly rolloutPath: string,
@@ -366,13 +379,53 @@ class CodexReader implements SessionReader {
   readNew(endPosition?: number): SessionEvent[] {
     this.settleSeek();
     this._lastReset = null;
+    this.drainTarget = null;
     const events: SessionEvent[] = [];
+    try {
+      this.readRange(Number.POSITIVE_INFINITY, { end: endPosition, out: events });
+    } catch {
+      // Skip read errors (a missing rollout reads as no events)
+    }
+    return events;
+  }
 
-    let fd: number | null = null;
+  readNewBounded(maxBytes: number): { events: SessionEvent[]; done: boolean } {
+    const limit = boundedReadLimit(maxBytes);
+    this._lastReset = null;
+    if (this.pendingSeek !== null) {
+      // Rebuild the prefix's context in steps too; its events are not emitted.
+      this.settleStep(limit);
+      return { events: [], done: false };
+    }
+    const events: SessionEvent[] = [];
+    const { done } = this.readRange(limit, { bounded: true, out: events });
+    return { events, done };
+  }
+
+  /**
+   * Reads up to `maxBytes` past the read position (and before `end`), in
+   * slices of at most {@link READ_SLICE_BYTES}, feeding each line to the
+   * parser; events go to `out` (`null` only rebuilds parser state). A
+   * bounded read stops at the size its drain started with. A missing file
+   * reads as done; other errors throw.
+   */
+  private readRange(
+    maxBytes: number,
+    options: { end?: number; bounded?: boolean; out: SessionEvent[] | null },
+  ): { done: boolean; size: number } {
+    let fd: number;
     try {
       // Open first and stat the descriptor: the size and identity checked
       // are those of the file actually read, even if the path is replaced.
       fd = fs.openSync(this.rolloutPath, 'r');
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        this.drainTarget = null;
+        return { done: true, size: 0 };
+      }
+      throw error;
+    }
+    try {
       const stats = fs.fstatSync(fd);
       if (this.pendingRestart) {
         this._lastReset = this.pendingRestart;
@@ -384,55 +437,64 @@ class CodexReader implements SessionReader {
       if (reason !== null) this.restart(reason);
       this.continuity.adopt(stats);
 
-      const currentSize = Math.min(stats.size, endPosition ?? stats.size);
-
-      // No new content
-      if (currentSize <= this.filePosition) return events;
-
-      // Read new bytes
-      const bufferSize = currentSize - this.filePosition;
-      const buffer = Buffer.alloc(bufferSize);
-      const bytesRead = fs.readSync(fd, buffer, 0, bufferSize, this.filePosition);
-
-      const bytes = buffer.subarray(0, bytesRead);
-      const newline = bytes.lastIndexOf(0x0a);
-      if (newline >= 0) this.committedPosition = this.filePosition + newline + 1;
-      const chunk = this.decoder.write(bytes);
-      this.filePosition += bytesRead;
-
-      // Process lines
-      const text = this.lineBuffer + chunk;
-      const lines = text.split('\n');
-
-      // Last element may be incomplete
-      this.lineBuffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        try {
-          const parsed = JSON.parse(trimmed) as CodexRolloutLine;
-          events.push(...this.parser.convertLine(parsed));
-        } catch {
-          // Skip malformed JSON lines
+      let target = Math.min(stats.size, options.end ?? stats.size);
+      if (options.bounded) {
+        if (this.drainTarget === null) this.drainTarget = stats.size;
+        target = Math.min(target, this.drainTarget);
+      }
+      const end = Math.min(target, this.filePosition + maxBytes);
+      let short = false;
+      if (end > this.filePosition) {
+        const buffer = Buffer.allocUnsafe(Math.min(READ_SLICE_BYTES, end - this.filePosition));
+        const onLine = (line: string) => this.consumeLine(line, options.out);
+        while (this.filePosition < end) {
+          const length = Math.min(buffer.length, end - this.filePosition);
+          const bytesRead = fs.readSync(fd, buffer, 0, length, this.filePosition);
+          if (bytesRead <= 0) {
+            // Shorter than its stat said: the next read re-checks the file.
+            short = true;
+            break;
+          }
+          const bytes = buffer.subarray(0, bytesRead);
+          const newline = bytes.lastIndexOf(0x0a);
+          if (newline >= 0) this.committedPosition = this.filePosition + newline + 1;
+          // The decoder copies an incomplete trailing character, so the
+          // buffer can be reused for the next slice.
+          this.lineBuffer = splitLines(this.lineBuffer, this.decoder.write(bytes), onLine);
+          this.filePosition += bytesRead;
+          this.parsedSincePropagate = true;
         }
       }
-
-      this.propagateParserState();
-    } catch {
-      // Skip read errors (a missing rollout reads as no events)
-    } finally {
-      if (fd !== null) {
-        try {
-          fs.closeSync(fd);
-        } catch {
-          // Ignore close errors.
+      const done = short || this.filePosition >= target;
+      if (done) {
+        if (options.bounded) this.drainTarget = null;
+        // Once per completed read, not per slice: the callbacks persist.
+        if (this.parsedSincePropagate) {
+          this.parsedSincePropagate = false;
+          this.propagateParserState();
         }
+      }
+      return { done, size: stats.size };
+    } finally {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // Ignore close errors.
       }
     }
+  }
 
-    return events;
+  private consumeLine(line: string, out: SessionEvent[] | null): void {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      const converted = this.parser.convertLine(JSON.parse(trimmed) as CodexRolloutLine);
+      if (out) {
+        for (const event of converted) out.push(event);
+      }
+    } catch {
+      // Skip malformed JSON lines
+    }
   }
 
   /** Starts over from offset 0 of a rollout that was truncated, rewritten, or replaced. */
@@ -444,6 +506,9 @@ class CodexReader implements SessionReader {
     this.parser.reset();
     this.decoder = new StringDecoder('utf8');
     this.pendingSeek = null;
+    this.settling = false;
+    // The drain restarts too, at the size the next read finds.
+    this.drainTarget = null;
   }
 
   /** Hands the parser's context window, rate limits, and last usage to the provider. */
@@ -502,6 +567,9 @@ class CodexReader implements SessionReader {
     this._lastReset = null;
     this.pendingRestart = null;
     this.pendingSeek = null;
+    this.settling = false;
+    this.drainTarget = null;
+    this.parsedSincePropagate = false;
     // The next read adopts whatever rollout has the path.
     this.continuity.forget();
   }
@@ -523,6 +591,20 @@ class CodexReader implements SessionReader {
       }
     }
     this.decoder = new StringDecoder('utf8');
+  }
+
+  finishBounded(): SessionEvent[] {
+    // `flush()` parses a trailing line without a newline for state only.
+    this.flush();
+    return [];
+  }
+
+  continuityState(): FileContinuityState | null {
+    return this.continuity.exportState();
+  }
+
+  restoreContinuity(state: unknown): boolean {
+    return this.continuity.importState(state);
   }
 
   getPosition(): number {
@@ -559,6 +641,7 @@ class CodexReader implements SessionReader {
   restoreResumeState(state: unknown): boolean {
     if (!this.parser.importResumeState(state)) return false;
     this.pendingSeek = null;
+    this.settling = false;
     this.propagateParserState();
     return true;
   }
@@ -566,14 +649,42 @@ class CodexReader implements SessionReader {
   /**
    * Rebuilds model, turn, and cumulative-token context for a pending
    * `seekTo()` position. The prefix is parsed only; its events are already
-   * in the consumer snapshot.
+   * in the consumer snapshot. Continues a settle a bounded read started.
    */
   private settleSeek(): void {
+    while (this.pendingSeek !== null) this.settleStep(Number.POSITIVE_INFINITY);
+  }
+
+  /** Parses up to `maxBytes` more of the prefix before `pendingSeek`. */
+  private settleStep(maxBytes: number): void {
     const position = this.pendingSeek;
     if (position === null) return;
-    this.reset();
-    this.readNew(position);
-    if (this.filePosition < position) {
+    if (!this.settling) {
+      // Parse from the start; seekTo() already forgot the file.
+      this.filePosition = 0;
+      this.committedPosition = 0;
+      this.lineBuffer = '';
+      this.parser.reset();
+      this.decoder = new StringDecoder('utf8');
+      this.drainTarget = null;
+      this.settling = true;
+    }
+    let result: { done: boolean; size: number };
+    try {
+      result = this.readRange(maxBytes, { end: position, out: null });
+    } catch {
+      result = { done: true, size: 0 };
+    }
+    if (this.pendingSeek === null) {
+      // The rollout was replaced or rewritten while settling: restart()
+      // dropped the seek and the reader now reads it from the beginning.
+      this.settling = false;
+      return;
+    }
+    if (this.filePosition >= position) {
+      this.pendingSeek = null;
+      this.settling = false;
+    } else if (result.done) {
       // The rollout no longer reaches the position sought: it was truncated
       // or replaced since. The next read starts over and reports it.
       this.reset();

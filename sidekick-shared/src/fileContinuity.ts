@@ -33,6 +33,18 @@ import type { JsonlTailResetReason } from './watchers/jsonlTail';
 /** The fields of `fs.Stats` the continuity rules read. */
 export type FileContinuityStat = Pick<fs.Stats, 'dev' | 'ino' | 'size' | 'mtimeMs'>;
 
+/**
+ * What a {@link FileContinuity} knows, as plain JSON: persisted next to a
+ * read position so a reader resumed in another call (or process) still
+ * detects a file truncated, rewritten, or replaced in between.
+ */
+export interface FileContinuityState {
+  dev: number;
+  ino: number;
+  mtimeMs: number;
+  head: FileHead | null;
+}
+
 /** The bytes the continuity check needs, read before any state changes. */
 export interface FileContinuityProbe {
   /** The file's first `min(HEAD_BYTES, size)` bytes. */
@@ -126,6 +138,48 @@ export class FileContinuity {
     this.head = fileHeadOf(prefix);
   }
 
+  /** The adopted file as {@link FileContinuityState}; `null` before the first read and after {@link forget}. */
+  exportState(): FileContinuityState | null {
+    if (!this.identity) return null;
+    return {
+      dev: this.identity.dev,
+      ino: this.identity.ino,
+      mtimeMs: this.lastMtimeMs,
+      head: this.head ? { ...this.head } : null,
+    };
+  }
+
+  /**
+   * Adopts a file known from {@link exportState} (call it after any seek,
+   * which forgets the file). Returns false, changing nothing, when `state`
+   * is not a valid state.
+   */
+  importState(state: unknown): boolean {
+    if (typeof state !== 'object' || state === null) return false;
+    const { dev, ino, mtimeMs, head } = state as Record<string, unknown>;
+    if (!isFiniteNumber(dev) || !isFiniteNumber(ino) || !isFiniteNumber(mtimeMs)) return false;
+    let knownHead: FileHead | null = null;
+    if (head !== null) {
+      if (typeof head !== 'object' || head === undefined) return false;
+      const { bytes, hash } = head as Record<string, unknown>;
+      if (
+        !Number.isInteger(bytes) ||
+        (bytes as number) < 0 ||
+        (bytes as number) > HEAD_BYTES ||
+        typeof hash !== 'string' ||
+        !/^[0-9a-f]{32}$/.test(hash)
+      ) {
+        return false;
+      }
+      knownHead = { bytes: bytes as number, hash };
+    }
+    this.identity = { dev, ino };
+    this.lastMtimeMs = mtimeMs;
+    this.head = knownHead;
+    this.checked = null;
+    return true;
+  }
+
   /** Forgets the file, so the next {@link check} adopts whatever file has the path. */
   forget(): void {
     this.identity = null;
@@ -178,6 +232,10 @@ export function probeFileContinuity(
         ? readAt(fd, committedOffset - 1, 1)
         : null,
   };
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function readAt(fd: number, position: number, length: number): Buffer {

@@ -236,6 +236,36 @@ export const sessionEventSchema: z.ZodType<SessionEvent> = z.union([
   toolResultSessionEventSchema,
 ]);
 
+/**
+ * The member of {@link sessionEventSchema} for each `type`. Every member has
+ * its own `type` literal, so parsing a line with only its type's schema
+ * gives the union's result without first failing every other member (the
+ * costly part for the many lines no member accepts). A `Map`, so a `type`
+ * such as `constructor` finds nothing.
+ */
+const SESSION_EVENT_SCHEMA_BY_TYPE: ReadonlyMap<string, z.ZodType<SessionEvent>> = new Map<
+  string,
+  z.ZodType<SessionEvent>
+>([
+  ['user', userSessionEventSchema as z.ZodType<SessionEvent>],
+  ['assistant', assistantSessionEventSchema as z.ZodType<SessionEvent>],
+  ['summary', summarySessionEventSchema as z.ZodType<SessionEvent>],
+  ['system', systemSessionEventSchema as z.ZodType<SessionEvent>],
+  ['tool_use', toolUseSessionEventSchema as z.ZodType<SessionEvent>],
+  ['tool_result', toolResultSessionEventSchema as z.ZodType<SessionEvent>],
+]);
+
+/** {@link sessionEventSchema}`.safeParse(value)` for a value whose `type` names one member. */
+function parseSessionEvent(value: unknown): SessionEvent | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const type = (value as { type?: unknown }).type;
+  if (typeof type !== 'string') return null;
+  const schema = SESSION_EVENT_SCHEMA_BY_TYPE.get(type);
+  if (!schema) return null;
+  const parsed = schema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 // ── Progress unwrapping ──
 
 /** Recursion bound for nested progress envelopes; real data nests 1 level. */
@@ -348,8 +378,8 @@ function extractSessionEventsWithProvenance(
   inherited: ProgressProvenance,
   options: ExtractSessionEventsOptions,
 ): SessionEvent[] {
-  const direct = sessionEventSchema.safeParse(withCompactBoundaryCounts(raw));
-  if (direct.success) return [{ ...inherited, ...direct.data }];
+  const direct = parseSessionEvent(withCompactBoundaryCounts(raw));
+  if (direct) return [{ ...inherited, ...direct }];
 
   if (options.includeTaskNotifications) {
     const notification = taskNotificationAttachmentEvent(raw) ?? taskStatusAttachmentEvent(raw);
