@@ -5,6 +5,34 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-11-13
+
+### Fixed
+
+- **Cache writes on OpenAI-family models.** `calculateNormalizedUsageCost()` and `priceProviderUsage()` bill a cache write at the input rate when the write rate is not positive and the model is OpenAI-family (GPT, o-series, Codex, with or without a provider prefix), as `openai-inclusive-cache` usage already was. Disjoint (`sidekick`) usage on such a model used to bill those writes at $0. Zero write rates for other providers (Gemini, DeepSeek, GLM) and Anthropic's rates are unchanged; the deprecated `calculateCostWithPricing()` keeps its old behaviour.
+- **Codex `cache_write_input_tokens`.** The rollout parser (including call deltas and resume state), `providers/codex`, the compressed-rollout reader, the JSONL follow watcher and `normalizeRawProviderUsage('codex')` now take cache writes out of input and bill them at the model's write rate (GPT-6.x: 1.25× input), matching prompt history and the headless parser. A delta adds writes only when both totals carry the field. `USAGE_CACHE_VERSION` stays 4: sessions recorded so far report no writes, and a session that grows is re-read whole.
+- **`decodeCodexErrorInfo()`** keeps a valid `httpStatusCode` on `{ kind: 'other', rawKind }`, and `diagnoseProviderFailure()` now classifies such an error by that status.
+
+### Added
+
+- **Provider failures:** the `model_unavailable` code and `choose_model` recovery action (`retryable: false`), from Codex `modelNotFound`, `model_not_found` codes, Anthropic's `model: <id>` not-found message and "model … does not exist / not found / not supported" text. `PROVIDER_FAILURE_DIAGNOSIS_BOUNDS` is also exported from `sidekick-shared/providerFailure` (still one module), as the same object `/schemas` exports.
+- **Runtime lists:** `COST_SOURCES` (`CostSource` derives from it), `PRICING_PROVENANCES`, and `MOVING_MODEL_ALIASES` (sorted, frozen, append-only: compare as a set; `isMovingModelAlias()` reads it). `CostComponent.tokensUnknown` marks an unpriced component whose token count is unknown, so `mergeCostComponents()` treats it as tainting without an `Infinity` count.
+- **Agent homes and paths** (`sidekick-shared/agentPaths`, now six modules, still `fs` / `os` / `path` only):
+  - `resolveAgentHomes({ agentCwds })` (`ResolveAgentHomesOptions`): an exactly empty `CLAUDE_CONFIG_DIR` gives `[<HOME>/.claude, ...agentCwds]`, since Claude Code 2.1.316 and later writes under its start folder while older versions treat empty as unset; a relative `CLAUDE_CONFIG_DIR` or `CODEX_HOME` resolves against each start folder. Without `agentCwds` nothing changes.
+  - `classifyAgentTranscriptPath(path, { baseDirs, agentCwds })` accepts a relative transcript path only as a Claude Code session or subagent under a base's own `projects/`, and reports that base as `home`.
+  - `readAgentVersion(path, { noFollow })` refuses a symbolic link; `readAgentModel()` returns the latest model of a Claude Code session or Codex rollout from bounded windows.
+  - `findClaudeSessionFile()` (workspace folder first, then a bounded scan), `locateCodexRolloutFile()` and `codexRolloutDayCandidates()` (the dated folders a UUIDv7 thread id points to). `findCodexRolloutFile()` checks those folders in every home and the archive before its full walk, with the same result.
+- **Entries:** `sidekick-shared/tokenEstimation` (pure, one module) and `sidekick-shared/pricingHydration` (Node, 11 modules, no Zod: `hydratePricingCatalog()`, the LiteLLM normalizers, `getPricingCatalogInfo()` and the observed context-window store). A catalog hydrated through `/pricingHydration` is visible to `/pricing` in the same process.
+- **Usage:** `bucketUsage()` accepts `groupBy: ['tag']` with `tagOf(event)`; rows carry `tag`, and rows split by session carry `rootSessionId` (a Codex spawned or forked rollout's root session).
+- **Listings:** `collectPromptHistory()`, `collectSessionPromptHistory()` and `findToolCallOrigins()` accept `includeCompressedRollouts: false` with a shared `listing` and drop its compressed rollouts for that call. Passing the listing's own value is now accepted; widening still throws.
+- **JSONL:** `captureJsonlCheckpoint()` and `verifyJsonlCheckpoint()` take `{ noFollow }` (`JsonlCheckpointFileOptions`). `JsonlTail.resumeFrom()` is documented as the rollback for a batch the caller could not take.
+- **Auth status:** `parseClaudeAuthStatus()` and `parseCodexLoginStatus()` report `state: 'signed-in' | 'signed-out' | 'unknown'`; unreadable output is `unknown`, never signed out. The Claude result adds `apiProvider` and `apiKeySource`. `loggedIn` is unchanged.
+
+### Changed
+
+- `PROVIDER_FAILURE_CODES` and `PROVIDER_RECOVERY_ACTIONS` each gain one entry, so an exhaustive `Record<ProviderFailureCode, …>` or `Record<ProviderRecoveryAction, …>` map needs one more key.
+- Docs: Codex `turn.completed.usage` is the thread's running total (Codex sends `usage.total`), and `priceProviderUsage()` should get `singleRequest: false` for merged totals such as Claude Code's headless `result.usage`.
+
 ## [0.32.2] - 2026-11-11
 
 ### Fixed

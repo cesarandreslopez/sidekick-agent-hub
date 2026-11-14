@@ -5,6 +5,19 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-11-13
+
+### Added
+
+- A request for a model that doesn't exist, or that the account can't use, now says the model is unavailable and to choose another one, instead of reporting an unknown failure.
+
+### Fixed
+
+- Codex cache writes are priced at the model's cache-write rate (GPT-6.x: 1.25× input) instead of as ordinary input, in `daily`, `weekly`, `monthly`, `sessions`, `blocks` and the dashboard. Sessions recorded so far report no cache writes, so existing totals don't change.
+- Cache writes on OpenAI-family models whose price list has no write rate (for example in OpenCode sessions) are priced at the input rate instead of $0.
+- A Codex error newer than Sidekick's list keeps its HTTP status, so it is diagnosed by that status (a 503 suggests retrying later, a 401 asks you to sign in) instead of as an unknown failure.
+- `--provider` values that only some commands take were refused everywhere: `sidekick quota --provider zai`, `quota history --provider claude` or `z.ai`, and `accounts list --provider all` failed with an invalid-choice error, because the root option checked every `--provider` on the line against the session providers. The root option now admits every value a command takes, and each command checks its own (`sidekick daily --provider zai` explains that `zai` is not a session provider there).
+
 ## [0.32.2] - 2026-11-11
 
 ### Fixed

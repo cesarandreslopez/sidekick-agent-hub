@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.33.0: model-unavailable guidance, honest cache-write prices** — inference failures for a model that doesn't exist or isn't enabled for the account say so and ask you to choose another model. `daily`, `weekly`, `monthly`, `sessions`, `blocks` and the dashboard bill Codex cache writes at their own rate (GPT-6.x: 1.25× input), and OpenAI-family cache writes with no listed write rate at the input rate instead of $0.
 - **0.32.2: honest Top Failing Tools** — `sidekick stats` counts each session's failures once (the VS Code extension's error history repeated sessions, often several times too high), and leftover `*.tmp` files from interrupted store writes are cleaned up.
 - **0.32.1: long-context prices in usage reports** — `daily`, `weekly`, `monthly`, `sessions`, `blocks`, `dump --prompts` and the dashboard's billing block no longer bill a Codex token count that spans several calls at long-context rates (rollouts whose token counts carry only the running total, mostly older ones). The usage cache moves to `*.v4.json` and is rebuilt once.
 - **0.32.0: the activity map** — `sidekick map --follow` draws a live map of what your agent is doing in any terminal split: every tool call pulses from the agent to one of eleven stations (files, shell, network, memory, agents, hooks, plan, …), with the context window as a ring, faults, subagents and the route the agent took. `sidekick map --format text|svg|json` exports any session at any moment (`--at 50%`, `--at +15m`), the dashboard gains a **Map** panel (`9`) with an Insights tab (time, errors and context weight per station, retry streaks and edit ↔ test loops), the HTML report includes the map, and the MCP server adds `get_activity_map`. Summaries now use Claude Haiku 5.5, Claude Fable 5.2 and the Mythos models are priced, long prompts on GPT-5.4+ (above 272K tokens) and Haiku 5.5 (above 100K) are priced at their long-context rates, and `report --theme light` now renders light.
@@ -225,19 +226,19 @@ sidekick map --format svg -o session.svg   # a still SVG (--motion full animates
 sidekick map --format json --at 50%        # snapshot and insights halfway through
 ```
 
-| Flag                                | Description                                                                                                                      |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `--session <id>`                    | Session to show (default: most recent)                                                                                           |
-| `-f`, `--follow`                    | Live map of the running session; waits for one to start and follows newer sessions unless `--session` is given                   |
-| `--format <format>`                 | `text` (default), `svg`, or `json` (the global `--json` also selects JSON)                                                       |
-| `--at <time>`                       | `end` (default), `start`, `+15m` after the start, `-5m` before the end, `50%`, `HH:MM[:SS]`, or an ISO date-time                 |
-| `-o`, `--output <path>`             | Write to a file instead of stdout                                                                                                |
-| `--theme <theme>`                   | SVG colors: `auto` (default, follows the viewer's light or dark mode), `dark`, or `light`                                        |
-| `--motion <motion>`                 | SVG animation: `none` (default), `reduced`, or `full`                                                                            |
-| `--labels <mode>`                   | `descriptive` (adds the agent's own short descriptions; default for text and `--follow`), `names` (default for files), or `none` |
-| `--width <cols>`, `--height <rows>` | Size of the text map (default: the terminal)                                                                                     |
-| `--subagents`                       | Include subagent transcripts in the replay                                                                                       |
-| `--core-name <name>`                | Text in the centre (default: the agent)                                                                                          |
+| Flag                                | Description                                                                                                                             |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `--session <id>`                    | Session to show (default: most recent)                                                                                                  |
+| `-f`, `--follow`                    | Live map of the running session; waits for one to start and follows newer sessions unless `--session` is given                          |
+| `--format <format>`                 | `text` (default), `svg`, or `json` (the global `--json` also selects JSON)                                                              |
+| `--at <time>`                       | `end` (default), `start`, `+15m` after the start, `-5m` before the end, `50%`, `HH:MM[:SS]`, or an ISO date-time                        |
+| `-o`, `--output <path>`             | Write to a file instead of stdout                                                                                                       |
+| `--theme <theme>`                   | SVG colors: `auto` (default, follows the viewer's light or dark mode), `dark`, or `light`                                               |
+| `--motion <motion>`                 | SVG animation: `none` (default), `reduced`, or `full`                                                                                   |
+| `--labels <mode>`                   | `descriptive` (adds the agent's own short descriptions; default for text and `--follow`), `names` (default for SVG and JSON), or `none` |
+| `--width <cols>`, `--height <rows>` | Size of the text map (default: the terminal)                                                                                            |
+| `--subagents`                       | Include subagent transcripts in the replay                                                                                              |
+| `--core-name <name>`                | Text in the centre (default: the agent)                                                                                                 |
 
 Live keys: `f` feed, `i` insights, `p` or `Space` pause, `←`/`→` pause and step 10 s (`Shift` for a minute), `l` live, `q`, `Esc` or `Ctrl+C` quit. `--follow` cannot be combined with `--format`, `--at` or `-o`. Labels carry names, never content: a file's last two path parts, a host, a command's name.
 

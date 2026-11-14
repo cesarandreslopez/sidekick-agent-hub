@@ -5,6 +5,24 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-11-13
+
+### Fixed
+
+- **Cache writes on OpenAI-family models were priced at $0.** When usage arrives already split into disjoint buckets, a cache write on a GPT, o-series or Codex model whose catalog lists no write rate cost nothing. OpenAI bills those tokens as ordinary input, so they now cost the input rate. Zero write rates for other providers (Gemini, DeepSeek, GLM) are unchanged.
+- **Codex cache writes were folded into input.** Codex reports `cache_write_input_tokens` inside its input count. The rollout parser, the compressed-rollout reader and the follow watcher ignored the field, so GPT-6.x cache writes (billed at 1.25× input) were priced as ordinary input. Every Codex path now separates them and bills them at the model's write rate. Sessions recorded so far report no cache writes, so existing totals don't change.
+- **Unknown Codex errors kept no status.** A Codex error variant newer than Sidekick's list now keeps its HTTP status, so it is diagnosed by that status (a 503 is retryable, a 401 asks you to sign in) instead of as unknown.
+- **CLI `--provider` values for quota and accounts were refused.** `sidekick quota --provider zai`, `quota history --provider claude` or `z.ai`, and `accounts list --provider all` failed with an invalid-choice error, because the root option checked every `--provider` on the line against the session providers. The root option now admits every value a command takes, and each command checks its own.
+
+### Added
+
+- **Model unavailable.** A request for a model that doesn't exist, or that the account can't use, is diagnosed as `model_unavailable`. The CLI and VS Code tell you to choose another model instead of reporting an unknown failure, and VS Code offers no retry.
+- **`sidekick-shared` for external hosts:**
+  - Agent homes and paths: `resolveAgentHomes({ agentCwds })` covers Claude Code sessions started with an empty `CLAUDE_CONFIG_DIR` (Claude Code 2.1.316 and later writes them under its start folder) and relative home variables; `classifyAgentTranscriptPath(path, { baseDirs })` accepts the relative transcript paths those sessions report; `readAgentVersion(path, { noFollow })`, `readAgentModel()`, `findClaudeSessionFile()` and `locateCodexRolloutFile()` join `sidekick-shared/agentPaths`, and `findCodexRolloutFile()` looks in the dated folders a thread id points to before walking the whole history.
+  - Lean entries: `sidekick-shared/tokenEstimation` (one module) and `sidekick-shared/pricingHydration` (pricing-catalog hydration and observed context windows without the `/node` graph or Zod).
+  - Usage: `bucketUsage()` groups by a caller-supplied `tag`, session rows carry `rootSessionId`, and collectors can drop compressed rollouts from a shared listing for one call.
+  - Runtime lists `COST_SOURCES`, `PRICING_PROVENANCES` and `MOVING_MODEL_ALIASES`; `PROVIDER_FAILURE_DIAGNOSIS_BOUNDS` on `/providerFailure`; `CostComponent.tokensUnknown`; `{ noFollow }` on JSONL checkpoint capture and verification; and an auth-status `state` that never reads unparseable output as signed out.
+
 ## [0.32.2] - 2026-11-11
 
 ### Fixed
