@@ -120,6 +120,27 @@ describe('CompressedCodexRolloutReader.readNewBounded', () => {
     expect(step.events).toEqual(new CompressedCodexRolloutReader(file).readNew());
   });
 
+  it('after a seek, prepares once and decompresses nothing on the main thread', async () => {
+    let decompressions = 0;
+    __compressedRolloutTesting.setDecompress((input) => {
+      decompressions += 1;
+      return input;
+    });
+    fs.writeFileSync(file, CONTENT);
+    const position = CONTENT.indexOf('{"type":"event_msg"');
+    const expected = (() => {
+      const sync = new CompressedCodexRolloutReader(file);
+      sync.seekTo(position);
+      return sync.readNew();
+    })();
+    decompressions = 0;
+    const reader = new CompressedCodexRolloutReader(file);
+    reader.seekTo(position);
+    const { events } = await drain(reader, 16);
+    expect(events).toEqual(expected);
+    expect(decompressions).toBe(1);
+  });
+
   it('reads a missing file as done', () => {
     expect(new CompressedCodexRolloutReader(file).readNewBounded(10)).toEqual({
       events: [],

@@ -296,9 +296,19 @@ class ClaudeCodeReader implements SessionReader, BoundedReaderInternals {
       let short = false;
       if (end > this.filePosition) {
         const buffer = Buffer.allocUnsafe(Math.min(READ_SLICE_BYTES, end - this.filePosition));
+        const start = this.filePosition;
         while (this.filePosition < end) {
           const length = Math.min(buffer.length, end - this.filePosition);
-          const bytesRead = fs.readSync(fd, buffer, 0, length, this.filePosition);
+          let bytesRead: number;
+          try {
+            bytesRead = fs.readSync(fd, buffer, 0, length, this.filePosition);
+          } catch (error) {
+            // Nothing read yet: report it. Otherwise hand back what was read
+            // (its position already moved on); the next read retries from here.
+            if (this.filePosition === start) throw error;
+            short = true;
+            break;
+          }
           if (bytesRead <= 0) {
             // Shorter than its stat said: the next read re-checks the file.
             short = true;
@@ -733,8 +743,7 @@ export class ClaudeCodeProvider implements SessionProviderBase {
         { signal: options.signal },
       );
     } catch {
-      // Skip unreadable files
-      return [];
+      // An unreadable file has no hits; one that fails partway keeps those found.
     }
     return results;
   }

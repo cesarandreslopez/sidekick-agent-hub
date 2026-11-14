@@ -94,7 +94,7 @@ export class CompressedCodexRolloutReader implements SessionReader, BoundedReade
   }
 
   async prepareBoundedRead(): Promise<void> {
-    if (this.drain || this.pendingSeek !== null) return;
+    if (this.drain) return;
     let stat: fs.Stats;
     try {
       stat = await fs.promises.stat(this.rolloutPath);
@@ -126,25 +126,14 @@ export class CompressedCodexRolloutReader implements SessionReader, BoundedReade
     const current = { size: stat.size, mtimeMs: stat.mtimeMs };
     if (this.drain && !sameSource(this.drain.source, current)) {
       // Another file has the path mid-drain: start over on it.
-      this.reset_ = { reason: 'replaced', previousPosition: this.position } as ReaderReset;
-      this.parser.reset();
-      this.position = 0;
-      this.source = null;
-      this.endDrain();
+      this.restartReplaced();
     } else if (!this.drain && this.source) {
       if (sameSource(this.source, current)) return { events: [], done: true };
-      // Another file has the path: what was read no longer describes it.
-      this.reset_ = { reason: 'replaced', previousPosition: this.position } as ReaderReset;
-      this.parser.reset();
-      this.position = 0;
-      this.source = null;
+      this.restartReplaced();
     }
 
     if (!this.drain) {
-      const content = sameSource(this.prepared?.source ?? null, current)
-        ? this.prepared!.content
-        : readRolloutBuffer(this.rolloutPath, { onDiagnostic: this.callbacks.onDiagnostic });
-      this.prepared = null;
+      const content = this.contentFor(current);
       if (!content) return { events: [], done: true };
       if (this.position > content.length) {
         // The position sought lies past this content: start over.
@@ -202,7 +191,24 @@ export class CompressedCodexRolloutReader implements SessionReader, BoundedReade
 
   private endDrain(): void {
     this.drain = null;
+    // `prepared` stays: it is keyed by the file it was read from.
+  }
+
+  /** Another file has the path: what was read no longer describes it. */
+  private restartReplaced(): void {
+    this.reset_ = { reason: 'replaced', previousPosition: this.position } as ReaderReset;
+    this.parser.reset();
+    this.position = 0;
+    this.source = null;
+    this.drain = null;
+  }
+
+  /** The decompressed content: what `prepareBoundedRead()` read for this file, or a synchronous read. */
+  private contentFor(current: SourceStamp): Buffer | null {
+    const prepared = this.prepared;
     this.prepared = null;
+    if (prepared && sameSource(prepared.source, current)) return prepared.content;
+    return readRolloutBuffer(this.rolloutPath, { onDiagnostic: this.callbacks.onDiagnostic });
   }
 
   readAll(): SessionEvent[] {
@@ -217,6 +223,7 @@ export class CompressedCodexRolloutReader implements SessionReader, BoundedReade
     this.reset_ = null;
     this.pendingSeek = null;
     this.endDrain();
+    this.prepared = null;
   }
 
   exists(): boolean {
@@ -266,22 +273,19 @@ export class CompressedCodexRolloutReader implements SessionReader, BoundedReade
       return [];
     }
     const current = { size: stat.size, mtimeMs: stat.mtimeMs };
-    if (
-      this.source &&
-      (this.source.size !== current.size || this.source.mtimeMs !== current.mtimeMs)
-    ) {
-      // Another file has the path: what was read no longer describes it.
-      this.reset_ = { reason: 'replaced', previousPosition: this.position } as ReaderReset;
-      this.parser.reset();
-      this.position = 0;
+    if (this.source && !sameSource(this.source, current)) {
+      this.restartReplaced();
     } else if (this.source) {
       return [];
     }
 
-    const content = readRolloutBuffer(this.rolloutPath, {
-      onDiagnostic: this.callbacks.onDiagnostic,
-    });
+    // A seek settled during a bounded drain reuses the content prepared for it.
+    const content = this.contentFor(current);
     if (!content) return [];
+    if (endPosition !== undefined && endPosition < content.length) {
+      // Only the prefix is parsed now; the drain that follows needs the rest.
+      this.prepared = { content, source: current };
+    }
     this.source = current;
     const end = Math.min(content.length, endPosition ?? content.length);
     if (this.position > end) {
@@ -293,16 +297,7 @@ export class CompressedCodexRolloutReader implements SessionReader, BoundedReade
 
     const events: SessionEvent[] = [];
     const text = content.toString('utf8', this.position, end);
-    for (const line of text.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const converted = this.parser.convertLine(JSON.parse(trimmed) as CodexRolloutLine);
-        if (emit) events.push(...converted);
-      } catch {
-        // Skip malformed lines.
-      }
-    }
+    for (const line of text.split('\n')) this.parseLine(line, emit ? events : null);
     this.position = end;
     if (end < content.length) this.source = null;
     this.propagateParserState();

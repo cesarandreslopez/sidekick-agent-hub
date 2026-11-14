@@ -255,8 +255,10 @@ export interface CollectUsageEventsOptions {
    * between the 1 MiB steps a session is read in (0.33.1+), so it can stop
    * a call inside a large session: with the cache on, what was read is kept
    * and the next call continues that session, which then comes back whole.
-   * Every call still reads at least one complete line (or finishes a
-   * session). Without the cache (`noCache`), the first session of a call is
+   * The first session a call reads from disk may read for `deadlineMs`
+   * from its own start (so a call whose listing used up the budget still
+   * makes real progress), and every call reads at least one complete line
+   * or finishes a session. Without the cache (`noCache`), the first session of a call is
    * always read to its end and a later one the deadline stops is read again
    * by the next call. Without `bounds` (and `cursor`) every session is read.
    */
@@ -757,7 +759,7 @@ interface SessionReadRun {
   /** Whether progress can be kept (the cache is on). */
   persist: boolean;
   signal: AbortSignal | undefined;
-  /** The call's deadline has passed. */
+  /** The call's deadline has passed (for the call's first read, its own budget too). */
   deadlinePassed(): boolean;
   /** An earlier session of this call was read to its end (or failed). */
   callProgress(): boolean;
@@ -924,10 +926,9 @@ async function readSessionUsage(
     }
   }
 
-  // Everything is read. Past the deadline, keep it and finish next call
-  // rather than start the prompt-ordinal pass late.
-  if (persistable && mayStop()) return stop();
-
+  // Everything is read: finish it in this call (the prompt-ordinal pass
+  // that follows streams and yields), rather than keep a complete read as
+  // progress and spend another call, with another listing, finishing it.
   const events: CachedUsageEvent[] = [];
   for (const read of reads) {
     // A trailing line without a newline counts as readAll() + flush() count it.
@@ -1289,6 +1290,19 @@ async function collectWithProviders(
 
   const deadlinePassed = () =>
     bounds?.deadlineMs !== undefined && Date.now() - startedAt >= bounds.deadlineMs;
+  /** When the first session read from disk in this call started. */
+  let firstReadStartedAt: number | null = null;
+  /**
+   * The deadline as a session read sees it. The first session read in a call
+   * also gets `deadlineMs` of reading from its own start, so a call whose
+   * listing took the whole budget still moves a large session forward by
+   * that much rather than by one step.
+   */
+  const readDeadlinePassed = () => {
+    if (!deadlinePassed()) return false;
+    if (callProgress || firstReadStartedAt === null) return true;
+    return Date.now() - firstReadStartedAt >= (bounds?.deadlineMs ?? 0);
+  };
 
   const boundReached = (sessionBytes: number): UsageEventsBound | null => {
     // The first miss of a call always proceeds, so every call makes progress.
@@ -1360,12 +1374,13 @@ async function collectWithProviders(
       cacheMisses += 1;
       missBytes += sessionBytes;
       let outcome: SessionReadOutcome;
+      if (!callProgress && firstReadStartedAt === null) firstReadStartedAt = Date.now();
       try {
         outcome = await readSessionUsage(provider, preview, key, subagentFiles, {
           resume,
           persist: useCache,
           signal,
-          deadlinePassed,
+          deadlinePassed: readDeadlinePassed,
           callProgress: () => callProgress,
           savePartial: async (state) => {
             const record: UsageCacheFile = {

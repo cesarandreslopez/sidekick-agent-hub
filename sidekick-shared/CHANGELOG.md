@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `bounds.deadlineMs` and `signal` are checked between steps, so either can stop a call inside a session.
     - With the cache on, the progress is kept in that session's cache file and the next call continues from it. Per transcript, it keeps the offset, the reader state, the file's identity and head digest, and the usage so far. A transcript that was truncated, rewritten or replaced in the meantime starts over.
     - These partial entries are `*.v4.json` files with fingerprint `partial:<fingerprint>`. No session ever has that fingerprint, so 0.32.1–0.33.0 readers treat them as a miss. `USAGE_CACHE_VERSION` stays 4.
-    - Every call reads at least one complete line or finishes a session, so it always makes progress. A result or cursor never holds part of a session.
+    - Every call reads at least one complete line or finishes a session, so it always makes progress. The first session a call reads may read for `deadlineMs` from its own start, so a call whose listing used up the budget still moves forward by that much. A result or cursor never holds part of a session.
     - With `noCache`, the first session of a call is read to its end. A later session the deadline stops is read again by the next call.
     - An abort keeps progress the same way before it rejects, so a short `AbortSignal.timeout()` per call still gets through a large session.
     - A Codex resume state is stored with `session_meta` trimmed to its identity fields.
@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - It reads at most `maxBytes` more, and consecutive calls form a drain that ends (`done: true`) at the size the drain started with.
   - Partial lines carry over, so a drain's events equal one `readNew()`.
   - Any step can restart on a truncated, rewritten or replaced file (check `wasTruncated()` after each step).
-  - A missing file is `{ events: [], done: true }`; other read errors throw.
+  - A missing file is `{ events: [], done: true }`. Other read errors throw when the step read nothing; a step that fails partway returns what it read (`done: true`), and the next drain retries from there.
 - **`SessionProviderBase.searchInSessionAsync?()`** gives `searchInSession()`'s hits through a chunked, yielding scan. It takes `{ signal }` and resolves with the hits so far on abort.
 - **`importSessionHistory({ signal })`** stops between sessions and between read steps. It resolves with the counts so far and `aborted: true`, and leaves the interrupted session unapplied and unmarked.
 

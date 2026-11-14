@@ -311,6 +311,26 @@ describe('SessionMonitor stepped replay', () => {
   });
 });
 
+describe('SessionMonitor read errors', () => {
+  it('does not fail an attach on a transient read error, and catches up on the next change', async () => {
+    fs.writeFileSync(file, session(5));
+    const real = new ClaudeCodeProvider().createReader(file);
+    let failing = true;
+    const readNewBounded = real.readNewBounded!.bind(real);
+    real.readNewBounded = (maxBytes: number) => {
+      if (failing) throw Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' });
+      return readNewBounded(maxBytes);
+    };
+    const { monitor, internals } = monitorOn(file, real);
+    await expect(internals.readInitialContent()).resolves.toBeUndefined();
+    expect(monitor.getStats().messageCount).toBe(0);
+    failing = false;
+    internals.processFileChange();
+    await settled(internals);
+    expect(totals(monitor)).toEqual(await onePassTotals());
+  });
+});
+
 describe('SessionMonitor stepped file changes', () => {
   async function attached(content: string) {
     fs.writeFileSync(file, content);

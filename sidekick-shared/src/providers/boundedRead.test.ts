@@ -17,12 +17,25 @@ import { CodexProvider } from './codex';
 import type { SessionReader } from './types';
 
 const readSyncLengths: number[] = [];
+/** Fail `fs.readSync` calls on the session file once this many have run (null: never). */
+const failReads: { after: number | null; seen: number; path: string } = {
+  after: null,
+  seen: 0,
+  path: '',
+};
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
   return {
     ...actual,
     readSync: (...args: Parameters<typeof actual.readSync>) => {
       readSyncLengths.push(args[3] as number);
+      // Only slice reads (the continuity probe reads at most 4 KiB at 0, or 1 byte).
+      if (failReads.after !== null && (args[3] as number) > 4096) {
+        failReads.seen += 1;
+        if (failReads.seen > failReads.after) {
+          throw Object.assign(new Error('EIO: i/o error, read'), { code: 'EIO' });
+        }
+      }
       return actual.readSync(...args);
     },
   };
@@ -39,6 +52,8 @@ beforeEach(() => {
 
 afterEach(() => {
   setConfigDir(undefined);
+  failReads.after = null;
+  failReads.seen = 0;
   vi.restoreAllMocks();
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -402,5 +417,52 @@ describe('continuity state across readers', () => {
       false,
     );
     expect(reader.restoreContinuity!(null)).toBe(false);
+  });
+});
+
+// ── Read errors ─────────────────────────────────────────────────────────────
+
+describe('a read error during a bounded step', () => {
+  const claude = new ClaudeCodeProvider();
+  const codex = new CodexProvider();
+  const big = (count: number) =>
+    Array.from({ length: count }, (_, i) => claudeUser(`${i} ${'y'.repeat(2000)}`, i % 60)).join(
+      '',
+    );
+
+  it.each([
+    ['Claude Code', () => claude, () => big(1200)],
+    [
+      'Codex',
+      () => codex,
+      () =>
+        Array.from({ length: 1200 }, (_, i) =>
+          codexAssistant(`${i} ${'y'.repeat(2000)}`, i % 60),
+        ).join(''),
+    ],
+  ] as const)('%s: returns what it read and loses nothing', (_name, provider, content) => {
+    fs.writeFileSync(file, content());
+    const expected = oneShot(provider().createReader(file));
+    const reader = bounded(provider().createReader(file));
+    // The second 1 MiB slice of the first step fails.
+    failReads.after = 1;
+    const first = reader.readNewBounded(4 * 1024 * 1024);
+    expect(first.done).toBe(true);
+    expect(first.events.length).toBeGreaterThan(0);
+    expect(first.events.length).toBeLessThan(expected.length);
+    failReads.after = null;
+    // The next drain carries on from where the failed step stopped.
+    const rest = drain(reader, 4 * 1024 * 1024);
+    expect([...first.events, ...rest]).toEqual(expected);
+  });
+
+  it('throws when the step read nothing, and readNew() logs instead', () => {
+    fs.writeFileSync(file, big(800));
+    failReads.after = 0;
+    const reader = bounded(claude.createReader(file));
+    expect(() => reader.readNewBounded(1 << 20)).toThrow(/EIO/);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(claude.createReader(file).readNew()).toEqual([]);
+    expect(errors).toHaveBeenCalled();
   });
 });

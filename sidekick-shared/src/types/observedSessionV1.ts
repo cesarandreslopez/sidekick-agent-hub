@@ -260,17 +260,22 @@ export function createProviderSessionAdapterV1(
       const sessionId = sessionProvider.getSessionId(sessionPath);
       const reader = sessionProvider.createReader(sessionPath);
       const events: SessionEvent[] = [];
-      await drainReader(reader, {
-        fromStart: true,
-        flush: true,
-        // The file changed under the read: its events start over.
-        onReset: () => {
-          events.length = 0;
-        },
-        onEvents: (batch) => {
-          for (const event of batch) events.push(event);
-        },
-      });
+      try {
+        await drainReader(reader, {
+          fromStart: true,
+          flush: true,
+          // The file changed under the read: its events start over.
+          onReset: () => {
+            events.length = 0;
+          },
+          onEvents: (batch) => {
+            for (const event of batch) events.push(event);
+          },
+        });
+      } catch {
+        // An unreadable file (EACCES, EBUSY, ...) keeps what was read, as
+        // readAll() did, so one bad session never fails a whole discovery.
+      }
       const stats = computeSessionFileStats(events, {
         providerId: sessionProvider.id,
         sessionId,

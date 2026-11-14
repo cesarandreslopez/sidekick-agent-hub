@@ -707,8 +707,9 @@ the next call (pass the returned `cursor`, as `hasMore: true` asks) continues
 the session where it stopped. A session that was truncated, rewritten, or
 replaced in between starts over. A result never holds part of a session, and
 every call reads at least one complete line, so a loop over `hasMore` always
-moves forward. With `noCache`, the first session of a call is read to its
-end.
+moves forward; the first session a call reads may read for `deadlineMs` from
+its own start, so a call whose listing used up the budget still makes real
+progress. With `noCache`, the first session of a call is read to its end.
 
 ```typescript
 import type { UsageEventsCursor } from 'sidekick-shared/node';

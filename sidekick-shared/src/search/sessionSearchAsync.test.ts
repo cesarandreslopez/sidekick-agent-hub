@@ -206,3 +206,29 @@ describe('searchSessions', () => {
     );
   });
 });
+
+describe('searchInSessionAsync read errors', () => {
+  it('keeps the hits found before a read fails partway through a file', async () => {
+    const filler = Array.from({ length: 600 }, (_, i) => claudeUser(`${i} ${'z'.repeat(3000)}`, i));
+    const file = claudeFile([
+      claudeUser('early needle', 1),
+      ...filler,
+      claudeUser('late needle', 2),
+    ]);
+    expect(fs.statSync(file).size).toBeGreaterThan(1024 * 1024);
+    const originalOpen = fs.promises.open;
+    vi.spyOn(fs.promises, 'open').mockImplementation(async (...args) => {
+      const handle = await originalOpen(...(args as Parameters<typeof originalOpen>));
+      const read = handle.read.bind(handle) as (...a: unknown[]) => Promise<unknown>;
+      let reads = 0;
+      (handle as unknown as { read: unknown }).read = async (...a: unknown[]) => {
+        reads += 1;
+        if (reads > 1) throw Object.assign(new Error('EIO: i/o error, read'), { code: 'EIO' });
+        return read(...a);
+      };
+      return handle;
+    });
+    const hits = await new ClaudeCodeProvider().searchInSessionAsync(file, 'needle', 10);
+    expect(hits.map((hit) => hit.line)).toEqual([expect.stringContaining('early needle')]);
+  });
+});

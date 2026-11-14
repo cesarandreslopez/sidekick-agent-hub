@@ -233,7 +233,9 @@ export interface SessionReader {
    * describe that step, and any step (not only the first) can restart from
    * offset 0 when the file was truncated, rewritten, or replaced between
    * steps. A missing file reads as `{ events: [], done: true }`; other read
-   * errors throw (where `readNew()` returns what it read). `readNew()`,
+   * errors throw when the step read nothing (where `readNew()` logs them),
+   * and a step that fails partway returns what it read, `done: true`, so the
+   * next drain retries from there. `readNew()`,
    * `readAll()`, `reset()` and `seekTo()` end a drain.
    *
    * Optional (0.33.1+): the Claude Code and Codex readers implement it; the

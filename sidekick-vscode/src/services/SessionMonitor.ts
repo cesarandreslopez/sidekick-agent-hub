@@ -2021,10 +2021,17 @@ export class SessionMonitor implements vscode.Disposable {
    * or the whole unread range for a reader that cannot read in steps (OpenCode).
    */
   private readStep(reader: SessionReader): { events: SessionEvent[]; done: boolean } {
-    if (typeof reader.readNewBounded === 'function') {
-      return reader.readNewBounded(SessionMonitor.INITIAL_REPLAY_CHUNK_BYTES);
+    if (typeof reader.readNewBounded !== 'function') {
+      return { events: reader.readNew(), done: true };
     }
-    return { events: reader.readNew(), done: true };
+    try {
+      return reader.readNewBounded(SessionMonitor.INITIAL_REPLAY_CHUNK_BYTES);
+    } catch (error) {
+      // A transient read failure (EBUSY, EMFILE, ...) is not fatal, as with
+      // readNew(): nothing was read, and the next file change reads again.
+      logError('Error reading session file', error);
+      return { events: [], done: true };
+    }
   }
 
   /** Starts a stepped read; a newer one makes an older one stop at its next step. */

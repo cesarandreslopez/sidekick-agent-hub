@@ -545,3 +545,28 @@ describe('collectUsageEvents responsiveness', () => {
     }
   });
 });
+
+// ── The first session of a call ─────────────────────────────────────────────
+
+describe('a call whose listing used up the deadline', () => {
+  it('still reads its first session for deadlineMs, not one step', async () => {
+    __usageEventsTesting.setReadChunkBytes(256);
+    plainSession('aa-first', 60);
+    plainSession('zz-second', 3);
+    const expected = await oneShot();
+    // A listing slower than the whole budget.
+    const list = claude.listSessionFilesAsync!.bind(claude);
+    vi.spyOn(claude, 'listSessionFilesAsync').mockImplementation(async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return list(...args);
+    });
+    const result = await collect({ bounds: { deadlineMs: 150 } });
+    expect(result.hasMore).toBe(true);
+    expect(result.boundsHit).toEqual(['deadline']);
+    // One whole session came back (not a single 256-byte step of one).
+    expect(result.sessions).toHaveLength(1);
+    const key = result.sessions[0].sessionKey;
+    expect(sorted(result.events)).toEqual(expected.filter((event) => event.sessionKey === key));
+    expect(result.events.length).toBeGreaterThan(50);
+  });
+});

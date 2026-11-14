@@ -120,6 +120,24 @@ describe('createProviderSessionAdapterV1 bounded reads', () => {
     expect(peak).toBe(1);
   });
 
+  it('keeps discovering past a session that cannot be read', async () => {
+    const files = [bigSession('a', 1), bigSession('bad', 1), bigSession('c', 1)];
+    vi.spyOn(provider, 'findAllSessions').mockReturnValue(files);
+    const create = provider.createReader.bind(provider);
+    vi.spyOn(provider, 'createReader').mockImplementation((sessionPath, options) => {
+      const reader = create(sessionPath, options);
+      if (sessionPath.endsWith('bad.jsonl')) {
+        reader.readNewBounded = () => {
+          throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+        };
+      }
+      return reader;
+    });
+    const adapter = createProviderSessionAdapterV1(provider);
+    const sessions = await adapter.discover('/work');
+    expect(sessions.map((session) => session.identity.sessionId)).toEqual(['a', 'bad', 'c']);
+  });
+
   it('skips watch polls while a read is still in flight', async () => {
     const file = bigSession('w', 1);
     const adapter = createProviderSessionAdapterV1(provider, { pollIntervalMs: 5 });

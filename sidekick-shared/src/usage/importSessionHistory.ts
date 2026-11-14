@@ -21,6 +21,7 @@ import type {
   SessionProviderBase,
   SessionProviderDiagnostic,
 } from '../providers/types';
+import { yieldToEventLoop } from '../providers/readerDrain';
 import { listSessionPreviewsAsync } from '../sessionPreviews';
 import { readSessionFileStatsAsync } from '../sessionStats';
 import type { SessionSummary } from '../types/historicalData';
@@ -70,10 +71,6 @@ export interface ImportSessionHistoryResult {
   diagnostics: SessionProviderDiagnostic[];
   /** Set when `signal` stopped the import before every listed file was handled. */
   aborted?: true;
-}
-
-function yieldToEventLoop(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
 }
 
 function emptyResult(): ImportSessionHistoryResult {
