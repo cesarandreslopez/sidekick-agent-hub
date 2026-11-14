@@ -127,12 +127,12 @@ function readActivitySettings(): ActivityMapSettings {
   }
 }
 
-/** Payload of `SessionMonitor.onSessionReset`. */
 /** Lets other work (timers, UI, other extensions) run between read steps. */
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+/** Payload of `SessionMonitor.onSessionReset`. */
 export interface SessionResetEvent {
   /** The session file, which the monitor keeps following. */
   sessionPath: string;
