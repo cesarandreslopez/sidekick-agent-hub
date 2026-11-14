@@ -128,6 +128,11 @@ function readActivitySettings(): ActivityMapSettings {
 }
 
 /** Payload of `SessionMonitor.onSessionReset`. */
+/** Lets other work (timers, UI, other extensions) run between read steps. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 export interface SessionResetEvent {
   /** The session file, which the monitor keeps following. */
   sessionPath: string;
@@ -322,13 +327,35 @@ export class SessionMonitor implements vscode.Disposable {
   private readonly MAX_ASSISTANT_TEXTS = 200;
   private readonly MAX_ASSISTANT_TEXT_LENGTH = 500;
 
-  /** True while replaying historical events during initial session load */
-  private _isReplaying = false;
+  /**
+   * Replays in progress (initial load, or a rebuild after the reader started
+   * over). A count rather than a flag: an interrupted replay can still be
+   * winding down when the next one starts, and must not end it.
+   */
+  private replayDepth = 0;
+
+  /** True while replaying historical events (notifications stay silent). */
+  private get _isReplaying(): boolean {
+    return this.replayDepth > 0;
+  }
 
   /** Whether the monitor is replaying historical events (initial load) */
   get isReplaying(): boolean {
-    return this._isReplaying;
+    return this.replayDepth > 0;
   }
+
+  /**
+   * Bytes per step when a session is read in steps (initial replay, a large
+   * catch-up), with a yield to the event loop between steps so reading a
+   * long session never blocks the extension host. Tests lower it.
+   */
+  static INITIAL_REPLAY_CHUNK_BYTES = 512 * 1024;
+
+  /** Token of the stepped read in progress; `null` when none is. */
+  private activeDrain: number | null = null;
+  private drainCounter = 0;
+  /** A file change arrived during a stepped read; handled once it ends. */
+  private changeDeferred = false;
 
   /** Plan state tracking */
   private planState: PlanState | null = null;
@@ -1844,10 +1871,16 @@ export class SessionMonitor implements vscode.Disposable {
     if (this.stopped) return;
     this.stopped = true;
     this.lifecycleGeneration++;
-    // Save final snapshot before teardown
-    if (this.sessionId && this.reader) {
+    // Save final snapshot before teardown. Not during a stepped read: its
+    // state matches no resume position yet (a Codex reader may still be
+    // re-parsing the prefix of a restored snapshot), and the snapshot taken
+    // before it began stays valid.
+    if (this.sessionId && this.reader && this.activeDrain === null) {
       this.persistSnapshot();
     }
+    // A stepped read in progress stops at its next step.
+    this.activeDrain = null;
+    this.changeDeferred = false;
 
     if (this.sessionPath) {
       this.eventLogger?.endSession();
@@ -1937,36 +1970,101 @@ export class SessionMonitor implements vscode.Disposable {
    * file position for incremental reads.
    */
   private async readInitialContent(): Promise<void> {
-    if (!this.sessionPath || !this.reader) {
+    const reader = this.reader;
+    if (!this.sessionPath || !reader) {
       return;
     }
 
-    this._isReplaying = true;
-    this.activity.beginReplay();
-    this._onReplayStateChange.fire(true);
+    const generation = this.lifecycleGeneration;
+    const token = this.claimDrain();
+    this.beginReplay();
     try {
-      const events = this.reader.readNew();
-      // A restored snapshot's position no longer fits the file (it shrank
-      // since): the reader started over, so drop the restored state too.
-      if (this.reader.wasTruncated()) {
-        this.logReaderReset('while resuming');
-        this.resetSessionProcessingState();
+      let count = 0;
+      // In steps, yielding between them: a long session never blocks the
+      // extension host while it is replayed.
+      for (;;) {
+        const step = this.readStep(reader);
+        // A restored snapshot's position no longer fits the file (it shrank
+        // since), or the file was replaced mid-replay: the reader started
+        // over, so drop what was built from the old content too.
+        if (reader.wasTruncated()) {
+          this.logReaderReset('while resuming');
+          this.resetSessionProcessingState();
+          count = 0;
+        }
+        count += step.events.length;
+        for (const event of step.events) {
+          this.handleEvent(event);
+        }
+        if (step.done) break;
+        await yieldToEventLoop();
+        if (this.drainAborted(token, generation, reader)) {
+          log('Initial replay interrupted (the monitor stopped or moved to another session)');
+          return;
+        }
       }
-      log(`Reading initial content: ${events.length} events`);
-      for (const event of events) {
-        this.handleEvent(event);
-      }
+      log(`Reading initial content: ${count} events`);
       log(
-        `Initial content parsed: ${this.reader.getPosition()} position, stats: input=${this.stats.totalInputTokens}, output=${this.stats.totalOutputTokens}`,
+        `Initial content parsed: ${reader.getPosition()} position, stats: input=${this.stats.totalInputTokens}, output=${this.stats.totalOutputTokens}`,
       );
     } catch (error) {
       logError('Failed to read initial session content', error);
       throw error;
     } finally {
-      this._isReplaying = false;
-      this.activity.endReplay();
-      this._onReplayStateChange.fire(false);
+      this.endReplay();
+      this.releaseDrain(token);
     }
+  }
+
+  /**
+   * One step of a read: at most {@link SessionMonitor.INITIAL_REPLAY_CHUNK_BYTES},
+   * or the whole unread range for a reader that cannot read in steps (OpenCode).
+   */
+  private readStep(reader: SessionReader): { events: SessionEvent[]; done: boolean } {
+    if (typeof reader.readNewBounded === 'function') {
+      return reader.readNewBounded(SessionMonitor.INITIAL_REPLAY_CHUNK_BYTES);
+    }
+    return { events: reader.readNew(), done: true };
+  }
+
+  /** Starts a stepped read; a newer one makes an older one stop at its next step. */
+  private claimDrain(): number {
+    const token = ++this.drainCounter;
+    this.activeDrain = token;
+    return token;
+  }
+
+  /** Ends a stepped read and handles a file change that arrived during it. */
+  private releaseDrain(token: number): void {
+    if (this.activeDrain !== token) return;
+    this.activeDrain = null;
+    if (this.changeDeferred) {
+      this.changeDeferred = false;
+      if (!this.stopped && this.reader) this.handleFileChange();
+    }
+  }
+
+  /** Whether a stepped read must stop: superseded, stopped, or another session or reader. */
+  private drainAborted(token: number, generation: number, reader: SessionReader): boolean {
+    return (
+      this.activeDrain !== token ||
+      this.stopped ||
+      generation !== this.lifecycleGeneration ||
+      this.reader !== reader
+    );
+  }
+
+  private beginReplay(): void {
+    this.replayDepth += 1;
+    this.activity.beginReplay();
+    if (this.replayDepth === 1) this._onReplayStateChange.fire(true);
+  }
+
+  private endReplay(): void {
+    if (this.replayDepth === 0) return;
+    this.replayDepth -= 1;
+    this.activity.endReplay();
+    if (this.replayDepth === 0) this._onReplayStateChange.fire(false);
   }
 
   /**
@@ -2220,10 +2318,16 @@ export class SessionMonitor implements vscode.Disposable {
     if (!this.sessionPath || !this.reader) {
       return;
     }
+    if (this.activeDrain !== null) {
+      // A stepped read is in progress; it reads this change or hands it back.
+      this.changeDeferred = true;
+      return;
+    }
+    const reader = this.reader;
 
     try {
       // Check if file still exists
-      if (!this.reader.exists()) {
+      if (!reader.exists()) {
         log('Session file deleted, entering fast discovery mode...');
         this.eventLogger?.endSession();
         this._onSessionEnd.fire();
@@ -2235,9 +2339,16 @@ export class SessionMonitor implements vscode.Disposable {
         return;
       }
 
-      const newEvents = this.reader.readNew();
+      // The first step runs at once, so an ordinary append is handled
+      // synchronously; a large catch-up continues in yielding steps.
+      const step = this.readStep(reader);
+      if (!step.done) {
+        void this.continueFileChange(reader, step);
+        return;
+      }
+      const newEvents = step.events;
 
-      if (this.reader.wasTruncated()) {
+      if (reader.wasTruncated()) {
         // The file was truncated, rewritten, or replaced and the reader
         // started over: these events are the whole session again.
         this.replayAfterReaderReset(newEvents);
@@ -2257,6 +2368,59 @@ export class SessionMonitor implements vscode.Disposable {
     } catch (error) {
       logError('Error reading session file changes', error);
       // Don't throw - continue monitoring
+    }
+  }
+
+  /**
+   * Handles a file change too large for one step (a long catch-up, or the
+   * whole file again after the reader started over), yielding between
+   * steps. A reset at any step rebuilds silently, as
+   * {@link replayAfterReaderReset} does, through the end of the read.
+   */
+  private async continueFileChange(
+    reader: SessionReader,
+    first: { events: SessionEvent[]; done: boolean },
+  ): Promise<void> {
+    const generation = this.lifecycleGeneration;
+    const token = this.claimDrain();
+    let resetReason: JsonlTailResetReason | null = null;
+    let replaying = false;
+    let sawEvents = false;
+    try {
+      let step = first;
+      for (;;) {
+        if (reader.wasTruncated()) {
+          resetReason = reader.lastReset?.()?.reason ?? 'truncated';
+          this.logReaderReset('while monitoring');
+          this.resetSessionProcessingState();
+          if (!replaying) {
+            this.beginReplay();
+            replaying = true;
+          }
+        }
+        if (step.events.length > 0) sawEvents = true;
+        for (const event of step.events) {
+          this.handleEvent(event);
+        }
+        if (step.done) break;
+        await yieldToEventLoop();
+        if (this.drainAborted(token, generation, reader)) return;
+        step = this.readStep(reader);
+      }
+      if (replaying) {
+        replaying = false;
+        this.endReplay();
+        this.finishResetReplay(resetReason ?? 'truncated');
+      }
+      if (sawEvents) {
+        void this.emitQuotaFromSession();
+        this.throttledSnapshotSave();
+      }
+    } catch (error) {
+      logError('Error reading session file changes', error);
+    } finally {
+      if (replaying) this.endReplay();
+      this.releaseDrain(token);
     }
   }
 
@@ -3974,18 +4138,19 @@ export class SessionMonitor implements vscode.Disposable {
     const reason = this.reader?.lastReset?.()?.reason ?? 'truncated';
     this.logReaderReset('while monitoring');
     this.resetSessionProcessingState();
-    this._isReplaying = true;
-    this.activity.beginReplay();
-    this._onReplayStateChange.fire(true);
+    this.beginReplay();
     try {
       for (const event of events) {
         this.handleEvent(event);
       }
     } finally {
-      this._isReplaying = false;
-      this.activity.endReplay();
-      this._onReplayStateChange.fire(false);
+      this.endReplay();
     }
+    this.finishResetReplay(reason);
+  }
+
+  /** Checkpoints the rebuilt state and tells views to resync. */
+  private finishResetReplay(reason: JsonlTailResetReason): void {
     this.persistSnapshot();
     this.lastSnapshotSaveTime = Date.now();
     if (this.sessionPath) {
