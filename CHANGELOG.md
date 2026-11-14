@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.1] - 2026-11-13
+
+### Fixed
+
+- **Reading a large session froze whatever shared its event loop.** The Claude Code and Codex session readers read a session's whole unread range, decoded it and parsed every line in one synchronous stretch. The CLI dashboard, the VS Code extension host, or any host using `sidekick-shared` stalled for as long as one session took: about 0.3 s for a 120 MB file, and up to about 0.8 s on real transcripts. Sessions are now read in 1 MiB steps, and every async path yields between steps:
+  - **Usage:** `sidekick daily`, `weekly`, `monthly`, `sessions` and `blocks`, and the CLI and VS Code billing blocks. On a 240 MB session the longest stall drops from 568 ms to 24 ms; on this project's real history, from 676 ms to 15 ms, with identical totals.
+  - **Deadlines stop inside a session.** `collectUsageEvents()`'s `bounds.deadlineMs` and `signal` used to be checked only between sessions, so one large session could run far past the deadline. They are now checked between steps. With the usage cache on, what was read is kept and the next call continues that session. Results and cursors still never contain part of a session.
+  - **CLI:** `sidekick import`, `sidekick search`, and the session reads of the dashboard and `sidekick map --follow`. On real data, search's longest stall drops from about 830 ms to under 50 ms with the same hits.
+  - **VS Code:** attaching to a long session, and rebuilding after a session file is replaced, replays it in steps, so the extension host no longer freezes. Session search and the history backfill stay responsive too.
+  - **Compressed Codex rollouts** (`.jsonl.zst`) are decompressed off the main thread.
+- **Faster session parsing.** Lines Sidekick doesn't keep (attachments, queue operations, request blobs) are no longer checked against every event schema. Collecting usage over real history took about 40% less time, with identical results.
+
+### Added
+
+- **`sidekick-shared`:**
+  - `SessionReader.readNewBounded(maxBytes)` reads a session in bounded steps (Claude Code and Codex readers).
+  - `SessionProviderBase.searchInSessionAsync()` streams a session search.
+  - `importSessionHistory({ signal })`.
+
 ## [0.33.0] - 2026-11-13
 
 ### Fixed

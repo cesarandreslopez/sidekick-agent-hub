@@ -5,6 +5,13 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.1] - 2026-11-13
+
+### Fixed
+
+- Attaching to a long session no longer freezes the extension host. Sidekick replays the session in steps and lets VS Code and other extensions run between them. The same goes for rebuilding after a session file is replaced, and for catching up on a large burst of new output.
+- The dashboard's billing block, session search and the history backfill read sessions in steps too, and usage collection takes about 40% less time with the same totals.
+
 ## [0.33.0] - 2026-11-13
 
 ### Added

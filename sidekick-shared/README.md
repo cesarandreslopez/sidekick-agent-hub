@@ -9,6 +9,7 @@ Types, parsers, providers, readers, formatters, aggregation, search, reporting, 
 
 ## Recent additions
 
+- **0.33.1: session reads never block the event loop for a whole file** — the Claude Code and Codex readers read in slices of at most 1 MiB, and `collectUsageEvents()`, `importSessionHistory()`, `searchSessions()` and the observed-session adapter read Claude Code and Codex sessions in 1 MiB steps with a yield between them. `collectUsageEvents()`'s `bounds.deadlineMs` and `signal` stop inside a session, and with the cache on the next call continues it from kept progress. New: `SessionReader.readNewBounded(maxBytes)`, `searchInSessionAsync()`, `importSessionHistory({ signal })`. `.jsonl.zst` rollouts decompress on the thread pool, and `extractSessionEvents()` parses a line with only its type's schema (same results, about 40% less time on real history).
 - **0.33.0: cache-write pricing, agent start folders, and leaner entries**
   - **Pricing:** cache writes on OpenAI-family models (GPT, o-series, Codex) are billed at the input rate when the write rate is zero or missing, so disjoint usage no longer prices them at $0 (Gemini, DeepSeek and GLM zero rates are unchanged). Codex `cache_write_input_tokens` is read on every path (session parsing, rollout readers, the follow watcher, `normalizeRawProviderUsage('codex')`) and billed at the model's write rate. New runtime tuples `COST_SOURCES`, `PRICING_PROVENANCES` and `MOVING_MODEL_ALIASES`, and `CostComponent.tokensUnknown`.
   - **Provider failures:** `model_unavailable` with the `choose_model` recovery action (not retryable); `decodeCodexErrorInfo()` keeps `httpStatusCode` on unknown variants; `PROVIDER_FAILURE_DIAGNOSIS_BOUNDS` is on the Zod-free `/providerFailure` entry.
@@ -689,13 +690,38 @@ const { events } = await collectUsageEvents({
   providers,
   since: '2026-09-01',
   workspacePath: '/path/to/repo',
-  signal: AbortSignal.timeout(30_000), // optional: stop before listing and between sessions
+  signal: AbortSignal.timeout(30_000), // optional: stop before listing, between sessions, and inside one
 });
 const priced = events.filter((event) => event.model !== SYNTHETIC_MODEL);
 ```
 
 On abort the promise rejects with the signal's reason (an `AbortError` by
 default); sessions read before the abort keep their cache entries.
+
+Each session is read in 1 MiB steps with a yield to the event loop between
+them, so a host that shares its loop with timers or a UI stays responsive
+while a large session is read. `bounds.deadlineMs` and `signal` are checked
+between those steps (0.33.1+), so they can stop a call inside one session.
+With the cache on, what was read is kept in that session's cache file, and
+the next call (pass the returned `cursor`, as `hasMore: true` asks) continues
+the session where it stopped. A session that was truncated, rewritten, or
+replaced in between starts over. A result never holds part of a session, and
+every call reads at least one complete line, so a loop over `hasMore` always
+moves forward. With `noCache`, the first session of a call is read to its
+end.
+
+```typescript
+import type { UsageEventsCursor } from 'sidekick-shared/node';
+
+let cursor: UsageEventsCursor | undefined; // persist it between calls
+for (;;) {
+  const result = await collectUsageEvents({ providers, cursor, bounds: { deadlineMs: 250 } });
+  keep(result.events, result.changed); // a session arrives whole, once it is read to its end
+  cursor = result.cursor;
+  if (!result.hasMore) break;
+  await new Promise((resolve) => setTimeout(resolve, 1_000)); // or on your next tick
+}
+```
 
 To cover several workspaces in one call, pass `workspacePaths` instead of
 `workspacePath`. Each root is realpath-resolved and, unless
@@ -747,7 +773,7 @@ for (const event of events) {
 }
 ```
 
-The cache is versioned (`USAGE_CACHE_VERSION` 4, files named `*.v4.json`); when the version changes, the first collection re-reads each session once. 0.33.0 keeps version 4, so a Codex session cached by 0.32.x shows no cache writes until it grows and is re-read. A cursor stored by another cache version returns every session once more, with `pricingChanged`.
+The cache is versioned (`USAGE_CACHE_VERSION` 4, files named `*.v4.json`); when the version changes, the first collection re-reads each session once. 0.33.0 keeps version 4, so a Codex session cached by 0.32.x shows no cache writes until it grows and is re-read. A cursor stored by another cache version returns every session once more, with `pricingChanged`. Since 0.33.1 a session a deadline or an abort stopped partway leaves a _partial_ entry in its cache file: progress to continue, never served as a result. Its fingerprint (`partial:…`) matches no session, so earlier v4 readers treat it as a miss.
 
 ### Detect the active session provider
 
@@ -1314,7 +1340,7 @@ const report = await runDoctor({ cwd: '/path/to/project', provider: 'codex' });
 console.log(matches, report.sessionProvider, report.checks);
 ```
 
-`projectPath` resolves the workspace canonically and takes precedence over the legacy `projectSlug`. Cancellation is checked between session reads; it does not interrupt an in-progress synchronous provider read. `HealthReport.sessionProvider` is optional for compatibility. `getSessionDiagnostics()` remains a Claude Code path diagnostic; use `runDoctor()` for provider-aware checks.
+`projectPath` resolves the workspace canonically and takes precedence over the legacy `projectSlug`. Cancellation is checked between sessions and, since 0.33.1, inside each one: the Claude Code and Codex providers scan a file with `searchInSessionAsync()` in 1 MiB chunks, and an abort returns the hits found so far. Providers without it (OpenCode) finish their synchronous read before the abort is seen. `HealthReport.sessionProvider` is optional for compatibility. `getSessionDiagnostics()` remains a Claude Code path diagnostic; use `runDoctor()` for provider-aware checks.
 
 ### Poll quota with backoff
 

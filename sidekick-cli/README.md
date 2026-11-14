@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.33.1: no freezes on large sessions** — the dashboard, `daily`/`weekly`/`monthly`/`sessions`, `blocks`, `dump --prompts`, `import`, `search` and `map --follow` read sessions in 1 MiB steps and let the event loop run between them, so the dashboard keeps redrawing and taking keys while a long session is read. Totals and search hits are unchanged, and usage collection takes about 40% less time.
 - **0.33.0: model-unavailable guidance, honest cache-write prices** — inference failures for a model that doesn't exist or isn't enabled for the account say so and ask you to choose another model. `daily`, `weekly`, `monthly`, `sessions`, `blocks` and the dashboard bill Codex cache writes at their own rate (GPT-6.x: 1.25× input), and OpenAI-family cache writes with no listed write rate at the input rate instead of $0.
 - **0.32.2: honest Top Failing Tools** — `sidekick stats` counts each session's failures once (the VS Code extension's error history repeated sessions, often several times too high), and leftover `*.tmp` files from interrupted store writes are cleaned up.
 - **0.32.1: long-context prices in usage reports** — `daily`, `weekly`, `monthly`, `sessions`, `blocks`, `dump --prompts` and the dashboard's billing block no longer bill a Codex token count that spans several calls at long-context rates (rollouts whose token counts carry only the running total, mostly older ones). The usage cache moves to `*.v4.json` and is rebuilt once.

@@ -5,6 +5,14 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.1] - 2026-11-13
+
+### Fixed
+
+- Reading a large session no longer freezes the dashboard. Sessions are read in 1 MiB steps with a pause for the event loop between them, so the dashboard keeps redrawing and taking keys while it reads.
+- The same applies to `daily`, `weekly`, `monthly`, `sessions`, `blocks`, `dump --prompts`, `import`, `search` and `map --follow`. Usage totals and search hits are unchanged. Usage collection over real history also takes about 40% less time.
+- Compressed Codex rollouts (`.jsonl.zst`) are decompressed off the main thread.
+
 ## [0.33.0] - 2026-11-13
 
 ### Added

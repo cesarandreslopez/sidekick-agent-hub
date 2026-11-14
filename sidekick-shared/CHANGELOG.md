@@ -5,6 +5,37 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.1] - 2026-11-13
+
+### Fixed
+
+- **Session reads no longer block the event loop for a whole file.** `ClaudeCodeReader` and `CodexReader` read the unread range in one `fs.readSync`, decoded it whole, and parsed every line synchronously. Async collectors therefore blocked their host for as long as one session took, and `collectUsageEvents()` checked `bounds.deadlineMs` only between sessions.
+  - **Readers:** `readNew()` reads in slices of at most 1 MiB, so neither the whole-range buffer, the decoded string nor a line array is ever held. It is still synchronous, with bounded peak memory and GC.
+  - **`collectUsageEvents()`** reads each session, and each Claude Code subagent transcript, in 1 MiB steps with a yield between them.
+    - `bounds.deadlineMs` and `signal` are checked between steps, so either can stop a call inside a session.
+    - With the cache on, the progress is kept in that session's cache file and the next call continues from it. Per transcript, it keeps the offset, the reader state, the file's identity and head digest, and the usage so far. A transcript that was truncated, rewritten or replaced in the meantime starts over.
+    - These partial entries are `*.v4.json` files with fingerprint `partial:<fingerprint>`. No session ever has that fingerprint, so 0.32.1–0.33.0 readers treat them as a miss. `USAGE_CACHE_VERSION` stays 4.
+    - Every call reads at least one complete line or finishes a session, so it always makes progress. A result or cursor never holds part of a session.
+    - With `noCache`, the first session of a call is read to its end. A later session the deadline stops is read again by the next call.
+    - An abort keeps progress the same way before it rejects, so a short `AbortSignal.timeout()` per call still gets through a large session.
+    - A Codex resume state is stored with `session_meta` trimmed to its identity fields.
+  - **`importSessionHistory()`** reads each session in steps and aggregates events as they arrive.
+  - **The observed-session adapter:** `createProviderSessionAdapterV1().read()`, behind `ObservedSessionCollector`, reads in steps. `discover()` reads one session at a time, and the `watch` poll skips while a read is in flight.
+  - **`searchSessions()`** streams each file through `searchInSessionAsync()` (Claude Code and Codex). Hits and their order are the same as before.
+  - **`.jsonl.zst` decompression:** `readRolloutBufferAsync()`, and through it `openRolloutReadHandle()`, `collectPromptHistory()`, `collectSessionPromptHistory()` and `findToolCallOrigins()`, decompresses with `zlib.zstdDecompress` on the libuv thread pool. The compressed rollout reader parses its content in steps.
+- **Parsing cost.** `extractSessionEvents()` parses a line with only the schema of its `type`, with results identical to `sessionEventSchema`. Lines no member accepts (`attachment`, `queue-operation`, `api-request-blob`, …) no longer fail every member first. `JsonlParser.processChunk()` scans only the new chunk, so a long line fed in pieces stays linear. On real history, `collectUsageEvents({ noCache: true })` took about 40% less time with identical totals.
+- **`CodexReader` callbacks.** The reader hands context window, rate limits and last usage to its callbacks once per completed read.
+
+### Added
+
+- **`SessionReader.readNewBounded?(maxBytes)`** (optional; Claude Code, Codex and compressed Codex readers).
+  - It reads at most `maxBytes` more, and consecutive calls form a drain that ends (`done: true`) at the size the drain started with.
+  - Partial lines carry over, so a drain's events equal one `readNew()`.
+  - Any step can restart on a truncated, rewritten or replaced file (check `wasTruncated()` after each step).
+  - A missing file is `{ events: [], done: true }`; other read errors throw.
+- **`SessionProviderBase.searchInSessionAsync?()`** gives `searchInSession()`'s hits through a chunked, yielding scan. It takes `{ signal }` and resolves with the hits so far on abort.
+- **`importSessionHistory({ signal })`** stops between sessions and between read steps. It resolves with the counts so far and `aborted: true`, and leaves the interrupted session unapplied and unmarked.
+
 ## [0.33.0] - 2026-11-13
 
 ### Fixed
