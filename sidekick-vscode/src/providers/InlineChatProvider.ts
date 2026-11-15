@@ -2,7 +2,7 @@
  * @fileoverview InlineChatProvider - Inline chat UI orchestration.
  *
  * Manages QuickInput for user queries, progress UI for AI generation,
- * and WorkspaceEdit with diff preview for code changes.
+ * and WorkspaceEdit with refactor preview for code changes.
  *
  * @module InlineChatProvider
  */
@@ -14,6 +14,42 @@ import { log, logError } from '../services/Logger';
 import { showProviderFailure } from '../utils/providerRetryPrompt';
 
 /**
+ * Where an edit request was made. Captured before the AI call, because the
+ * user can move the cursor or keep typing while the response is generated.
+ */
+export interface EditTarget {
+  document: vscode.TextDocument;
+  range: vscode.Range;
+  version: number;
+}
+
+/**
+ * Finds where a suggested edit should land now.
+ *
+ * Returns the captured range when the document is unchanged, or when the
+ * originally selected text is still at that range. Otherwise it re-locates
+ * the selected text when it occurs exactly once. Returns `undefined` when the
+ * edit can no longer be placed safely (including an insertion point in a
+ * document that has since changed).
+ */
+export function locateEditRange(
+  target: EditTarget,
+  selectedText: string,
+): vscode.Range | undefined {
+  const { document } = target;
+  if (document.version === target.version) return target.range;
+  if (!selectedText) return undefined;
+  if (document.getText(target.range) === selectedText) return target.range;
+  const text = document.getText();
+  const first = text.indexOf(selectedText);
+  if (first === -1 || text.indexOf(selectedText, first + 1) !== -1) return undefined;
+  return new vscode.Range(
+    document.positionAt(first),
+    document.positionAt(first + selectedText.length),
+  );
+}
+
+/**
  * InlineChatProvider - Orchestrates inline chat interactions.
  *
  * Shows QuickInput for user queries, sends to InlineChatService,
@@ -22,7 +58,6 @@ import { showProviderFailure } from '../utils/providerRetryPrompt';
 export class InlineChatProvider implements vscode.Disposable {
   private abortController: AbortController | null = null;
   private quickAskChannel: vscode.OutputChannel | undefined;
-  private suggestedCodeChannel: vscode.OutputChannel | undefined;
 
   constructor(private inlineChatService: InlineChatService) {}
 
@@ -61,11 +96,16 @@ export class InlineChatProvider implements vscode.Disposable {
 
     // Build request context
     const request = this.buildRequest(editor, query);
+    const target: EditTarget = {
+      document: editor.document,
+      range: new vscode.Range(editor.selection.start, editor.selection.end),
+      version: editor.document.version,
+    };
 
     log(`Inline chat: "${query.substring(0, 50)}..." (${editor.document.languageId})`);
 
     // Process with progress UI
-    await this.processWithProgress(editor, request);
+    await this.processWithProgress(editor, request, target);
   }
 
   /**
@@ -113,6 +153,7 @@ export class InlineChatProvider implements vscode.Disposable {
   private async processWithProgress(
     editor: vscode.TextEditor,
     request: InlineChatRequest,
+    target?: EditTarget,
   ): Promise<void> {
     // Cancel any previous request
     this.abortController?.abort();
@@ -141,7 +182,7 @@ export class InlineChatProvider implements vscode.Disposable {
         logError('Inline chat failed', new Error(result.error));
         // Retry sends the same query with the context captured for this request.
         await showProviderFailure(`Inline chat failed: ${result.error}`, result.cause, () =>
-          this.processWithProgress(editor, request),
+          this.processWithProgress(editor, request, target),
         );
       }
       return;
@@ -156,7 +197,7 @@ export class InlineChatProvider implements vscode.Disposable {
     if (result.response.mode === 'question') {
       await this.handleQuestionResponse(result.response.text);
     } else if (result.response.mode === 'edit' && result.response.code) {
-      await this.handleEditResponse(editor, request, result.response.code);
+      await this.handleEditResponse(editor, request, result.response.code, target);
     }
   }
 
@@ -165,20 +206,11 @@ export class InlineChatProvider implements vscode.Disposable {
    *
    * Created lazily and reused. Creating one per invocation left a duplicate
    * entry in the Output dropdown for every Quick Ask, and they were never
-   * disposed.
+   * disposed. A plain (non-log) channel, so answers carry no timestamp or
+   * level prefix and are never filtered by the log level.
    */
   private getQuickAskChannel(): vscode.OutputChannel {
-    return (this.quickAskChannel ??= vscode.window.createOutputChannel('Sidekick: Quick Ask', {
-      log: true,
-    }));
-  }
-
-  /** Output channel for suggested-code previews. Created lazily and reused. */
-  private getSuggestedCodeChannel(): vscode.OutputChannel {
-    return (this.suggestedCodeChannel ??= vscode.window.createOutputChannel(
-      'Sidekick: Suggested Code',
-      { log: true },
-    ));
+    return (this.quickAskChannel ??= vscode.window.createOutputChannel('Sidekick: Quick Ask'));
   }
 
   /**
@@ -210,72 +242,86 @@ export class InlineChatProvider implements vscode.Disposable {
   }
 
   /**
-   * Handle edit response - apply WorkspaceEdit with diff preview.
+   * Handle edit response.
+   *
+   * Small changes ask Apply / Preview / Cancel; large changes always open the
+   * refactor preview. Either way the edit lands where the request was made,
+   * not wherever the selection is when the response arrives.
    */
   private async handleEditResponse(
     editor: vscode.TextEditor,
     request: InlineChatRequest,
     newCode: string,
+    target?: EditTarget,
   ): Promise<void> {
-    const document = editor.document;
-    const selection = editor.selection;
+    const editTarget: EditTarget = target ?? {
+      document: editor.document,
+      range: new vscode.Range(editor.selection.start, editor.selection.end),
+      version: editor.document.version,
+    };
 
-    // Determine range to replace
-    let range: vscode.Range;
-    if (selection.isEmpty) {
-      // No selection - insert at cursor
-      range = new vscode.Range(selection.active, selection.active);
-    } else {
-      // Replace selection
-      range = selection;
-    }
-
-    // Create WorkspaceEdit
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(document.uri, range, newCode);
-
-    // Apply edit - VS Code will show diff preview for large changes
-    // For small changes, apply directly
     const isLargeChange =
       newCode.split('\n').length > 5 || request.selectedText.split('\n').length > 5;
 
     if (isLargeChange) {
-      // Show diff preview via refactor preview
-      // Note: WorkspaceEditMetadata is not fully documented but works
-      const success = await vscode.workspace.applyEdit(edit, {
-        isRefactoring: true,
-      });
+      await this.applySuggestion(editTarget, request.selectedText, newCode, true);
+      return;
+    }
 
-      if (success) {
-        log('Edit applied via refactor preview');
-      } else {
-        vscode.window.showErrorMessage('Failed to apply edit');
-      }
-    } else {
-      // Small change - apply directly with confirmation
-      const confirm = await vscode.window.showInformationMessage(
-        'Apply AI-suggested change?',
-        { modal: false },
-        'Apply',
-        'Preview',
-        'Cancel',
+    const choice = await vscode.window.showInformationMessage(
+      'Apply AI-suggested change?',
+      { modal: false },
+      'Apply',
+      'Preview',
+      'Cancel',
+    );
+    if (choice === 'Apply' || choice === 'Preview') {
+      await this.applySuggestion(editTarget, request.selectedText, newCode, choice === 'Preview');
+    }
+  }
+
+  /**
+   * Applies a suggestion at the request's range, re-checked at apply time.
+   *
+   * With `preview`, the edit is marked as needing confirmation, so VS Code
+   * opens the refactor preview and the user applies or discards it there.
+   */
+  private async applySuggestion(
+    target: EditTarget,
+    selectedText: string,
+    newCode: string,
+    preview: boolean,
+  ): Promise<void> {
+    const range = locateEditRange(target, selectedText);
+    if (!range) {
+      const action = await vscode.window.showWarningMessage(
+        'The file changed while Sidekick was generating, so the suggestion was not applied.',
+        'Copy Suggestion',
       );
-
-      if (confirm === 'Apply') {
-        const success = await vscode.workspace.applyEdit(edit);
-        if (!success) {
-          vscode.window.showErrorMessage('Failed to apply edit');
-        }
-      } else if (confirm === 'Preview') {
-        // Show the code in output channel
-        const outputChannel = this.getSuggestedCodeChannel();
-        outputChannel.clear();
-        outputChannel.appendLine('Suggested replacement:');
-        outputChannel.appendLine('---');
-        outputChannel.appendLine(newCode);
-        outputChannel.appendLine('---');
-        outputChannel.show(true);
+      if (action === 'Copy Suggestion') {
+        await vscode.env.clipboard.writeText(newCode);
       }
+      return;
+    }
+
+    const edit = new vscode.WorkspaceEdit();
+    if (preview) {
+      edit.replace(target.document.uri, range, newCode, {
+        needsConfirmation: true,
+        label: 'Sidekick Quick Ask',
+      });
+    } else {
+      edit.replace(target.document.uri, range, newCode);
+    }
+
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (applied) {
+      log(preview ? 'Quick Ask edit applied from the refactor preview' : 'Quick Ask edit applied');
+    } else if (preview) {
+      // Discarding the refactor preview resolves false; that is a choice, not a failure.
+      log('Quick Ask suggestion not applied');
+    } else {
+      vscode.window.showErrorMessage('Failed to apply edit');
     }
   }
 
@@ -286,8 +332,6 @@ export class InlineChatProvider implements vscode.Disposable {
     this.abortController?.abort();
     this.abortController = null;
     this.quickAskChannel?.dispose();
-    this.suggestedCodeChannel?.dispose();
     this.quickAskChannel = undefined;
-    this.suggestedCodeChannel = undefined;
   }
 }
