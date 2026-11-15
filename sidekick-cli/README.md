@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.33.2: a dashboard that fits and keeps your scrollback** — the dashboard and `map --follow` run in the terminal's alternate screen, so your scrollback comes back when you quit. The panel tab bar shortens to abbreviations, then digits (80×24 fits), PgUp/PgDn/Home/End scroll, the filter row shows that `Tab` cycles its modes, the detail tab stays put between items, Plans' `S` source filter works even on an empty list, and `NO_COLOR` is honoured. Token counts read `12.3k`, `4.5M` and `1.2B`, Kanban and task statuses read "In Progress", and `sidekick tasks --status in_progress` works.
 - **0.33.1: no freezes on large sessions** — the dashboard, `daily`/`weekly`/`monthly`/`sessions`, `blocks`, `dump --prompts`, `import`, `search` and `map --follow` read sessions in 1 MiB steps and let the event loop run between them, so the dashboard keeps redrawing and taking keys while a long session is read. Totals and search hits are unchanged, and usage collection takes about 40% less time.
 - **0.33.0: model-unavailable guidance, honest cache-write prices** — inference failures for a model that doesn't exist or isn't enabled for the account say so and ask you to choose another model. `daily`, `weekly`, `monthly`, `sessions`, `blocks` and the dashboard bill Codex cache writes at their own rate (GPT-6.x: 1.25× input), and OpenAI-family cache writes with no listed write rate at the input rate instead of $0.
 - **0.32.2: honest Top Failing Tools** — `sidekick stats` counts each session's failures once (the VS Code extension's error history repeated sessions, often several times too high), and leftover `*.tmp` files from interrupted store writes are cleaned up.
@@ -210,7 +211,7 @@ Capture tasks, knowledge notes, and decisions from the terminal without opening 
 | `note add <content>`         | `--file <path>`, `--title <title>`, `--type <type>` (`gotcha`/`pattern`/`guideline`/`tip`, default `tip`), `--importance <level>` (`critical`/`high`/`medium`/`low`, default `medium`), `--tags <csv>`; `--file` defaults to `.` |
 | `decision add <description>` | `--rationale <text>`, `--chosen <text>`, `--alternatives <csv>`, `--tags <csv>`                                                                                                                                                  |
 
-The global flag `--project` also applies.
+The global flag `--project` also applies. List tasks with `sidekick tasks --status pending`, `in_progress`, `completed` or `all` (the default).
 
 ## Activity Map
 
@@ -490,17 +491,17 @@ The legacy `sidekick account --add | --login | --switch | --switch-to <id> | --r
 
 The dashboard is a two-pane terminal UI. The left side shows a navigable list, the right side shows details for the selected item.
 
-| #   | Panel         | Description                                                                                            |
-| --- | ------------- | ------------------------------------------------------------------------------------------------------ |
-| 1   | **Sessions**  | Browse recent sessions with detail tabs: Summary, Timeline, Mind Map, Tools, Files, Agents, AI Summary |
-| 2   | **Tasks**     | Persisted tasks plus the live session's tasks and subagents, in progress first                         |
-| 3   | **Kanban**    | Task board with status columns                                                                         |
-| 4   | **Notes**     | Knowledge notes attached to files                                                                      |
-| 5   | **Decisions** | Architectural decisions from sessions                                                                  |
-| 6   | **Plans**     | Agent plans persisted in the project store from Claude Code, OpenCode, and Codex sessions              |
-| 7   | **Events**    | Live event stream with type badges, timestamps, and keyword-highlighted summaries                      |
-| 8   | **Charts**    | Tool frequency bars, event distribution, activity heatmap, and pattern analysis                        |
-| 9   | **Map**       | The live activity map and its feed; Insights tab with time, errors, context weight and patterns        |
+| #   | Panel         | Description                                                                                                             |
+| --- | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Sessions**  | Browse recent sessions with detail tabs: Summary, Timeline, Mind Map, Tools, Files, Agents, AI Summary                  |
+| 2   | **Tasks**     | Persisted tasks plus the live session's tasks and subagents, in progress first                                          |
+| 3   | **Kanban**    | Task board with Pending, In Progress and Completed columns                                                              |
+| 4   | **Notes**     | Knowledge notes attached to files; titled notes show their title, and needs-review, stale and obsolete notes are marked |
+| 5   | **Decisions** | Architectural decisions from sessions                                                                                   |
+| 6   | **Plans**     | Agent plans persisted in the project store from Claude Code, OpenCode, and Codex sessions                               |
+| 7   | **Events**    | Live event stream with type badges, timestamps, and keyword-highlighted summaries                                       |
+| 8   | **Charts**    | Tool frequency bars, event distribution, activity heatmap, and pattern analysis                                         |
+| 9   | **Map**       | The live activity map and its feed; Insights tab with time, errors, context weight and patterns                         |
 
 The Agents tab and mind map list Claude Code and Codex subagents with their state: running, done, `finished (no report)` (transcript ended cleanly and quiet for 2 minutes), `ended` (session idle for more than 6 hours), `stopped`, `killed` or `failed`. The status bar shows Claude Code's permission mode when it is not `default` (`BYPASS`, `EDITS`, `PLAN`, `AUTO`, `DONT-ASK`), and the Summary tab shows it as a Permission line.
 
@@ -518,17 +519,17 @@ Press `z` to cycle through layout modes:
 
 ### Navigation
 
-| Key             | Action                                         |
-| --------------- | ---------------------------------------------- |
-| `1`–`9`         | Switch panel                                   |
-| `Tab`           | Toggle focus between side list and detail pane |
-| `j` / `↓`       | Next item (side) or scroll down (detail)       |
-| `k` / `↑`       | Previous item (side) or scroll up (detail)     |
-| `g` / `Home`    | Jump to first item / scroll to top             |
-| `G` / `End`     | Jump to last item / scroll to bottom           |
-| `PgDn` / `PgUp` | Page the side list, detail pane or overlay     |
-| `h` / `←`       | Return focus to side list (from detail)        |
-| `Enter`         | Move focus to detail pane (from side list)     |
+| Key             | Action                                             |
+| --------------- | -------------------------------------------------- |
+| `1`–`9`         | Switch panel                                       |
+| `Tab`           | Toggle focus between side list and detail pane     |
+| `j` / `↓`       | Next item (side) or scroll down (detail)           |
+| `k` / `↑`       | Previous item (side) or scroll up (detail)         |
+| `g` / `Home`    | Jump to first item / scroll to top                 |
+| `G` / `End`     | Jump to last item / scroll to bottom               |
+| `PgDn` / `PgUp` | Page the side list, detail pane, help or changelog |
+| `h` / `←`       | Return focus to side list (from detail)            |
+| `Enter`         | Move focus to detail pane (from side list)         |
 
 ### Detail Tabs
 
@@ -564,10 +565,10 @@ While pinned, the status bar shows `PINNED`; when a newer session starts, a toas
 
 ### Plans Panel
 
-| Key | Action                                                         |
-| --- | -------------------------------------------------------------- |
-| `S` | Cycle plan source filter: all → claude-code → opencode → codex |
-| `c` | Copy the selected plan's markdown to the clipboard             |
+| Key | Action                                                                                         |
+| --- | ---------------------------------------------------------------------------------------------- |
+| `S` | Cycle plan source filter: all → claude-code → opencode → codex                                 |
+| `c` | Copy the selected plan's markdown to the clipboard (works over SSH via OSC 52, and on Windows) |
 
 ### General
 
@@ -575,12 +576,12 @@ While pinned, the status bar shows `PINNED`; when a newer session starts, a toas
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `z`            | Cycle layout mode                                                                                                                                               |
 | `/`            | Open filter overlay (supports substring, fuzzy, regex, and date modes — Tab cycles modes)                                                                       |
-| `x`            | Open context menu for selected item                                                                                                                             |
+| `x`            | Open the actions menu for the selected item (only Plans has actions; other panels say so)                                                                       |
 | `M`            | Toggle mouse capture (turn off to restore terminal text selection/copy)                                                                                         |
 | `A`            | Open the accounts overlay (`Enter` switches, `u` undoes the last switch; `a`, `l` and `s` show the `sidekick accounts add` / `login` / `shell` commands to run) |
 | `?`            | Show help                                                                                                                                                       |
 | `R`            | Refresh persisted project data (tasks, notes, decisions, plans) from disk                                                                                       |
-| `r`            | Generate HTML report for the current session                                                                                                                    |
+| `r`            | Generate an HTML report for the current session; a toast names the file (or the error)                                                                          |
 | `V`            | Show version / changelog                                                                                                                                        |
 | `Esc`          | Clear the filter, close an overlay, or return focus to the side list                                                                                            |
 | `q` / `Ctrl+C` | Quit                                                                                                                                                            |

@@ -43,9 +43,9 @@ The dashboard organizes information into five collapsible groups:
 
 ![Performance & Cost — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness](../images/performance-and-cost.png)
 
-- **Analytics** — Tool Frequency chart, Event Distribution doughnut, Activity Heatmap grid, and Event Patterns with template clustering
+- **Analytics** — Tool Frequency chart, Frequent Words doughnut (common words in event summaries), Activity Heatmap grid, and Event Patterns with template clustering
 
-![Analytics — Tool Frequency, Event Distribution, Activity Heatmap, Event Patterns](../images/analytics_vscode_extension.png)
+![Analytics — Tool Frequency, Frequent Words, Activity Heatmap, Event Patterns](../images/analytics_vscode_extension.png)
 
 - **Tasks & Recovery** — Task Performance, Recovery Patterns
 - **Decisions** — searchable list of decisions extracted from the session

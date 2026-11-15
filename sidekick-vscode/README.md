@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.33.2: new shortcuts for two commands (breaking), and a UI pass** — **Trigger Completion** is now `Ctrl+K Ctrl+Shift+Space` and **Transform Selected Code** `Ctrl+K Ctrl+Shift+M` (`Cmd+K Cmd+Shift+…` on macOS), so they no longer shadow Trigger Parameter Hints and View: Toggle Problems; to keep the old keys, rebind them in Keyboard Shortcuts (search "sidekick"). Completions are on demand and now start at once (`sidekick.debounceMs` defaults to `0`), and Transform and Generate Documentation skip read-only editors. Dashboard panels stay live while a session runs, the status pill reads **Live**, **Viewing** or **No session**, the Kanban board's **Clear Carried Over** asks first, the Mind Map gains a **Follow** toggle, and commands that need session monitoring offer to turn it on instead of failing.
 - **0.33.1: attaching to a long session no longer freezes the extension host** — Sidekick replays the session in steps so VS Code and other extensions keep running, and does the same when it rebuilds after a session file is replaced or catches up on a large burst of output. The dashboard's billing block, session search and the history backfill read sessions in steps too. Usage collection takes about 40% less time with the same totals.
 - **0.33.0: model-unavailable guidance, honest cache-write prices** — a request for a model that doesn't exist or isn't enabled for the account says so and points you to Sidekick's model settings, with no retry offered. The dashboard bills Codex cache writes at their own rate (GPT-6.x: 1.25× input), and OpenAI-family cache writes with no listed write rate at the input rate instead of $0.
 - **0.32.2: honest Failing Tools, no stray temp files** — the dashboard's **Failing Tools** card counts each session once (it counted a session again every time the monitor ended it, often several times too high). Closing a window now waits for the session's history writes, and `*.tmp` files that interrupted writes left in the config folder are cleaned up.
@@ -81,7 +82,7 @@ Works with any Claude plan that includes Claude Code: Pro, Max, or Ultra.
    claude auth login
    ```
 2. Install the extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) or [Open VSX](https://open-vsx.org/extension/cesarandreslopez/sidekick-for-max)
-3. Start typing — completions appear as ghost text
+3. Press `Ctrl+K Ctrl+Shift+Space` (`Cmd+K Cmd+Shift+Space` on macOS) — the completion appears as ghost text
 
 ### [Claude API](https://cesarandreslopez.github.io/sidekick-agent-hub/providers/claude-api/)
 
@@ -108,7 +109,7 @@ Works with any Claude plan that includes Claude Code: Pro, Max, or Ultra.
 
 Let AI handle the mechanical work — boilerplate, commit messages, docs, PR descriptions — so you focus on design and logic.
 
-- **[Inline Completions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/)** — context-aware suggestions that understand your project, not just syntax (`Ctrl+K Ctrl+Shift+Space` to trigger)
+- **[Inline Completions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/)** — context-aware suggestions on request that understand your project, not just syntax (`Ctrl+K Ctrl+Shift+Space` to trigger)
 - **[Code Transforms](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-transforms/)** — select code, describe changes in natural language (`Ctrl+K Ctrl+Shift+M`)
 - **[Generate Documentation](https://cesarandreslopez.github.io/sidekick-agent-hub/features/generate-docs/)** — auto-generate JSDoc/docstrings from implementation, not just signatures (`Ctrl+K Ctrl+G`)
 - **[Explain Code](https://cesarandreslopez.github.io/sidekick-agent-hub/features/explain-code/)** — five complexity levels from ELI5 to PhD Mode (`Ctrl+K Ctrl+E`)
@@ -126,7 +127,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Session Monitor](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/session-analytics-dashboard.png)
 
-- **[Mind Map](https://cesarandreslopez.github.io/sidekick-agent-hub/features/mind-map/)** — interactive D3.js graph of session structure and file relationships
+- **[Mind Map](https://cesarandreslopez.github.io/sidekick-agent-hub/features/mind-map/)** — interactive D3.js graph of session structure and file relationships; the **Follow** toggle pans to new activity, or turn it off to stay put while you inspect
 
 ![Mind map](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/mind-map.png)
 
@@ -134,7 +135,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Activity map](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/activity-map.png)
 
-- **[Kanban Board](https://cesarandreslopez.github.io/sidekick-agent-hub/features/kanban-board/)** — task and subagent tracking with real-time updates; subagent cards say when an agent finished without a report, ended, or was stopped
+- **[Kanban Board](https://cesarandreslopez.github.io/sidekick-agent-hub/features/kanban-board/)** — task and subagent tracking with real-time updates; subagent cards say when an agent finished without a report, ended, failed, or was stopped, and **Clear Carried Over** removes tasks left from earlier sessions after asking
 
 ![Kanban board](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/kanban-board.png)
 
@@ -146,7 +147,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![HTML Session Report](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/session_html_report.png)
 
-- **Analytics Charts** — tool frequency, event distribution, activity heatmap, and event pattern detection in the dashboard
+- **Analytics Charts** — tool frequency, frequent words in event summaries, activity heatmap, and event patterns in the dashboard
 
 ![Analytics](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/analytics_vscode_extension.png)
 
@@ -204,7 +205,7 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, charts, 
 | `sidekick.transformModel`                         | `auto`         | Model for transforms (powerful tier)                                                                                                                                                                        |
 | `sidekick.debounceMs`                             | `0`            | Delay before a triggered completion request is sent (ms)                                                                                                                                                    |
 | `sidekick.commitMessageStyle`                     | `conventional` | Commit format: `conventional` or `simple`                                                                                                                                                                   |
-| `sidekick.enableSessionMonitoring`                | `true`         | Enable agent session monitoring                                                                                                                                                                             |
+| `sidekick.enableSessionMonitoring`                | `true`         | Enable agent session monitoring; changing it offers a reload, and while it is off, commands that need it offer **Enable Monitoring**                                                                        |
 | `sidekick.accounts.keepAlive`                     | `false`        | Refresh saved-but-inactive accounts through the official CLIs after activation and every six hours                                                                                                          |
 | `sidekick.accounts.autoSwitchThreshold`           | `0`            | Quota utilization percentage that triggers an automatic switch to a healthier saved account (`0` disables); Codex switches wait until Codex sessions are closed                                             |
 | `sidekick.notifications.tokenThreshold`           | `5000000`      | Cache-inclusive session token total that triggers the high-usage warning                                                                                                                                    |
@@ -263,11 +264,11 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Browse Session Folders…       | —                         | Select session folder to monitor                                                                                                           |
 | Check for Updates             | —                         | Check for a newer version of the extension now (Update, Release Notes, or Skip This Version)                                               |
 
-Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS. Transform and Explain require a selection. Requires VS Code 1.85 or later.
+Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS (`Cmd+K Cmd+Shift+Space`, `Cmd+K Cmd+Shift+M`). Transform and Explain require a selection, and Transform and Generate Documentation don't run in read-only editors. Requires VS Code 1.85 or later.
 
 ## Troubleshooting
 
-**No completions?** Click **Sidekick** in the status bar and pick **Test Connection** (or run `Sidekick: Test Connection`) to verify provider connectivity.
+**No completions?** Completions appear only when you ask for one: press `Ctrl+K Ctrl+Shift+Space` (`Cmd+K Cmd+Shift+Space` on macOS). If the **Sidekick** status bar item shows a crossed-out circle, completions are off; run **Toggle Inline Completions**. Otherwise click it and pick **Test Connection** (or run `Sidekick: Test Connection`) to verify provider connectivity.
 
 **CLI not found?** Set `sidekick.claudePath` to the full path (find with `which claude`).
 

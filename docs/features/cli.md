@@ -948,7 +948,7 @@ The [activity map](activity-map.md) of the session in the terminal: the eleven s
 | `k` / `↑`       | Previous item (side list) or scroll up (detail pane) |
 | `g` / `Home`    | Jump to first item / scroll to top                   |
 | `G` / `End`     | Jump to last item / scroll to bottom                 |
-| `PgDn` / `PgUp` | Page the side list, detail pane or overlay           |
+| `PgDn` / `PgUp` | Page the side list, detail pane, help or changelog   |
 | `h` / `←`       | Return focus to side list (from detail pane)         |
 | `Enter`         | Move focus to detail pane (from side list)           |
 
@@ -1005,14 +1005,15 @@ While pinned, the status bar shows `PINNED`, and a newer session raises a toast 
 
 ### General
 
-| Key   | Action                                                    |
-| ----- | --------------------------------------------------------- |
-| `?`   | Show help overlay                                         |
-| `V`   | Show version / changelog                                  |
-| `Esc` | Clear filter, close overlay, or return focus to side list |
+| Key      | Action                                                    |
+| -------- | --------------------------------------------------------- |
+| `?`      | Show help overlay                                         |
+| `V`      | Show version / changelog                                  |
+| `Esc`    | Clear filter, close overlay, or return focus to side list |
+| `q`      | Quit (or close the overlay if one is open)                |
+| `Ctrl+C` | Quit                                                      |
 
 In the filter overlay every printable key is part of the query: `Tab` cycles the mode, `Enter` keeps the filter and `Esc` clears it.
-| `q` / `Ctrl+C` | Quit (or close overlay if one is open) |
 
 ## Mouse Support
 
