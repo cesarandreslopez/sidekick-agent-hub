@@ -13,8 +13,8 @@ import * as vscode from 'vscode';
 /**
  * Connection state for the Sidekick extension.
  *
- * - 'connected': Extension is enabled and ready
- * - 'disconnected': Extension is disabled
+ * - 'connected': Idle, inline completions are enabled
+ * - 'disconnected': Idle, inline completions are disabled
  * - 'loading': API operation in progress
  * - 'error': Last operation failed
  */
@@ -85,6 +85,12 @@ export class StatusBarManager implements vscode.Disposable {
   /** Delay in ms before showing the completion hint (from settings) */
   private _completionHintDelayMs: number;
 
+  /** Whether inline completions are enabled (`sidekick.enabled`) */
+  private completionsEnabled: boolean;
+
+  /** Timer that returns an error state to idle */
+  private _errorTimer: ReturnType<typeof setTimeout> | undefined;
+
   /**
    * Creates a new StatusBarManager.
    *
@@ -92,16 +98,25 @@ export class StatusBarManager implements vscode.Disposable {
    * and the toggle command. Shows the status bar immediately.
    */
   constructor() {
-    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    // A distinct id and name give this item its own entry in the status bar's
+    // hide menu instead of sharing one with the other Sidekick items.
+    this.statusBarItem = vscode.window.createStatusBarItem(
+      'sidekick.status',
+      vscode.StatusBarAlignment.Right,
+      100,
+    );
+    this.statusBarItem.name = 'Sidekick';
     this.statusBarItem.command = 'sidekick.showMenu';
 
     const isMac = process.platform === 'darwin';
-    this._shortcut = isMac ? '\u2318\u21E7Space' : 'Ctrl+Shift+Space';
+    this._shortcut = isMac ? '\u2318K \u2318\u21E7Space' : 'Ctrl+K Ctrl+Shift+Space';
 
     // Read completion hint settings
     const config = vscode.workspace.getConfiguration('sidekick');
     this._showCompletionHint = config.get<boolean>('showCompletionHint', true);
     this._completionHintDelayMs = config.get<number>('completionHintDelayMs', 1500);
+    this.completionsEnabled = config.get<boolean>('enabled', true);
+    this.state = this.completionsEnabled ? 'connected' : 'disconnected';
 
     this.update();
     this.statusBarItem.show();
@@ -129,6 +144,11 @@ export class StatusBarManager implements vscode.Disposable {
     // Listen for configuration changes
     this._disposables.push(
       vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('sidekick.enabled')) {
+          this.setCompletionsEnabled(
+            vscode.workspace.getConfiguration('sidekick').get<boolean>('enabled', true),
+          );
+        }
         if (
           e.affectsConfiguration('sidekick.showCompletionHint') ||
           e.affectsConfiguration('sidekick.completionHintDelayMs')
@@ -211,11 +231,29 @@ export class StatusBarManager implements vscode.Disposable {
   }
 
   /**
-   * Sets the status bar to connected state.
+   * Records whether inline completions are enabled and, when idle, shows it.
    *
-   * Shows sparkle icon indicating the extension is active and ready.
+   * @param enabled - The effective `sidekick.enabled` value
+   */
+  setCompletionsEnabled(enabled: boolean): void {
+    this.completionsEnabled = enabled;
+    if (this.state === 'connected' || this.state === 'disconnected') {
+      this.setConnected();
+    }
+  }
+
+  /**
+   * Returns the status bar to its idle state after an operation.
+   *
+   * Idle shows whether inline completions are enabled; finishing an AI
+   * action must not turn a disabled indicator back on.
    */
   setConnected(): void {
+    this.clearErrorTimer();
+    if (!this.completionsEnabled) {
+      this.setDisconnected();
+      return;
+    }
     this.state = 'connected';
     this.errorMessage = undefined;
     this.update();
@@ -227,6 +265,7 @@ export class StatusBarManager implements vscode.Disposable {
    * Shows circle-slash icon indicating the extension is disabled.
    */
   setDisconnected(): void {
+    this.clearErrorTimer();
     this.state = 'disconnected';
     this.errorMessage = undefined;
     this.clearHighlight();
@@ -241,6 +280,7 @@ export class StatusBarManager implements vscode.Disposable {
    * @param operation - Optional description of the current operation
    */
   setLoading(operation?: string): void {
+    this.clearErrorTimer();
     this.state = 'loading';
     this.errorMessage = undefined;
     this.clearTimers();
@@ -256,11 +296,27 @@ export class StatusBarManager implements vscode.Disposable {
    * @param message - Error message describing what went wrong
    */
   setError(message: string): void {
+    this.clearErrorTimer();
     this.state = 'error';
     this.errorMessage = message;
     this.clearTimers();
     this.highlightActive = false;
     this.update();
+    // The failure was already reported; don't leave the bar red indefinitely.
+    this._errorTimer = setTimeout(() => {
+      this._errorTimer = undefined;
+      if (this.state === 'error') this.setConnected();
+    }, StatusBarManager.ERROR_DISPLAY_MS);
+  }
+
+  /** How long an error state stays visible before returning to idle. */
+  static readonly ERROR_DISPLAY_MS = 15_000;
+
+  private clearErrorTimer(): void {
+    if (this._errorTimer) {
+      clearTimeout(this._errorTimer);
+      this._errorTimer = undefined;
+    }
   }
 
   /**
@@ -301,8 +357,8 @@ export class StatusBarManager implements vscode.Disposable {
     switch (this.state) {
       case 'connected':
         if (this.highlightActive) {
-          this.statusBarItem.text = `$(sparkle) Sidekick [${this._shortcut}]`;
-          this.statusBarItem.tooltip = `Press ${this._shortcut} for AI completion`;
+          this.statusBarItem.text = `$(sparkle) ${this._shortcut}`;
+          this.statusBarItem.tooltip = `Press ${this._shortcut} for an AI completion`;
           this.statusBarItem.backgroundColor = new vscode.ThemeColor(
             'statusBarItem.warningBackground',
           );
@@ -315,7 +371,8 @@ export class StatusBarManager implements vscode.Disposable {
 
       case 'disconnected':
         this.statusBarItem.text = '$(circle-slash) Sidekick';
-        this.statusBarItem.tooltip = 'Sidekick: Disabled (click to enable)';
+        this.statusBarItem.tooltip =
+          'Sidekick: inline completions are off. Click for the Sidekick menu, or run "Sidekick: Toggle Inline Completions".';
         this.statusBarItem.backgroundColor = undefined;
         break;
 
@@ -340,6 +397,7 @@ export class StatusBarManager implements vscode.Disposable {
    */
   dispose(): void {
     this.clearTimers();
+    this.clearErrorTimer();
     this.statusBarItem.dispose();
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];

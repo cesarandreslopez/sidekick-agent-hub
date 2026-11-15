@@ -8,11 +8,10 @@ Completions appear as ghost text that you can accept with Tab.
 
 ## Usage
 
-- **Automatic**: Suggestions appear after a brief pause in typing (configurable via `sidekick.debounceMs`)
-- **Manual trigger**: `Ctrl+Shift+Space` (`Cmd+Shift+Space` on Mac)
+- **Trigger**: `Ctrl+K Ctrl+Shift+Space` (`Cmd+K Cmd+Shift+Space` on Mac), or run "Sidekick: Trigger Completion". Completions are on demand; they don't appear while you type.
 - **Accept**: Press `Tab`
 - **Dismiss**: Press `Escape`
-- **Toggle**: Click "Sidekick" in the status bar or run "Sidekick: Toggle Inline Completions"
+- **Toggle**: Run "Sidekick: Toggle Inline Completions". Clicking "Sidekick" in the status bar opens the Sidekick menu, and the status bar item shows a slashed-circle icon while completions are off.
 
 ## Configuration
 
@@ -20,7 +19,7 @@ Completions appear as ghost text that you can accept with Tab.
 | -------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `sidekick.enabled`               | `true`  | Enable/disable inline completions                                                                                            |
 | `sidekick.inlineModel`           | `auto`  | Model tier — resolves to `fast` for low latency; requests ask for minimal reasoning (thinking off where the model allows it) |
-| `sidekick.debounceMs`            | `1000`  | Delay before requesting completion (ms)                                                                                      |
+| `sidekick.debounceMs`            | `0`     | Delay before a triggered request is sent (ms); a newer trigger within it replaces the pending one                            |
 | `sidekick.inlineContextLines`    | `30`    | Lines of context before/after cursor                                                                                         |
 | `sidekick.multiline`             | `false` | Enable multi-line completions (up to 10 lines)                                                                               |
 | `sidekick.showCompletionHint`    | `true`  | Show visual hint at cursor                                                                                                   |

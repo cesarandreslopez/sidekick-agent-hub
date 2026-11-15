@@ -8,15 +8,14 @@ After [installing](installation.md) the extension and setting up a [provider](pr
 
 ## Your First Completion
 
-1. Open any code file
-2. Start typing — completions appear as ghost text after a brief pause
+1. Open any code file and put the cursor where you want code
+2. Press `Ctrl+K Ctrl+Shift+Space` (`Cmd+K Cmd+Shift+Space` on Mac) — the completion appears as ghost text
 3. Press **Tab** to accept, **Escape** to dismiss
-4. Use `Ctrl+Shift+Space` (`Cmd+Shift+Space` on Mac) to manually trigger a completion
 
 ## Try a Code Transform
 
 1. Select some code
-2. Press `Ctrl+Shift+M` (`Cmd+Shift+M` on Mac)
+2. Press `Ctrl+K Ctrl+Shift+M` (`Cmd+K Cmd+Shift+M` on Mac)
 3. Type an instruction like "Add error handling" or "Convert to async/await"
 4. The selection is replaced with the transformed code
 
@@ -38,8 +37,8 @@ After [installing](installation.md) the extension and setting up a [provider](pr
 
 | Action             | Shortcut           |
 | ------------------ | ------------------ |
-| Trigger Completion | `Ctrl+Shift+Space` |
-| Transform Code     | `Ctrl+Shift+M`     |
+| Trigger Completion | `Ctrl+K Ctrl+Shift+Space` |
+| Transform Code     | `Ctrl+K Ctrl+Shift+M`     |
 | Generate Docs      | `Ctrl+K Ctrl+G`    |
 | Explain Code       | `Ctrl+K Ctrl+E`    |
 | Quick Ask          | `Ctrl+K Ctrl+A`    |

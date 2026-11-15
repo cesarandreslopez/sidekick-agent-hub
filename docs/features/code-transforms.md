@@ -7,7 +7,7 @@ Transform selected code using natural language instructions.
 ## Usage
 
 1. Select the code you want to modify
-2. Press `Ctrl+Shift+M` (`Cmd+Shift+M` on Mac)
+2. Press `Ctrl+K Ctrl+Shift+M` (`Cmd+K Cmd+Shift+M` on Mac)
 3. Enter your instruction (e.g., "Add error handling", "Convert to async/await", "Add TypeScript types")
 4. The selection is replaced with the modified code
 

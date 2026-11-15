@@ -127,8 +127,6 @@ import {
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
 
-/** Whether completions are currently enabled */
-let enabled = vscode.workspace.getConfiguration('sidekick').get('enabled', true);
 
 /** Status bar manager for multi-state status display */
 let statusBarManager: StatusBarManager | undefined;
@@ -305,8 +303,8 @@ export async function activate(context: vscode.ExtensionContext) {
     });
 
   // Create status bar manager
+  // Reads sidekick.enabled itself and follows later changes to it.
   statusBarManager = new StatusBarManager();
-  statusBarManager.setConnected(); // Start enabled
   context.subscriptions.push(statusBarManager);
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.walkthrough.sessionDetected', () => undefined),
@@ -1534,14 +1532,17 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.toggle', async () => {
-      enabled = !enabled;
-      await vscode.workspace.getConfiguration('sidekick').update('enabled', enabled, true);
-      if (enabled) {
-        statusBarManager?.setConnected();
-      } else {
-        statusBarManager?.setDisconnected();
-      }
-      vscode.window.showInformationMessage(`Sidekick: ${enabled ? 'Enabled' : 'Disabled'}`);
+      // Read the setting rather than a cached flag, so edits made in the
+      // Settings UI are respected.
+      const config = vscode.workspace.getConfiguration('sidekick');
+      const next = !config.get<boolean>('enabled', true);
+      await config.update('enabled', next, vscode.ConfigurationTarget.Global);
+      statusBarManager?.setCompletionsEnabled(
+        vscode.workspace.getConfiguration('sidekick').get<boolean>('enabled', true),
+      );
+      vscode.window.showInformationMessage(
+        `Sidekick inline completions ${next ? 'enabled' : 'disabled'}.`,
+      );
     }),
   );
 
@@ -2361,6 +2362,11 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showWarningMessage('Select code to transform first');
         return;
       }
+      // The keybinding's `!editorReadonly` doesn't cover the Command Palette.
+      if (isReadonlyDocument(editor.document)) {
+        vscode.window.showWarningMessage('This editor is read-only, so code cannot be transformed.');
+        return;
+      }
 
       const instruction = await vscode.window.showInputBox({
         prompt: 'How should this code be transformed?',
@@ -2514,6 +2520,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
       if (!documentationService) {
         vscode.window.showErrorMessage('Documentation service not initialized');
+        return;
+      }
+
+      // The keybinding's `!editorReadonly` doesn't cover the Command Palette.
+      if (isReadonlyDocument(editor.document)) {
+        vscode.window.showWarningMessage(
+          'This editor is read-only, so documentation cannot be inserted.',
+        );
         return;
       }
 
@@ -2713,6 +2727,14 @@ export async function activate(context: vscode.ExtensionContext) {
       },
     ),
   );
+}
+
+/**
+ * True when the document's file system refuses writes (a `git:` diff side, a
+ * read-only provider). Untitled and unknown schemes count as writable.
+ */
+function isReadonlyDocument(document: vscode.TextDocument): boolean {
+  return vscode.workspace.fs.isWritableFileSystem(document.uri.scheme) === false;
 }
 
 /**

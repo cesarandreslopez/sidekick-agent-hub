@@ -108,8 +108,8 @@ Works with any Claude plan that includes Claude Code: Pro, Max, or Ultra.
 
 Let AI handle the mechanical work — boilerplate, commit messages, docs, PR descriptions — so you focus on design and logic.
 
-- **[Inline Completions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/)** — context-aware suggestions that understand your project, not just syntax (`Ctrl+Shift+Space` to trigger manually)
-- **[Code Transforms](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-transforms/)** — select code, describe changes in natural language (`Ctrl+Shift+M`)
+- **[Inline Completions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-completions/)** — context-aware suggestions that understand your project, not just syntax (`Ctrl+K Ctrl+Shift+Space` to trigger)
+- **[Code Transforms](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-transforms/)** — select code, describe changes in natural language (`Ctrl+K Ctrl+Shift+M`)
 - **[Generate Documentation](https://cesarandreslopez.github.io/sidekick-agent-hub/features/generate-docs/)** — auto-generate JSDoc/docstrings from implementation, not just signatures (`Ctrl+K Ctrl+G`)
 - **[Explain Code](https://cesarandreslopez.github.io/sidekick-agent-hub/features/explain-code/)** — five complexity levels from ELI5 to PhD Mode (`Ctrl+K Ctrl+E`)
 - **[Quick Ask](https://cesarandreslopez.github.io/sidekick-agent-hub/features/inline-chat/)** — inline chat for questions and code changes (`Ctrl+K Ctrl+A`)
@@ -229,8 +229,8 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Command                       | Keybinding            | Description                                                                                                                                |
 | ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Toggle Inline Completions     | —                     | Enable/disable inline completions                                                                                                          |
-| Trigger Completion            | `Ctrl+Shift+Space`    | Manually request completion                                                                                                                |
-| Transform Selected Code       | `Ctrl+Shift+M`        | Transform selected code                                                                                                                    |
+| Trigger Completion            | `Ctrl+K Ctrl+Shift+Space` | Manually request completion                                                                                                                |
+| Transform Selected Code       | `Ctrl+K Ctrl+Shift+M` | Transform selected code                                                                                                                    |
 | Quick Ask (Inline Chat)       | `Ctrl+K Ctrl+A`       | Inline chat                                                                                                                                |
 | Generate Documentation        | `Ctrl+K Ctrl+G`       | Generate documentation                                                                                                                     |
 | Explain Selected Code         | `Ctrl+K Ctrl+E`       | Explain selected code (five detail levels in the editor context menu)                                                                      |

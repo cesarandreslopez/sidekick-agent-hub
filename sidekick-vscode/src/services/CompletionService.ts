@@ -95,7 +95,7 @@ export class CompletionService implements vscode.Disposable {
   ): Promise<string | undefined> {
     // Read configuration
     const config = vscode.workspace.getConfiguration('sidekick');
-    const debounceMs = config.get<number>('debounceMs') ?? 300;
+    const debounceMs = config.get<number>('debounceMs') ?? 0;
     const contextLines = config.get<number>('inlineContextLines') ?? 30;
     const multilineSetting = config.get<boolean>('multiline') ?? false;
     const model = resolveModel(

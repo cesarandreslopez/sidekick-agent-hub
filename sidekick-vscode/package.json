@@ -402,12 +402,13 @@
           "sidekick.enabled": {
             "type": "boolean",
             "default": true,
-            "description": "Enable/disable inline completions"
+            "description": "Enable/disable inline completions. Completions are on demand: trigger one with Sidekick: Trigger Completion (Ctrl+K Ctrl+Shift+Space / Cmd+K Cmd+Shift+Space)."
           },
           "sidekick.debounceMs": {
             "type": "number",
-            "default": 1000,
-            "description": "Debounce delay in milliseconds before requesting completion"
+            "default": 0,
+            "minimum": 0,
+            "description": "Delay in milliseconds before a triggered completion request is sent. A newer trigger within this window replaces the pending one. Completions are on demand, so the default is 0."
           },
           "sidekick.inlineContextLines": {
             "type": "number",
@@ -1339,21 +1340,21 @@
     "keybindings": [
       {
         "command": "sidekick.triggerCompletion",
-        "key": "ctrl+shift+space",
-        "mac": "cmd+shift+space",
+        "key": "ctrl+k ctrl+shift+space",
+        "mac": "cmd+k cmd+shift+space",
         "when": "editorTextFocus"
       },
       {
         "command": "sidekick.transform",
-        "key": "ctrl+shift+m",
-        "mac": "cmd+shift+m",
-        "when": "editorTextFocus && editorHasSelection"
+        "key": "ctrl+k ctrl+shift+m",
+        "mac": "cmd+k cmd+shift+m",
+        "when": "editorTextFocus && editorHasSelection && !editorReadonly"
       },
       {
         "command": "sidekick.generateDocs",
         "key": "ctrl+k ctrl+g",
         "mac": "cmd+k cmd+g",
-        "when": "editorTextFocus"
+        "when": "editorTextFocus && !editorReadonly"
       },
       {
         "command": "sidekick.explainCode",
@@ -1522,7 +1523,7 @@
         {
           "command": "sidekick.generateDocs",
           "group": "1_docs@1",
-          "when": "editorTextFocus"
+          "when": "editorTextFocus && !editorReadonly"
         },
         {
           "submenu": "sidekick.explainSubmenu",
@@ -1542,7 +1543,7 @@
         {
           "command": "sidekick.transform",
           "group": "3_transform@1",
-          "when": "editorHasSelection"
+          "when": "editorHasSelection && !editorReadonly"
         }
       ],
       "sidekick.explainSubmenu": [
