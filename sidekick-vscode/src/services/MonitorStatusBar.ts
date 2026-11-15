@@ -85,10 +85,13 @@ export class MonitorStatusBar implements vscode.Disposable {
     }
 
     // Create status bar item
+    // Its own id and name give it a separate entry in the status bar's hide menu.
     this.statusBarItem = vscode.window.createStatusBarItem(
+      'sidekick.session',
       vscode.StatusBarAlignment.Right,
       99, // Appear next to existing Sidekick status bar
     );
+    this.statusBarItem.name = 'Sidekick Session';
     this.statusBarItem.command = 'sidekick.openDashboard';
 
     // Subscribe to session events
@@ -255,6 +258,19 @@ export class MonitorStatusBar implements vscode.Disposable {
       !this.peakHours.unavailable;
     const peakIndicator = showPeakHours ? ' 🟠' : '';
     this.statusBarItem.text = `${icon} ${tokensFormatted} | ${contextFormatted}${permissionIndicator}${peakIndicator}`;
+    // Screen readers would otherwise read codicon names ("pulse … arrow-up warning").
+    const trendWords =
+      this.contextTrend === 'up' ? ', rising' : this.contextTrend === 'down' ? ', falling' : '';
+    const permissionWords: Record<string, string> = {
+      bypassPermissions: ', permissions bypassed',
+      plan: ', plan mode',
+      auto: ', auto mode',
+      dontAsk: ', not asking for permissions',
+    };
+    this.statusBarItem.accessibilityInformation = {
+      label: `Sidekick session: ${tokensFormatted} tokens, context ${this.contextPercent}%${trendWords}${permissionWords[this.permissionMode ?? ''] ?? ''}${showPeakHours ? ', peak hours' : ''}`,
+      role: 'button',
+    };
 
     // Color code based on context usage and permission mode
     if (this.permissionMode === 'bypassPermissions') {

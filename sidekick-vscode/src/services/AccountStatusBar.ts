@@ -17,7 +17,13 @@ export class AccountStatusBar implements vscode.Disposable {
     private readonly accountService: AccountService,
     private readonly authService: AuthService,
   ) {
-    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
+    // Its own id and name give it a separate entry in the status bar's hide menu.
+    this.statusBarItem = vscode.window.createStatusBarItem(
+      'sidekick.account',
+      vscode.StatusBarAlignment.Right,
+      98,
+    );
+    this.statusBarItem.name = 'Sidekick Account';
     this.statusBarItem.command = 'sidekick.accounts.pick';
 
     this.disposables.push(
@@ -85,6 +91,10 @@ export class AccountStatusBar implements vscode.Disposable {
           ? '$(clock)'
           : '$(account)';
     this.statusBarItem.text = `${icon} ${name}`;
+    this.statusBarItem.accessibilityInformation = {
+      label: `Sidekick account: ${name}${state === 'expired' || state === 'missing' ? ', needs sign-in' : state === 'expiring' ? ', expiring soon' : ''}`,
+      role: 'button',
+    };
     this.statusBarItem.backgroundColor =
       state === 'expired' || state === 'missing'
         ? new vscode.ThemeColor('statusBarItem.warningBackground')
