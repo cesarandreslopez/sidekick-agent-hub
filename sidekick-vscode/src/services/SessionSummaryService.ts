@@ -616,7 +616,8 @@ export class SessionSummaryService {
   }
 
   private _shortenPath(filePath: string): string {
-    const parts = filePath.split('/').filter(Boolean);
+    // Windows paths too: split on either separator.
+    const parts = filePath.split(/[\\/]/).filter(Boolean);
     if (parts.length <= 3) return filePath;
     return '.../' + parts.slice(-3).join('/');
   }

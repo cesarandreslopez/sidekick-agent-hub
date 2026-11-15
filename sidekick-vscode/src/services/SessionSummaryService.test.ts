@@ -112,4 +112,20 @@ describe('SessionSummaryService duration, peak, and calls', () => {
     expect(summary.contextPeak).toBe(90);
     expect(summary.apiCalls).toBe(100);
   });
+
+  it('shortens Windows file paths like POSIX ones', () => {
+    const summary = new SessionSummaryService().generateSummary(
+      stats({
+        toolCalls: [
+          {
+            name: 'Write',
+            input: { file_path: 'C:\\work\\project\\src\\deep\\file.ts', content: 'a\nb' },
+            timestamp: new Date(),
+          },
+        ] as never,
+      }),
+      { errors: [], recoveryPatterns: [] } as never,
+    );
+    expect(summary.filesChanged[0].path).toBe('.../src/deep/file.ts');
+  });
 });

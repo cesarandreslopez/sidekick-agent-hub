@@ -407,18 +407,23 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               break;
             case 'tokens':
               // Shared vocabulary via the typed tokens module: every billed
-              // bucket, cache included, plus the session's subagents.
+              // bucket, cache included, plus the session's subagents. The
+              // headline is compact so it fits a narrow sidebar; exact on hover.
               const tokenDisplay = tokenMetricDisplay(sessionState, formatNumber);
-              primaryMetricValue.textContent = formatNumber(tokenDisplay.value);
+              primaryMetricValue.textContent = compactNumber(tokenDisplay.value);
+              primaryMetricValue.title = exactNumber(tokenDisplay.value) + ' tokens';
               primaryMetricSubtitle.textContent = tokenDisplay.lines.join(' — ');
               primaryMetricSubtitle.title = tokenDisplay.lines.join('\n');
               break;
             case 'cache':
               const totalCache = sessionState.totalCacheWriteTokens + sessionState.totalCacheReadTokens;
-              primaryMetricValue.textContent = formatNumber(totalCache);
-              primaryMetricSubtitle.textContent = formatNumber(sessionState.totalCacheWriteTokens) + ' write / ' + formatNumber(sessionState.totalCacheReadTokens) + ' read';
+              primaryMetricValue.textContent = compactNumber(totalCache);
+              primaryMetricValue.title = exactNumber(totalCache) + ' cache tokens';
+              primaryMetricSubtitle.textContent = compactNumber(sessionState.totalCacheWriteTokens) + ' write / ' + compactNumber(sessionState.totalCacheReadTokens) + ' read';
+              primaryMetricSubtitle.title = exactNumber(sessionState.totalCacheWriteTokens) + ' write / ' + exactNumber(sessionState.totalCacheReadTokens) + ' read';
               break;
           }
+          if (currentMetric === 'cost') primaryMetricValue.title = '';
         }
       }
 
@@ -3497,7 +3502,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         }
         section.style.display = 'block';
 
-        let html = '<table class="summary-cost-table"><tr><th>Tool</th><th>Calls</th><th>Cost</th><th>Fail%</th><th>Avg</th></tr>';
+        // Five columns do not fit a narrow sidebar: the table scrolls inside its box.
+        let html = '<div class="table-scroll"><table class="summary-cost-table"><tr><th>Tool</th><th>Calls</th><th>Cost</th><th>Fail%</th><th>Avg</th></tr>';
         data.forEach(function(t) {
           html += '<tr>' +
             '<td>' + escapeHtml(t.name) + '</td>' +
@@ -3507,7 +3513,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             '<td>' + t.avgDurationFormatted + '</td>' +
             '</tr>';
         });
-        html += '</table>';
+        html += '</table></div>';
         body.innerHTML = html;
       }
 

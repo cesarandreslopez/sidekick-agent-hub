@@ -3169,6 +3169,46 @@ export const DASHBOARD_STYLES = `
       border: 0;
     }
 
+    /* Narrow sidebars (240-300 px): cards wrap instead of widening the view,
+       and long values (paths, MCP tool names) break instead of overflowing */
+    .summary-metrics-row {
+      grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+    }
+    .history-summary {
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    }
+    .summary-metric-card,
+    .history-stat,
+    .panel-metric-card,
+    .inline-stat {
+      min-width: 0;
+    }
+    .summary-metric-card .metric-val,
+    .history-stat .stat-value,
+    .primary-metric-display .metric-value,
+    .panel-metric-card .val {
+      overflow-wrap: anywhere;
+    }
+    .summary-task-table td:first-child,
+    .summary-file-table td:first-child,
+    .summary-cost-table td:first-child,
+    .health-table td:first-child,
+    .tool-item .tool-name,
+    .error-group-header .error-type {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      min-width: 0;
+    }
+    .table-scroll {
+      overflow-x: auto;
+      max-width: 100%;
+    }
+    /* Logged decisions accumulate across sessions: scroll them, don't clip them */
+    #decisions-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
     /* Buttons that used to be spans keep their look */
     .version-badge,
     .changelog-close,
