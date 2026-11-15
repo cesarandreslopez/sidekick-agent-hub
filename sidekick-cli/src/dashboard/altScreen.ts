@@ -51,7 +51,12 @@ export function createAltScreen(stream: NodeJS.WriteStream = process.stdout): Al
   let active = false;
 
   const write: WriteFn = (chunk, encoding, callback) =>
-    (stream.write as unknown as WriteFn).call(stream, stripScrollbackErase(chunk), encoding, callback);
+    (stream.write as unknown as WriteFn).call(
+      stream,
+      stripScrollbackErase(chunk),
+      encoding,
+      callback,
+    );
 
   // A proxy rather than a copy: columns/rows, isTTY and resize listeners stay
   // live on the real stream.

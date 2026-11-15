@@ -625,10 +625,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         openInBrowser(outFile);
         pushNotice(`Report: ${outFile}`, 'info');
       } catch (err) {
-        pushNotice(
-          `Report failed: ${err instanceof Error ? err.message : String(err)}`,
-          'error',
-        );
+        pushNotice(`Report failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       } finally {
         reportInFlight = false;
         scheduleRender();

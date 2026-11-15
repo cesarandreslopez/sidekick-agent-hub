@@ -20,7 +20,9 @@ describe('sameSession', () => {
 
   it('never matches on a shared non-UUID prefix', () => {
     expect(sameSession('rollout-', `rollout-2026-11-15T10-00-00-${UUID}`)).toBe(false);
-    expect(sameSession(`rollout-2026-01-01T00-00-00-${OTHER}`, `rollout-2026-11-15T10-00-00-${UUID}`)).toBe(false);
+    expect(
+      sameSession(`rollout-2026-01-01T00-00-00-${OTHER}`, `rollout-2026-11-15T10-00-00-${UUID}`),
+    ).toBe(false);
     expect(sameSession(OTHER, UUID)).toBe(false);
   });
 
@@ -53,9 +55,15 @@ describe('matchesSessionFilter (active)', () => {
   });
 
   it('reads plans inside their envelope and keeps the live plan', () => {
-    expect(matchesSessionFilter(item({ type: 'historical', plan: { sessionId: OTHER } }), active, UUID)).toBe(false);
-    expect(matchesSessionFilter(item({ type: 'historical', plan: { sessionId: UUID } }), active, UUID)).toBe(true);
-    expect(matchesSessionFilter(item({ type: 'active', plan: { title: 'live' } }), active, UUID)).toBe(true);
+    expect(
+      matchesSessionFilter(item({ type: 'historical', plan: { sessionId: OTHER } }), active, UUID),
+    ).toBe(false);
+    expect(
+      matchesSessionFilter(item({ type: 'historical', plan: { sessionId: UUID } }), active, UUID),
+    ).toBe(true);
+    expect(
+      matchesSessionFilter(item({ type: 'active', plan: { title: 'live' } }), active, UUID),
+    ).toBe(true);
   });
 });
 
@@ -63,8 +71,12 @@ describe('matchesSessionFilter (date)', () => {
   const byDate = { date: '2026-11-15', label: '⊛ 2026-11-15' };
 
   it('matches the record date, including plans in their envelope', () => {
-    expect(matchesSessionFilter(item({ createdAt: '2026-11-15T09:00:00Z' }), byDate, UUID)).toBe(true);
-    expect(matchesSessionFilter(item({ createdAt: '2026-11-14T09:00:00Z' }), byDate, UUID)).toBe(false);
+    expect(matchesSessionFilter(item({ createdAt: '2026-11-15T09:00:00Z' }), byDate, UUID)).toBe(
+      true,
+    );
+    expect(matchesSessionFilter(item({ createdAt: '2026-11-14T09:00:00Z' }), byDate, UUID)).toBe(
+      false,
+    );
     expect(
       matchesSessionFilter(
         item({ type: 'historical', plan: { createdAt: '2026-11-15T09:00:00Z' } }),

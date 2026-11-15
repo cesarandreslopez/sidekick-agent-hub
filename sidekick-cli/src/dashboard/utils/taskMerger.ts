@@ -65,5 +65,7 @@ export function mergeTasks(
 
 /** A stable, unique list id for a merged task. */
 export function taskItemId(task: TaskItem): string {
-  return task.sessionOrigin ? `${normalizeSessionId(task.sessionOrigin)}:${task.taskId}` : task.taskId;
+  return task.sessionOrigin
+    ? `${normalizeSessionId(task.sessionOrigin)}:${task.taskId}`
+    : task.taskId;
 }

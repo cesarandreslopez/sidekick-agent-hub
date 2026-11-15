@@ -518,16 +518,17 @@ Press `z` to cycle through layout modes:
 
 ### Navigation
 
-| Key       | Action                                         |
-| --------- | ---------------------------------------------- |
-| `1`–`9`   | Switch panel                                   |
-| `Tab`     | Toggle focus between side list and detail pane |
-| `j` / `↓` | Next item (side) or scroll down (detail)       |
-| `k` / `↑` | Previous item (side) or scroll up (detail)     |
-| `g`       | Jump to first item / scroll to top             |
-| `G`       | Jump to last item / scroll to bottom           |
-| `h` / `←` | Return focus to side list (from detail)        |
-| `Enter`   | Move focus to detail pane (from side list)     |
+| Key             | Action                                         |
+| --------------- | ---------------------------------------------- |
+| `1`–`9`         | Switch panel                                   |
+| `Tab`           | Toggle focus between side list and detail pane |
+| `j` / `↓`       | Next item (side) or scroll down (detail)       |
+| `k` / `↑`       | Previous item (side) or scroll up (detail)     |
+| `g` / `Home`    | Jump to first item / scroll to top             |
+| `G` / `End`     | Jump to last item / scroll to bottom           |
+| `PgDn` / `PgUp` | Page the side list, detail pane or overlay     |
+| `h` / `←`       | Return focus to side list (from detail)        |
+| `Enter`         | Move focus to detail pane (from side list)     |
 
 ### Detail Tabs
 
@@ -536,13 +537,17 @@ Press `z` to cycle through layout modes:
 | `[` | Previous detail tab |
 | `]` | Next detail tab     |
 
+The detail tab stays put when you move to another item, so you can compare the same tab across items. When the tabs do not fit, the bar shows the active tab and its position (`▸ Timeline  2/7`).
+
 ### Session Management
 
 | Key | Action                                         |
 | --- | ---------------------------------------------- |
 | `p` | Pin session (prevent auto-switching to newest) |
-| `s` | Switch to pending session                      |
+| `s` | Switch to the newly detected session           |
 | `f` | Toggle session filter                          |
+
+While pinned, the status bar shows `PINNED`; when a newer session starts, a toast and an `s new session` badge say so. The session filter (on by default) shows tasks, notes, decisions and plans from the live session plus records that are not tied to a session, and it follows the dashboard when it switches sessions.
 
 ### Session Panel — Mind Map Tab
 
@@ -566,19 +571,27 @@ Press `z` to cycle through layout modes:
 
 ### General
 
-| Key            | Action                                                                                    |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| `z`            | Cycle layout mode                                                                         |
-| `/`            | Open filter overlay (supports substring, fuzzy, regex, and date modes — Tab cycles modes) |
-| `x`            | Open context menu for selected item                                                       |
-| `M`            | Toggle mouse capture (turn off to restore terminal text selection/copy)                   |
-| `A`            | Open the accounts overlay (`Enter` switches, `u` undoes the last switch)                  |
-| `?`            | Show help                                                                                 |
-| `R`            | Refresh persisted project data (tasks, notes, decisions, plans) from disk                 |
-| `r`            | Generate HTML report for the current session                                              |
-| `V`            | Show version / changelog                                                                  |
-| `Esc`          | Clear the filter, close an overlay, or return focus to the side list                      |
-| `q` / `Ctrl+C` | Quit                                                                                      |
+| Key            | Action                                                                                                                                                          |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `z`            | Cycle layout mode                                                                                                                                               |
+| `/`            | Open filter overlay (supports substring, fuzzy, regex, and date modes — Tab cycles modes)                                                                       |
+| `x`            | Open context menu for selected item                                                                                                                             |
+| `M`            | Toggle mouse capture (turn off to restore terminal text selection/copy)                                                                                         |
+| `A`            | Open the accounts overlay (`Enter` switches, `u` undoes the last switch; `a`, `l` and `s` show the `sidekick accounts add` / `login` / `shell` commands to run) |
+| `?`            | Show help                                                                                                                                                       |
+| `R`            | Refresh persisted project data (tasks, notes, decisions, plans) from disk                                                                                       |
+| `r`            | Generate HTML report for the current session                                                                                                                    |
+| `V`            | Show version / changelog                                                                                                                                        |
+| `Esc`          | Clear the filter, close an overlay, or return focus to the side list                                                                                            |
+| `q` / `Ctrl+C` | Quit                                                                                                                                                            |
+
+In the filter overlay every printable key is part of the query; `Tab` cycles the mode, `Enter` keeps the filter and `Esc` clears it.
+
+## Terminal Behaviour
+
+- The dashboard and `map --follow` run in the terminal's alternate screen, so your scrollback is left untouched and comes back when you quit.
+- The panel tab bar shortens itself on narrow terminals (full titles, then abbreviations, then digits, with the active panel marked `▸`), and the status bar drops lower-priority hints first; `? help` and `q quit` always stay visible. The minimum size is 60×15.
+- `NO_COLOR` (or `--no-color`) turns colour off in the dashboard and in every command; `FORCE_COLOR` overrides it.
 
 ## Mouse Support
 

@@ -210,7 +210,8 @@ export function wordWrap(text: string, width: number, continuationIndent = ''): 
       // First row at full width; the rest leave room for the indent.
       const [first, ...rest] = wrapTaggedLines(line, w);
       if (rest.length === 0) return first;
-      const restRows = indentLen > 0 ? wrapTaggedLines(rest.join(' '), Math.max(1, w - indentLen)) : rest;
+      const restRows =
+        indentLen > 0 ? wrapTaggedLines(rest.join(' '), Math.max(1, w - indentLen)) : rest;
       return [first, ...restRows.map((row) => continuationIndent + row)].join('\n');
     })
     .join('\n');

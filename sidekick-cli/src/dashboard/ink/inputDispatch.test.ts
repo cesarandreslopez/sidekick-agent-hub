@@ -341,7 +341,11 @@ describe('global keys', () => {
   it('a panel binding can return a toast', () => {
     const { ctx, addToast } = makeCtx(
       {},
-      { panel: makePanel({ bindings: [{ keys: ['S'], label: 'source', handler: () => 'Plans source: Codex' }] }) },
+      {
+        panel: makePanel({
+          bindings: [{ keys: ['S'], label: 'source', handler: () => 'Plans source: Codex' }],
+        }),
+      },
     );
     handleDashboardInput('S', makeKey(), ctx);
     expect(addToast).toHaveBeenCalledWith('Plans source: Codex', 'info');

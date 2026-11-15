@@ -376,9 +376,9 @@ sidekick tasks [options]
 
 List persisted tasks for the current project. Tasks carry over across sessions from `~/.config/sidekick/tasks/`.
 
-| Flag                | Description                                                         |
-| ------------------- | ------------------------------------------------------------------- |
-| `--status <status>` | Filter by status: `pending`, `completed`, or `all` (default: `all`) |
+| Flag                | Description                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `--status <status>` | Filter by status: `pending`, `in_progress`, `completed`, or `all` (default: `all`) |
 
 #### Examples
 
@@ -859,6 +859,8 @@ Press `z` to cycle through three layout modes:
 
 Minimum terminal size: 60 columns wide, 15 rows tall.
 
+The dashboard runs in the terminal's alternate screen, so your scrollback is left untouched and comes back when you quit (`sidekick map --follow` does the same). On narrow terminals the panel tab bar shortens itself — full titles, then abbreviations, then digits, with the active panel marked `▸` — and the status bar drops lower-priority hints first, keeping `? help` and `q quit` visible. `NO_COLOR` turns colour off.
+
 ## Dashboard Panels
 
 Switch panels with number keys `1`–`9`.
@@ -938,16 +940,17 @@ The [activity map](activity-map.md) of the session in the terminal: the eleven s
 
 ### Navigation
 
-| Key       | Action                                               |
-| --------- | ---------------------------------------------------- |
-| `1`–`9`   | Switch panel                                         |
-| `Tab`     | Toggle focus between side list and detail pane       |
-| `j` / `↓` | Next item (side list) or scroll down (detail pane)   |
-| `k` / `↑` | Previous item (side list) or scroll up (detail pane) |
-| `g`       | Jump to first item / scroll to top                   |
-| `G`       | Jump to last item / scroll to bottom                 |
-| `h` / `←` | Return focus to side list (from detail pane)         |
-| `Enter`   | Move focus to detail pane (from side list)           |
+| Key             | Action                                               |
+| --------------- | ---------------------------------------------------- |
+| `1`–`9`         | Switch panel                                         |
+| `Tab`           | Toggle focus between side list and detail pane       |
+| `j` / `↓`       | Next item (side list) or scroll down (detail pane)   |
+| `k` / `↑`       | Previous item (side list) or scroll up (detail pane) |
+| `g` / `Home`    | Jump to first item / scroll to top                   |
+| `G` / `End`     | Jump to last item / scroll to bottom                 |
+| `PgDn` / `PgUp` | Page the side list, detail pane or overlay           |
+| `h` / `←`       | Return focus to side list (from detail pane)         |
+| `Enter`         | Move focus to detail pane (from side list)           |
 
 ### Detail Tabs
 
@@ -956,6 +959,8 @@ The [activity map](activity-map.md) of the session in the terminal: the eleven s
 | `[` | Previous detail tab |
 | `]` | Next detail tab     |
 
+The detail tab stays put when you move to another item. When the tabs do not fit, the bar shows the active tab and its position (`▸ Timeline  2/7`).
+
 ### Session Management
 
 | Key | Action                                                                |
@@ -963,6 +968,8 @@ The [activity map](activity-map.md) of the session in the terminal: the eleven s
 | `p` | Pin session — prevent auto-switching to the newest session            |
 | `s` | Switch to pending session (when a newer session arrives while pinned) |
 | `f` | Toggle session filter — filter the side list to the selected session  |
+
+While pinned, the status bar shows `PINNED`, and a newer session raises a toast and an `s new session` badge. The default session filter shows tasks, notes, decisions and plans from the live session plus records not tied to a session (such as ones written with `sidekick decision add`), and follows the dashboard when it switches sessions.
 
 ### Session Panel — Mind Map Tab
 
@@ -986,24 +993,26 @@ The [activity map](activity-map.md) of the session in the terminal: the eleven s
 
 ### Actions
 
-| Key | Action                                                                                    |
-| --- | ----------------------------------------------------------------------------------------- |
-| `R` | Refresh persisted project data (tasks, notes, decisions, plans) from disk                 |
-| `r` | Generate HTML report for the current session and open in browser                          |
-| `/` | Open filter overlay — supports substring, fuzzy, regex, and date modes (Tab cycles modes) |
-| `x` | Open context menu for the selected item                                                   |
-| `z` | Cycle layout mode (Normal → Expanded → Wide Side)                                         |
-| `M` | Toggle mouse capture (turn off to restore terminal text selection/copy)                   |
-| `A` | Open the accounts overlay (`Enter` switches, `u` undoes the last switch)                  |
+| Key | Action                                                                                                                                                         |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `R` | Refresh persisted project data (tasks, notes, decisions, plans) from disk                                                                                      |
+| `r` | Generate HTML report for the current session and open in browser                                                                                               |
+| `/` | Open filter overlay — supports substring, fuzzy, regex, and date modes (Tab cycles modes)                                                                      |
+| `x` | Open context menu for the selected item                                                                                                                        |
+| `z` | Cycle layout mode (Normal → Expanded → Wide Side)                                                                                                              |
+| `M` | Toggle mouse capture (turn off to restore terminal text selection/copy)                                                                                        |
+| `A` | Open the accounts overlay (`Enter` switches, `u` undoes the last switch; `a`, `l` and `s` show the `sidekick accounts add` / `login` / `shell` command to run) |
 
 ### General
 
-| Key            | Action                                                    |
-| -------------- | --------------------------------------------------------- |
-| `?`            | Show help overlay                                         |
-| `V`            | Show version / changelog                                  |
-| `Esc`          | Clear filter, close overlay, or return focus to side list |
-| `q` / `Ctrl+C` | Quit (or close overlay if one is open)                    |
+| Key   | Action                                                    |
+| ----- | --------------------------------------------------------- |
+| `?`   | Show help overlay                                         |
+| `V`   | Show version / changelog                                  |
+| `Esc` | Clear filter, close overlay, or return focus to side list |
+
+In the filter overlay every printable key is part of the query: `Tab` cycles the mode, `Enter` keeps the filter and `Esc` clears it.
+| `q` / `Ctrl+C` | Quit (or close overlay if one is open) |
 
 ## Mouse Support
 

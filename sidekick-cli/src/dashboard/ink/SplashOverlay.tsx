@@ -40,14 +40,13 @@ export function SplashOverlay({ panelCount }: SplashOverlayProps): React.ReactEl
       <Text> </Text>
       <Text>
         {' '}
-        <Text color="magenta">{spinner}</Text>{' '}
-        <Text dimColor>Waiting for session events...</Text>
+        <Text color="magenta">{spinner}</Text> <Text dimColor>Waiting for session events...</Text>
       </Text>
       <Text> </Text>
       <Text>
         {' '}
-        <Text dimColor>Navigate:</Text> <Text bold>{jumpHint}</Text> jump <Text bold>?</Text>{' '}
-        help <Text bold>q</Text> quit
+        <Text dimColor>Navigate:</Text> <Text bold>{jumpHint}</Text> jump <Text bold>?</Text> help{' '}
+        <Text bold>q</Text> quit
       </Text>
       <Text> </Text>
       <Text dimColor> Start a Claude Code, OpenCode, or Codex session</Text>

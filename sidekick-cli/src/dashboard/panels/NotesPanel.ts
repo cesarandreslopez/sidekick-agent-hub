@@ -56,7 +56,9 @@ export class NotesPanel implements SidePanel {
 
   getSearchableText(item: PanelItem): string {
     const n = item.data as KnowledgeNote;
-    return [n.title ?? '', n.content, n.noteType, n.status, n.filePath, ...(n.tags || [])].join(' ');
+    return [n.title ?? '', n.content, n.noteType, n.status, n.filePath, ...(n.tags || [])].join(
+      ' ',
+    );
   }
 
   // ── Detail renderers ──

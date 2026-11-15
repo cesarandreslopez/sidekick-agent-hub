@@ -88,7 +88,9 @@ export async function tasksAction(_opts: Record<string, unknown>, cmd: Command):
     const tasks = (
       await readTasks(resolveProjectIdentity(workspacePath), {
         status:
-          statusFilter === 'in_progress' ? 'all' : (statusFilter as 'pending' | 'completed' | 'all'),
+          statusFilter === 'in_progress'
+            ? 'all'
+            : (statusFilter as 'pending' | 'completed' | 'all'),
       })
     ).filter((task) => statusFilter !== 'in_progress' || task.status === 'in_progress');
 

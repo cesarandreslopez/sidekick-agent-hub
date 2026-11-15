@@ -72,7 +72,8 @@ export class TasksPanel implements SidePanel {
     ];
     // Subagent tasks: how the agent reads now, when that is more than
     // running or completed (finished without a report, stopped, failed...).
-    if (t.agentState) lines.push(`{bold}Agent:{/bold}       {yellow-fg}${t.agentState}{/yellow-fg}`);
+    if (t.agentState)
+      lines.push(`{bold}Agent:{/bold}       {yellow-fg}${t.agentState}{/yellow-fg}`);
 
     if (t.subagentType) lines.push(`{bold}Subagent:{/bold}    ${t.subagentType}`);
     if (t.isGoalGate) lines.push(`{bold}Goal Gate:{/bold}   {red-fg}\u2691 yes{/red-fg}`);

@@ -35,9 +35,7 @@ export function useTerminalSize(): TerminalSize {
   useEffect(() => {
     const onResize = () => {
       const next = sizeOf(stream);
-      setSize((prev) =>
-        prev.columns === next.columns && prev.rows === next.rows ? prev : next,
-      );
+      setSize((prev) => (prev.columns === next.columns && prev.rows === next.rows ? prev : next));
     };
     onResize();
     stream.on?.('resize', onResize);

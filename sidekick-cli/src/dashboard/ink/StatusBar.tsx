@@ -76,7 +76,10 @@ function hintSegment(hint: StatusHint, priority: number, id: string): StatusSegm
     id,
     zone: 'right',
     priority,
-    pieces: [{ text: hint.key, bold: true }, { text: ` ${hint.label}`, dim: true }],
+    pieces: [
+      { text: hint.key, bold: true },
+      { text: ` ${hint.label}`, dim: true },
+    ],
   };
 }
 
@@ -108,9 +111,7 @@ export function buildStatusSegments(props: StatusBarProps): StatusSegment[] {
     };
     center('permission', 3, [{ text: style.label, color: style.color }]);
   }
-  center('events', 1, [
-    { text: props.eventCount > 0 ? `${props.eventCount} events` : 'waiting…' },
-  ]);
+  center('events', 1, [{ text: props.eventCount > 0 ? `${props.eventCount} events` : 'waiting…' }]);
   if (props.hasPendingSession) {
     center('pending', 1, [
       { text: 's', bold: true, color: 'yellow' },

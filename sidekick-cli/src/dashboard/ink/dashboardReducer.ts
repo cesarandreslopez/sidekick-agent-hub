@@ -80,7 +80,10 @@ export type Action =
   | { type: 'TICK' };
 
 /** The default filter: records of the live session (plus unscoped ones). */
-export const ACTIVE_SESSION_FILTER: SessionFilter = { active: true, label: '\u25CF active session' };
+export const ACTIVE_SESSION_FILTER: SessionFilter = {
+  active: true,
+  label: '\u25CF active session',
+};
 
 /** Validate a filter string for the given mode; null when valid. */
 function validateFilter(mode: DashboardUIState['filterMode'], value: string): string | null {

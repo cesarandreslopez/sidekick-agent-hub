@@ -92,7 +92,9 @@ export function SideList({
       lines.push('{magenta-fg}{bold}Esc{/bold}{/magenta-fg}{grey-fg} clears the filter{/grey-fg}');
     } else if (sessionFilterActive) {
       lines.push('{grey-fg}No items in this session{/grey-fg}');
-      lines.push('{grey-fg}Press {/grey-fg}{magenta-fg}{bold}f{/bold}{/magenta-fg}{grey-fg} to see all{/grey-fg}');
+      lines.push(
+        '{grey-fg}Press {/grey-fg}{magenta-fg}{bold}f{/bold}{/magenta-fg}{grey-fg} to see all{/grey-fg}',
+      );
     } else {
       lines.push('{grey-fg}No items yet{/grey-fg}');
       if (emptyStateHint && viewportHeight >= 5) lines.push(`{grey-fg}${emptyStateHint}{/grey-fg}`);

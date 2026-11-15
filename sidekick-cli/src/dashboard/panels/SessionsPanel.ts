@@ -791,7 +791,10 @@ export class SessionsPanel implements SidePanel {
           ? `{${color}-fg}${ev.type.padEnd(10)}{/${color}-fg}`
           : ev.type.padEnd(10);
         lines.push(
-          truncateTagged(`  {grey-fg}:${sec}{/grey-fg} ${typeLabel}${toolTag} ${summary}`, flowWidth),
+          truncateTagged(
+            `  {grey-fg}:${sec}{/grey-fg} ${typeLabel}${toolTag} ${summary}`,
+            flowWidth,
+          ),
         );
       }
     }

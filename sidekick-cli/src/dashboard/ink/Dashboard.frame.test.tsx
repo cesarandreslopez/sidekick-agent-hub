@@ -127,7 +127,9 @@ function seededMetrics() {
       toolName: 'Bash',
     }),
   );
-  state.processEvent(ev(3, 'tool_result', '日本語のテキストを含む長い結果の要約です。表示幅を確認します。'));
+  state.processEvent(
+    ev(3, 'tool_result', '日本語のテキストを含む長い結果の要約です。表示幅を確認します。'),
+  );
   state.processEvent(
     ev(4, 'tool_use', 'Read /Users/someone/projects/sidekick/src/dashboard/ink/Dashboard.tsx', {
       toolName: 'Read',
@@ -212,7 +214,11 @@ describe('dashboard frames', () => {
       toolName: 'Bash',
     });
     const lines = await renderFrame(
-      <Dashboard panels={[new EventStreamPanel()]} metrics={state.getMetrics()} staticData={staticData} />,
+      <Dashboard
+        panels={[new EventStreamPanel()]}
+        metrics={state.getMetrics()}
+        staticData={staticData}
+      />,
       120,
       30,
     );

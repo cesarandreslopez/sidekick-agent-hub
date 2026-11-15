@@ -82,7 +82,10 @@ export function layoutTopTabs(
   let chosen: { tier: TopTabTier; spans: TabSpan[] } | null = null;
   for (const tier of ['full', 'short', 'digits'] as const) {
     const spans = spansFor(
-      tabs.map((tab, i) => ({ text: topTabText(tab, i === activeIndex, tier), active: i === activeIndex })),
+      tabs.map((tab, i) => ({
+        text: topTabText(tab, i === activeIndex, tier),
+        active: i === activeIndex,
+      })),
       0,
     );
     const width = spans.length > 0 ? spans[spans.length - 1].end : 0;
