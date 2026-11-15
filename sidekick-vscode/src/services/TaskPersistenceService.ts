@@ -137,7 +137,16 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
    * @param taskState - Task state from SessionMonitor
    */
   saveSessionTasks(sessionId: string, taskState: TaskState): void {
+    const removedKeys: string[] = [];
     for (const [taskId, task] of taskState.tasks) {
+      // A task this session saved earlier and has since deleted must not
+      // come back as a carried-over card.
+      if (task.status === 'deleted' && this.store.tasks[taskId]?.sessionOrigin === sessionId) {
+        delete this.store.tasks[taskId];
+        removedKeys.push(taskId);
+        continue;
+      }
+
       // Skip deleted tasks and subagent tasks (session-local)
       if (task.status === 'deleted' || task.isSubagent) {
         continue;
@@ -171,6 +180,8 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
 
       this.store.tasks[taskId] = persisted;
     }
+
+    if (removedKeys.length > 0) this.recordDeletions(removedKeys);
 
     if (this.store.lastSessionId !== sessionId) {
       this.store.lastSessionId = sessionId;
@@ -234,6 +245,11 @@ export class TaskPersistenceService extends PersistenceService<TaskPersistenceSt
       this.markDirty();
       log(`Cleared ${removedKeys.length} completed tasks`);
     }
+  }
+
+  /** Number of tasks in the store (what Clear Carried Over would remove). */
+  getTaskCount(): number {
+    return Object.keys(this.store.tasks).length;
   }
 
   /**

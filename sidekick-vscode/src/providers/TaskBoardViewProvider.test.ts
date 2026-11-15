@@ -36,7 +36,8 @@ function monitor(
     getStatsView: () => ({ taskState }),
     getSubagentDisplayStates: () => displayStates,
     isActive: () => taskState !== undefined,
-    getSessionPath: () => null,
+    getSessionPath: (): string | null => null,
+    getProvider: () => ({ getSessionId: (p: string) => p.replace(/^.*\//, '').replace('.jsonl', '') }),
   };
 }
 
@@ -144,6 +145,64 @@ describe('TaskBoardViewProvider lifecycle', () => {
     sessionMonitor.handlers.subagents!();
     vi.advanceTimersByTime(250);
     expect(byId('agent-t3')?.agentState).toBe('ended');
+    provider.dispose();
+  });
+
+  it('keeps carried-over tasks whose ids repeat in the new session, and shows failed agents', () => {
+    const now = new Date('2026-11-15T10:00:00.000Z');
+    const task = (taskId: string, status: string, extra: Record<string, unknown> = {}) => ({
+      taskId,
+      subject: `Task ${taskId}`,
+      status,
+      createdAt: now,
+      updatedAt: now,
+      blockedBy: [],
+      blocks: [],
+      associatedToolCalls: [],
+      ...extra,
+    });
+    const tasks = new Map<string, unknown>([
+      ['1', task('1', 'pending')],
+      ['2', task('2', 'deleted')],
+      ['agent-x', task('agent-x', 'deleted', { isSubagent: true, toolUseId: 'x' })],
+    ]);
+    const sessionMonitor = monitor({ tasks, activeTaskId: null });
+    sessionMonitor.getSessionPath = () => '/sessions/current.jsonl';
+    const provider = new TaskBoardViewProvider({} as never, sessionMonitor as never, undefined);
+    const internals = provider as unknown as {
+      _persistedTasks: unknown[];
+      _syncFromSessionMonitor(): void;
+      _state: {
+        totalTasks: number;
+        columns: Array<{ status: string; tasks: Array<{ taskId: string; agentState?: string }> }>;
+      };
+    };
+    const persisted = (taskId: string, sessionOrigin: string) => ({
+      taskId,
+      subject: `Old ${taskId}`,
+      status: 'pending',
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      toolCallCount: 0,
+      blockedBy: [],
+      blocks: [],
+      sessionOrigin,
+      carriedOver: true,
+      sessionAge: 1,
+    });
+    internals._persistedTasks = [
+      persisted('1', 'previous-session'),
+      // This session's own saved copy: the live map wins.
+      persisted('1', 'current'),
+    ];
+    internals._syncFromSessionMonitor();
+
+    const cards = internals._state.columns.flatMap((column) => column.tasks);
+    expect(cards.map((card) => card.taskId).sort()).toEqual(['1', 'agent-x', 'previous:1']);
+    const completed = internals._state.columns.find((column) => column.status === 'completed');
+    expect(completed?.tasks.find((card) => card.taskId === 'agent-x')?.agentState).toBe('failed');
+    // The summary counts what is shown (the deleted todo is not).
+    expect(internals._state.totalTasks).toBe(3);
     provider.dispose();
   });
 });

@@ -25,6 +25,7 @@ import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { subagentDisplayLabel } from 'sidekick-shared';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
+import { getSessionLiveness, SESSION_LIVENESS_LABELS } from '../utils/sessionLiveness';
 import { PERSIST_INTERVAL_MS } from '../constants';
 
 /**
@@ -211,12 +212,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
         break;
 
       case 'archiveAll':
-        if (this._taskPersistence) {
-          this._taskPersistence.archiveAll();
-          this._persistedTasks = this._taskPersistence.loadPersistedTasks();
-          this._syncFromSessionMonitor();
-          this._sendStateToWebview();
-        }
+        void this._confirmClearCarriedOver();
         break;
     }
   }
@@ -264,6 +260,31 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
+   * Removes every carried-over task after a modal confirmation: there is no
+   * undo and no archive to restore from.
+   */
+  private async _confirmClearCarriedOver(): Promise<void> {
+    const persistence = this._taskPersistence;
+    if (!persistence) return;
+    const count = this._state.carriedOverCount;
+    if (count === 0) return;
+    const choice = await vscode.window.showWarningMessage(
+      `Remove ${count} carried-over task${count === 1 ? '' : 's'}?`,
+      {
+        modal: true,
+        detail:
+          'They are deleted from the saved task list for this project. This cannot be undone.',
+      },
+      'Remove',
+    );
+    if (choice !== 'Remove') return;
+    persistence.archiveAll();
+    this._persistedTasks = persistence.loadPersistedTasks();
+    this._syncFromSessionMonitor();
+    this._sendStateToWebview();
+  }
+
+  /**
    * Handles session end events.
    */
   private _handleSessionEnd(): void {
@@ -303,14 +324,20 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     );
 
     // Add current session tasks
-    const currentTaskIds = new Set<string>();
     const agentStates = this._sessionMonitor.getSubagentDisplayStates();
     for (const task of tasks.values()) {
       const status = task.status ?? 'pending';
       if (status === 'deleted') {
+        // The aggregator marks failed agents deleted; show them as failed
+        // rather than letting them vanish. Deleted todos and superseded
+        // plan steps stay hidden.
+        if (task.isSubagent) {
+          const card = this._toCard(task, activeTaskId);
+          card.agentState = subagentDisplayLabel('failed');
+          columnLookup.get('completed')?.tasks.push(card);
+        }
         continue;
       }
-      currentTaskIds.add(task.taskId);
       const column = columnLookup.get(status) ?? columnLookup.get('pending');
       if (column) {
         const card = this._toCard(task, activeTaskId);
@@ -323,10 +350,13 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       }
     }
 
-    // Merge persisted tasks not in the current session
+    // Merge persisted tasks from other sessions. The live map is authoritative
+    // for the attached session; task ids restart at 1 in every session, so
+    // tasks from other sessions are never matched by bare id.
+    const currentSessionId = this._currentSessionId();
     let carriedOverCount = 0;
     for (const persisted of this._persistedTasks) {
-      if (currentTaskIds.has(persisted.taskId)) {
+      if (currentSessionId && persisted.sessionOrigin === currentSessionId) {
         continue;
       }
       const status = persisted.status === 'deleted' ? 'pending' : persisted.status;
@@ -347,16 +377,25 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       });
     }
 
-    const totalTasks = tasks.size + carriedOverCount;
+    // Count what is shown, not what the aggregator tracks.
+    const totalTasks = columns.reduce((sum, column) => sum + column.tasks.length, 0);
 
     this._state = {
       columns,
       sessionActive: this._sessionMonitor.isActive(),
+      sessionStatus: SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)],
       lastUpdated: new Date().toISOString(),
       totalTasks,
       activeTaskId,
       carriedOverCount,
     };
+  }
+
+  /** The attached session's id, or null when nothing is attached. */
+  private _currentSessionId(): string | null {
+    const sessionPath = this._sessionMonitor.getSessionPath();
+    if (!sessionPath) return null;
+    return this._sessionMonitor.getProvider().getSessionId(sessionPath) || null;
   }
 
   /**
@@ -502,6 +541,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     .header {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: var(--sk-space-2);
       padding: var(--sk-space-2) var(--sk-space-3);
       border-bottom: 1px solid var(--sk-border-primary);
@@ -545,6 +585,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       margin-left: auto;
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 6px;
     }
 
@@ -572,6 +613,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     .summary {
       font-size: 10px;
       color: var(--vscode-descriptionForeground);
+      padding: 0 var(--sk-space-3) var(--sk-space-1);
     }
 
     .board {
@@ -785,14 +827,14 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   <div class="header">
     <img src="${iconUri}" alt="Sidekick icon" />
     <h1>Kanban Board</h1>
-    <span id="status" class="status" aria-live="polite">Idle</span>
+    <span id="status" class="status">No session</span>
     <div class="header-actions">
-      <span id="summary" class="summary"></span>
-      <button id="clearDone" class="icon-button" disabled>Clear Done</button>
-      <button id="archiveAll" class="icon-button" disabled>Archive All</button>
+      <button id="clearDone" class="icon-button" disabled title="Remove completed carried-over tasks">Clear Done</button>
+      <button id="archiveAll" class="icon-button" disabled title="Remove every task carried over from earlier sessions (asks first)">Clear Carried Over</button>
       <button id="refresh" class="icon-button">Refresh</button>
     </div>
   </div>
+  <div id="summary" class="summary"></div>
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
   <div id="board" class="board"></div>
   <div id="empty" class="empty-state" hidden>
@@ -822,19 +864,19 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (!value) return '';
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return '';
-      return date.toLocaleString();
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
     function render(state) {
       if (!state) return;
 
-      statusEl.textContent = state.sessionActive ? 'Active' : 'Idle';
-      statusEl.classList.toggle('active', state.sessionActive);
+      statusEl.textContent = state.sessionStatus || (state.sessionActive ? 'Viewing' : 'No session');
+      statusEl.classList.toggle('active', state.sessionStatus === 'Live');
 
       const allCards = (state.columns || []).flatMap(function(c) { return c.tasks || []; });
       const agentCount = allCards.filter(function(t) { return t.isSubagent; }).length;
       const carriedCount = state.carriedOverCount || 0;
-      const taskCount = state.totalTasks - agentCount;
+      const taskCount = allCards.length - agentCount;
       const parts = [];
       if (taskCount > 0) parts.push(taskCount + ' task' + (taskCount === 1 ? '' : 's'));
       if (agentCount > 0) parts.push(agentCount + ' agent' + (agentCount === 1 ? '' : 's'));

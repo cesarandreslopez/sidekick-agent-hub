@@ -109,6 +109,9 @@ export interface TaskBoardState {
 
   /** Number of carried-over tasks from prior sessions */
   carriedOverCount: number;
+
+  /** Live / Viewing / No session label for the attached session */
+  sessionStatus?: string;
 }
 
 /**

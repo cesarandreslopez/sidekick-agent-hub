@@ -255,6 +255,20 @@ describe('TaskPersistenceService', () => {
       service2.dispose();
     });
 
+    it('forgets a task this session saved and then deleted', async () => {
+      const service = createService();
+      await service.initialize();
+
+      service.saveSessionTasks('session-111', makeTaskState([makeTask({ taskId: '1', status: 'pending' })]));
+      service.saveSessionTasks('session-111', makeTaskState([makeTask({ taskId: '1', status: 'deleted' })]));
+      service.dispose();
+
+      const service2 = createService();
+      await service2.initialize();
+      expect(service2.loadPersistedTasks()).toEqual([]);
+      service2.dispose();
+    });
+
     it('skips subagent tasks', async () => {
       const service = createService();
       await service.initialize();
