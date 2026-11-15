@@ -190,9 +190,8 @@ function aggregatedMetrics() {
 function liveProvider(visible = true) {
   const monitor = makeSessionMonitor();
   monitor.getStatsView.mockReturnValue(liveStatsView() as never);
-  (monitor as unknown as { getAggregatedMetrics: () => unknown }).getAggregatedMetrics = vi.fn(
-    aggregatedMetrics,
-  );
+  (monitor as unknown as { getAggregatedMetrics: () => unknown }).getAggregatedMetrics =
+    vi.fn(aggregatedMetrics);
   const provider = new DashboardViewProvider(
     { fsPath: '/tmp/sidekick-extension' } as never,
     monitor as never,
@@ -337,9 +336,8 @@ describe('DashboardViewProvider live session panels', () => {
   it('rebuilds the summary for a live session and never shows one session for the next', () => {
     const monitor = makeSessionMonitor();
     monitor.getStats.mockReturnValue({ ...liveStatsView(), lastUpdated: new Date() } as never);
-    (monitor as unknown as { getAggregatedMetrics: () => unknown }).getAggregatedMetrics = vi.fn(
-      aggregatedMetrics,
-    );
+    (monitor as unknown as { getAggregatedMetrics: () => unknown }).getAggregatedMetrics =
+      vi.fn(aggregatedMetrics);
     const provider = new DashboardViewProvider(
       { fsPath: '/tmp/sidekick-extension' } as never,
       monitor as never,
@@ -439,8 +437,9 @@ describe('DashboardViewProvider live session panels', () => {
     const postMessage = vi.fn();
     (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
     const availability = () =>
-      postMessage.mock.calls.filter((call) => call[0].type === 'updateSessionAvailability').pop()![0]
-        .availability;
+      postMessage.mock.calls
+        .filter((call) => call[0].type === 'updateSessionAvailability')
+        .pop()![0].availability;
     monitor.isActive.mockReturnValue(true);
 
     monitor.getAllSessionsGrouped.mockReturnValue([card(false)] as never);

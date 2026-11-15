@@ -78,7 +78,8 @@ export function sessionDurationMs(
   now: number = Date.now(),
 ): number {
   if (!start) return 0;
-  const end = lastActivityMs > 0 && now - lastActivityMs > SESSION_IDLE_AFTER_MS ? lastActivityMs : now;
+  const end =
+    lastActivityMs > 0 && now - lastActivityMs > SESSION_IDLE_AFTER_MS ? lastActivityMs : now;
   return Math.max(0, end - start.getTime());
 }
 

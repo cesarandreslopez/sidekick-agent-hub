@@ -1090,7 +1090,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           const content = await fs.promises.readFile(instructionFilePath, 'utf-8');
           // Any earlier pointer names this file, wherever the config folder lives.
           hasPointer =
-            content.includes('sidekick/handoffs/') || (slug !== '' && content.includes(`${slug}-latest.md`));
+            content.includes('sidekick/handoffs/') ||
+            (slug !== '' && content.includes(`${slug}-latest.md`));
         } catch {
           // File doesn't exist yet — no pointer
         }
@@ -2756,7 +2757,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       type: 'updateBurnRate',
       burnRate: this._burnRateCalculator.calculateBurnRate(),
       sessionStartTime: stats.sessionStartTime?.toISOString() ?? null,
-      lastActivityTime: this._lastActivityMs > 0 ? new Date(this._lastActivityMs).toISOString() : null,
+      lastActivityTime:
+        this._lastActivityMs > 0 ? new Date(this._lastActivityMs).toISOString() : null,
     });
   }
 

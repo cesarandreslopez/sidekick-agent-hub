@@ -59,7 +59,7 @@ export function sessionDurationText(
 const STOPWORDS = new Set(
   (
     'the and for with that this from into onto then than they them their there these those ' +
-    'was were are is be been being have has had not but you your our its it\'s all any can ' +
+    "was were are is be been being have has had not but you your our its it's all any can " +
     'will would should could just also only out over under about after before when where ' +
     'which while what who how why each per via use used using file files tool tools call ' +
     'calls result results'

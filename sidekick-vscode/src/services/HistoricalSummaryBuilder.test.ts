@@ -123,9 +123,7 @@ describe('buildHistoricalSummary', () => {
       ...base,
       // Active three days this week (Mon/Wed/Fri-like) and one day last week.
       getDailyData: (start, end) =>
-        base
-          .getDailyData(start, end)
-          .filter((d) => [0, 2, 4, 9].includes(daysBefore(d.date))),
+        base.getDailyData(start, end).filter((d) => [0, 2, 4, 9].includes(daysBefore(d.date))),
     };
     const summary = buildHistoricalSummary(sparse, 'week', { now: NOW });
     expect(summary.dataPoints).toHaveLength(7);

@@ -83,8 +83,8 @@ describe('renderDashboardHtml', () => {
     expect(html).toContain('aria-label="Search decisions"');
     // Health's Refresh is not one of the History range buttons.
     expect(html).not.toMatch(/class="range-btn"[^>]*id="health-refresh"/);
-    expect(html.match(/class="range-btn[^"]*"[^>]*>/g)!.every((tag) => /data-range=/.test(tag))).toBe(
-      true,
-    );
+    expect(
+      html.match(/class="range-btn[^"]*"[^>]*>/g)!.every((tag) => /data-range=/.test(tag)),
+    ).toBe(true);
   });
 });

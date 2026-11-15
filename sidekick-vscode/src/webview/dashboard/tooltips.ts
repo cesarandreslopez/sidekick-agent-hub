@@ -34,7 +34,10 @@ export function placeTooltip(
 ): TooltipPlacement {
   const width = Math.max(120, Math.min(MAX_WIDTH, viewportWidth - MARGIN * 2));
   const centre = anchor.left + anchor.width / 2;
-  const left = Math.min(Math.max(centre - width / 2, MARGIN), Math.max(MARGIN, viewportWidth - width - MARGIN));
+  const left = Math.min(
+    Math.max(centre - width / 2, MARGIN),
+    Math.max(MARGIN, viewportWidth - width - MARGIN),
+  );
   const below = anchor.bottom + GAP;
   const top =
     below + tooltipHeight > viewportHeight - MARGIN && anchor.top - GAP - tooltipHeight >= MARGIN
@@ -60,7 +63,10 @@ export function enhanceInfoTooltips(doc: Document): void {
     const show = (): void => {
       tip.classList.add('tooltip--placed');
       // Measure at the final width before placing.
-      const width = Math.max(120, Math.min(MAX_WIDTH, (view?.innerWidth ?? MAX_WIDTH) - MARGIN * 2));
+      const width = Math.max(
+        120,
+        Math.min(MAX_WIDTH, (view?.innerWidth ?? MAX_WIDTH) - MARGIN * 2),
+      );
       tip.style.width = `${width}px`;
       const rect = icon.getBoundingClientRect();
       const placed = placeTooltip(

@@ -567,7 +567,11 @@ export function createHistoryView(doc: Document): HistoryView {
         ...(chart.options.plugins.legend ?? {}),
         display: data.stacked,
         position: 'bottom',
-        labels: { ...(chart.options.plugins.legend?.labels ?? {}), boxWidth: 10, font: { size: 10 } },
+        labels: {
+          ...(chart.options.plugins.legend?.labels ?? {}),
+          boxWidth: 10,
+          font: { size: 10 },
+        },
       };
       chart.update();
     },

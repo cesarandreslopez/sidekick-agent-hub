@@ -25,6 +25,8 @@ export function highlightMatches(text: string | null | undefined, query: string)
   const pattern = new RegExp(`(${needle.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi');
   return raw
     .split(pattern)
-    .map((piece, index) => (index % 2 === 1 ? `<mark>${escapeHtml(piece)}</mark>` : escapeHtml(piece)))
+    .map((piece, index) =>
+      index % 2 === 1 ? `<mark>${escapeHtml(piece)}</mark>` : escapeHtml(piece),
+    )
     .join('');
 }
