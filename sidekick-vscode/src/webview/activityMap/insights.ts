@@ -98,6 +98,7 @@ export function renderInsights(
         'aria-label',
         `${strings.stations[station.id]}: ${station.calls} calls, busy ${formatDuration(station.busyMs) || '0s'}, ${faults} faults, about ${formatCount(station.estTokens)} tokens into context`,
       );
+      button.dataset.focusKey = `station:${station.id}`;
       button.appendChild(swatch(doc, station.id));
       button.appendChild(cell(doc, '', strings.stations[station.id]));
       button.appendChild(cell(doc, 'am-num', String(station.calls)));
@@ -119,6 +120,7 @@ export function renderInsights(
       const button = doc.createElement('button');
       button.type = 'button';
       button.dataset.state = pattern.state;
+      button.dataset.focusKey = `pattern:${pattern.kind}:${pattern.startAt}`;
       button.textContent = `${describeActivityPattern(pattern)}${pattern.state === 'open' ? ' — ongoing' : ''}`;
       button.addEventListener('click', () => handlers.onSelectPattern(pattern));
       li.appendChild(button);
@@ -133,5 +135,14 @@ export function renderInsights(
     summary.textContent = describeActivityInsights(insights, { maxLines: 8 });
     nodes.push(summary);
   }
+  // Rebuilding replaces the buttons; put keyboard focus back on the same row.
+  const focused = doc.activeElement as HTMLElement | null;
+  const focusKey = focused && container.contains(focused) ? focused.dataset.focusKey : undefined;
   container.replaceChildren(...nodes);
+  if (focusKey) {
+    const match = Array.from(container.querySelectorAll<HTMLElement>('[data-focus-key]')).find(
+      (el) => el.dataset.focusKey === focusKey,
+    );
+    match?.focus();
+  }
 }

@@ -400,10 +400,7 @@ function main(): void {
 
   if (panel) {
     document.addEventListener('keydown', (event) => {
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'BUTTON')) {
-        if (event.key !== ' ' || target.tagName === 'INPUT') return;
-      }
+      if (!isPlaybackKeyTarget(event.target as HTMLElement | null, event.key)) return;
       const range = model.range();
       const speeds: Record<string, PlaybackSpeed> = { '1': 1, '2': 10, '3': 60 };
       if (event.key === ' ') {
@@ -448,4 +445,20 @@ function main(): void {
 
 if (typeof document !== 'undefined' && typeof acquireVsCodeApi === 'function') {
   main();
+}
+
+/**
+ * Whether a keydown on `target` drives playback. Inputs and section headers
+ * (<summary>) keep their own keys; buttons keep Space (which activates them)
+ * unless they sit in the transport bar, where Space means play/pause.
+ */
+export function isPlaybackKeyTarget(target: HTMLElement | null, key: string): boolean {
+  if (!target) return true;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'SUMMARY') return false;
+  if (target.isContentEditable) return false;
+  if (tag === 'BUTTON') {
+    return key === ' ' && Boolean(target.closest('#am-controls'));
+  }
+  return true;
 }
