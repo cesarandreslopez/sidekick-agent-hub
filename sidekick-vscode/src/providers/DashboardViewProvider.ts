@@ -1626,8 +1626,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
     this._panelsStale = false;
     if (!this._sessionMonitor.isActive()) return;
-    this._repostLivenessIfChanged();
     try {
+      this._repostLivenessIfChanged();
       const stats = this._sessionMonitor.getStatsView();
       this._syncDerivedPanels(stats);
       this._postContextHealth(stats);
@@ -2775,7 +2775,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       if (this._view?.visible && this._sessionMonitor.isActive()) {
         this._sendBurnRateUpdate();
         // Live decays to Viewing once the session goes quiet.
-        this._repostLivenessIfChanged();
+        try {
+          this._repostLivenessIfChanged();
+        } catch (error) {
+          logError('Dashboard: failed to re-check session liveness', error);
+        }
       }
     }, BURN_RATE_TICK_MS);
   }

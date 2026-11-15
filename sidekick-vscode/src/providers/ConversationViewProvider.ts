@@ -371,12 +371,9 @@ export class ConversationViewProvider implements vscode.Disposable {
       this.panel.webview.onDidReceiveMessage(
         (message: { type?: string }) => {
           if (message?.type === 'refresh' && this.currentPath) {
-            // A successful render replaces the page; a failed one must give
-            // the Refresh button back.
-            this.render(this.currentPath).catch((error) => {
-              logError('Conversation refresh failed', error);
-              void this.panel?.webview.postMessage({ type: 'refreshFailed' });
-            });
+            // A successful render replaces the page; a failed one gives the
+            // Refresh button back (render reports the error itself).
+            void this.render(this.currentPath, { fromRefresh: true });
           }
         },
         null,
@@ -395,7 +392,7 @@ export class ConversationViewProvider implements vscode.Disposable {
   }
 
   /** Parses the session and (re)renders the panel. */
-  private async render(targetPath: string): Promise<void> {
+  private async render(targetPath: string, options: { fromRefresh?: boolean } = {}): Promise<void> {
     if (!this.panel) return;
     try {
       const chunks = await this.parseSession(targetPath);
@@ -404,6 +401,7 @@ export class ConversationViewProvider implements vscode.Disposable {
     } catch (err) {
       logError('ConversationViewProvider: Failed to parse session', err);
       vscode.window.showErrorMessage(`Failed to open conversation: ${toErrorMessage(err)}`);
+      if (options.fromRefresh) void this.panel?.webview.postMessage({ type: 'refreshFailed' });
     }
   }
 
