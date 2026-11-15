@@ -120,6 +120,7 @@ import { getNonce } from './utils/nonce';
 import { resolveDiagnosticAtSelection } from './utils/diagnosticAtSelection';
 import { PROVIDER_LABELS, accountDisplayName } from './commands/accountQuickPick';
 import { formatTimeoutSeconds } from './utils/formatTimeout';
+import { buildReportCsp } from './utils/reportCsp';
 import type { AccountProviderId, SyncReport } from 'sidekick-shared';
 import {
   AutoSwitchController,
@@ -2022,10 +2023,10 @@ export async function activate(context: vscode.ExtensionContext) {
         { enableScripts: true },
       );
 
-      // Inject CSP nonce into the generated HTML
+      // Inject the CSP: nonce'd <style>/<script> blocks, the report's fixed
+      // inline handlers allowed by hash, and inline style attributes.
       const nonce = getNonce();
-      const cspSource = panel.webview.cspSource;
-      const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}'; img-src ${cspSource} data:;">`;
+      const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${buildReportCsp(panel.webview.cspSource, nonce)}">`;
       const securedHtml = html
         .replace('<head>', `<head>\n${cspMeta}`)
         .replace(/<style>/g, `<style nonce="${nonce}">`)
