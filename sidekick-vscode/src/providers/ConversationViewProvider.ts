@@ -371,7 +371,12 @@ export class ConversationViewProvider implements vscode.Disposable {
       this.panel.webview.onDidReceiveMessage(
         (message: { type?: string }) => {
           if (message?.type === 'refresh' && this.currentPath) {
-            void this.render(this.currentPath);
+            // A successful render replaces the page; a failed one must give
+            // the Refresh button back.
+            this.render(this.currentPath).catch((error) => {
+              logError('Conversation refresh failed', error);
+              void this.panel?.webview.postMessage({ type: 'refreshFailed' });
+            });
           }
         },
         null,
@@ -834,16 +839,25 @@ export class ConversationViewProvider implements vscode.Disposable {
           refreshBtn.textContent = 'Refreshing…';
           vscode.postMessage({ type: 'refresh' });
         });
+        window.addEventListener('message', function(event) {
+          if (event.data && event.data.type === 'refreshFailed') {
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = 'Refresh failed — retry';
+          }
+        });
       }
 
       function clearHighlights() {
         var marks = document.querySelectorAll('mark.highlight');
+        var parents = new Set();
         marks.forEach(function(mark) {
           var parent = mark.parentNode;
           if (!parent) return;
           parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
-          parent.normalize();
+          parents.add(parent);
         });
+        // Merge the split text nodes once per parent, not once per mark.
+        parents.forEach(function(parent) { parent.normalize(); });
       }
 
       function highlightIn(root, query) {
@@ -892,7 +906,9 @@ export class ConversationViewProvider implements vscode.Disposable {
             if (text.indexOf(query) >= 0) {
               chunk.classList.remove('hidden');
               shown++;
-              highlightIn(chunk, query);
+              // One-character queries still filter, but highlighting every
+              // match in a long transcript is too slow to be worth it.
+              if (query.length >= 2) highlightIn(chunk, query);
               var toggle = chunk.querySelector('.tool-toggle');
               var body = chunk.querySelector('.tool-body');
               if (toggle && body && body.textContent.toLowerCase().indexOf(query) >= 0) setOpen(toggle, true);

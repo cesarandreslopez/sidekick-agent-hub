@@ -203,6 +203,65 @@ describe('PlanBoardViewProvider', () => {
   });
 });
 
+describe('PlanBoardViewProvider active-session history', () => {
+  it("keeps the attached session's plan file in History when there is no Active Plan card", async () => {
+    const raw = {
+      id: 'claude-plan-slug',
+      projectSlug: 'project',
+      sessionId: 'slug',
+      sessionIds: ['session-2'],
+      title: 'Planned in this session',
+      source: 'claude-code',
+      createdAt: '2026-07-21T00:00:00Z',
+      status: 'in_progress',
+      steps: [],
+      completionRate: 0,
+    } as PersistedPlan & { sessionIds: string[] };
+    mocks.readPlans.mockResolvedValue([raw]);
+    const sessionMonitor = {
+      ...monitor(),
+      isActive: () => true,
+      getSessionPath: () => '/sessions/session-2.jsonl',
+      getProvider: () => ({ getSessionId: () => 'session-2' }),
+    };
+    const provider = new PlanBoardViewProvider({} as never, sessionMonitor as never, undefined);
+    await vi.waitFor(() => expect(mocks.readPlans).toHaveBeenCalled());
+    const postMessage = vi.fn();
+    provider.resolveWebviewView(
+      {
+        visible: true,
+        webview: {
+          options: {},
+          html: '',
+          cspSource: 'test',
+          asWebviewUri: (uri: unknown) => uri,
+          onDidReceiveMessage: (handler: (message: { type: string }) => void) => {
+            handler({ type: 'webviewReady' });
+            return disposable;
+          },
+          postMessage,
+        },
+        onDidChangeVisibility: () => disposable,
+        onDidDispose: () => disposable,
+      } as never,
+      {} as never,
+      {} as never,
+    );
+    await vi.waitFor(() =>
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'updatePlanBoard',
+          state: expect.objectContaining({
+            activePlan: null,
+            historicalPlans: [expect.objectContaining({ title: 'Planned in this session' })],
+          }),
+        }),
+      ),
+    );
+    provider.dispose();
+  });
+});
+
 describe('mergePlanHistory', () => {
   const plan = (over: Partial<PersistedPlan>): PersistedPlan =>
     ({

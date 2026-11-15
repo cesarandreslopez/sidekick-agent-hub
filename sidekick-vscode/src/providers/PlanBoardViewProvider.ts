@@ -219,9 +219,13 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
     const persisted = this._planPersistence?.getPlans() ?? [];
     const activeSessionId = this._getActiveSessionId();
-    const historicalPlans = mergePlanHistory(persisted, this._claudeCodePlans, activeSessionId).map(
-      (entry) => this._persistedToHistoryEntry(entry.plan, entry.rawOnly),
-    );
+    // The active session only hides its plans from History when the Active
+    // Plan card is there to show them instead.
+    const historicalPlans = mergePlanHistory(
+      persisted,
+      this._claudeCodePlans,
+      activePlan ? activeSessionId : null,
+    ).map((entry) => this._persistedToHistoryEntry(entry.plan, entry.rawOnly));
 
     this._state = {
       activePlan,
@@ -1124,7 +1128,8 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
  * plan files. A raw file is dropped when a persisted plan or the active
  * session already covers one of its sessions, or when its markdown matches a
  * persisted plan. Persisted plans from the active session are left to the
- * Active Plan card.
+ * Active Plan card. Pass `activeSessionId: null` when there is no Active Plan
+ * card, so nothing is hidden on its behalf.
  */
 export function mergePlanHistory(
   persisted: readonly PersistedPlan[],

@@ -864,7 +864,10 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (!value) return '';
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return '';
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      // Carried-over tasks can be days old; give them a date.
+      if (date.toDateString() === new Date().toDateString()) return time;
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
     }
 
     function render(state) {
