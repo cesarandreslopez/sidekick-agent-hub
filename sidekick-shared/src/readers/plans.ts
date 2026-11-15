@@ -10,7 +10,7 @@ import { getProjectDataPath, encodeWorkspacePath } from '../paths';
 import { readJsonStore } from './helpers';
 import { parsePlanMarkdown } from '../parsers/planExtractor';
 import { atomicWriteJson } from '../writers/atomic';
-import { getClaudeProjectsDir, getLiveClaudeHome } from '../claudePaths';
+import { encodeClaudeWorkspacePath, getClaudeProjectsDir, getLiveClaudeHome } from '../claudePaths';
 
 export interface ReadPlansOptions {
   status?: 'in_progress' | 'completed' | 'failed' | 'abandoned' | 'all';
@@ -184,25 +184,39 @@ export async function writePlans(slug: string, plans: PersistedPlan[]): Promise<
   await atomicWriteJson(filePath, store);
 }
 
+/** A raw Claude Code plan file, with the sessions whose transcripts name its slug. */
+export interface ClaudeCodePlanFile extends PersistedPlan {
+  /**
+   * Session ids (transcript file names without `.jsonl`) that reference this
+   * plan's slug. One slug can span several sessions (a resumed or forked
+   * conversation), so match against any of them. `sessionId` stays the slug.
+   */
+  sessionIds: string[];
+}
+
 /**
  * Reads raw plan markdown files from ~/.claude/plans/ that belong to
  * sessions in the given workspace. Maps session JSONL slugs to plan filenames.
  */
-export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<PersistedPlan[]> {
+export async function readClaudeCodePlanFiles(
+  workspacePath?: string,
+): Promise<ClaudeCodePlanFile[]> {
   const claudePlansDir = path.join(getLiveClaudeHome(), 'plans');
   const claudeProjectsDir = getClaudeProjectsDir();
 
-  // Find the project directory in ~/.claude/projects/
+  // Find the project directory in ~/.claude/projects/ (Claude Code's own
+  // encoding: every non-alphanumeric character becomes a hyphen).
   const cwd = workspacePath || process.cwd();
   const encoded = encodeWorkspacePath(path.resolve(cwd));
-  const projectDir = path.join(claudeProjectsDir, encoded);
+  const projectDir = path.join(claudeProjectsDir, encodeClaudeWorkspacePath(path.resolve(cwd)));
 
   if (!fs.existsSync(projectDir) || !fs.existsSync(claudePlansDir)) {
     return [];
   }
 
-  // Extract unique slugs from session JSONL files (read first match per file)
-  const slugSet = new Set<string>();
+  // Extract unique slugs from session JSONL files (read first match per file),
+  // remembering which sessions reference each slug.
+  const slugSessions = new Map<string, Set<string>>();
   let jsonlFiles: string[];
   try {
     jsonlFiles = (await fs.promises.readdir(projectDir)).filter((f) => f.endsWith('.jsonl'));
@@ -225,7 +239,9 @@ export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<P
           for (const line of chunk.split('\n')) {
             const m = line.match(SLUG_RE);
             if (m) {
-              slugSet.add(m[1]);
+              const sessions = slugSessions.get(m[1]) ?? new Set<string>();
+              sessions.add(f.slice(0, -'.jsonl'.length));
+              slugSessions.set(m[1], sessions);
               break;
             }
           }
@@ -238,11 +254,11 @@ export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<P
     }),
   );
 
-  if (slugSet.size === 0) return [];
+  if (slugSessions.size === 0) return [];
 
   // Read matching plan files
-  const plans: PersistedPlan[] = [];
-  for (const slug of slugSet) {
+  const plans: ClaudeCodePlanFile[] = [];
+  for (const [slug, sessions] of slugSessions) {
     const planPath = path.join(claudePlansDir, `${slug}.md`);
     try {
       const stat = await fs.promises.stat(planPath);
@@ -271,6 +287,7 @@ export async function readClaudeCodePlanFiles(workspacePath?: string): Promise<P
         steps,
         completionRate: total > 0 ? completed / total : 0,
         rawMarkdown: content,
+        sessionIds: [...sessions].sort(),
       });
     } catch {
       /* plan file missing or unreadable */
