@@ -6,11 +6,11 @@
  * completion provider that sends code context to Claude and displays suggestions.
  *
  * Features:
- * - Automatic inline completions as you type
+ * - On-demand inline completions
  * - Code transformation via selection and instruction
  * - Configurable debounce delay
- * - Toggle enable/disable via status bar or command
- * - Manual trigger via keyboard shortcut (Ctrl+Shift+Space)
+ * - Toggle enable/disable via command
+ * - Manual trigger via keyboard shortcut (Ctrl+K Ctrl+Shift+Space)
  * - Model selection (haiku for speed, sonnet/opus for quality)
  *
  * @module extension
@@ -116,6 +116,7 @@ import {
 import { resolveModel } from './services/ModelResolver';
 import { featureEffort, PROVIDER_DISPLAY_NAMES } from './types/inferenceProvider';
 import { getNonce } from './utils/nonce';
+import { resolveDiagnosticAtSelection } from './utils/diagnosticAtSelection';
 import type { AccountProviderId, SyncReport } from 'sidekick-shared';
 import {
   AutoSwitchController,
@@ -2681,11 +2682,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Helper for explain error with specific complexity
   const explainErrorWithComplexity = async (
-    uri: vscode.Uri,
-    diagnostic: vscode.Diagnostic,
+    uri: vscode.Uri | undefined,
+    passedDiagnostic: vscode.Diagnostic | undefined,
     complexity?: 'eli5' | 'curious-amateur' | 'imposter-syndrome' | 'senior' | 'phd',
   ) => {
-    const document = await vscode.workspace.openTextDocument(uri);
+    // Editor context menus pass only the URI; the lightbulb passes the diagnostic.
+    const resolved = await resolveDiagnosticAtSelection(uri, passedDiagnostic);
+    if (!resolved) return;
+    const { diagnostic } = resolved;
+    const document = await vscode.workspace.openTextDocument(resolved.uri);
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -2710,37 +2715,37 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'sidekick.explainError',
-      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+      async (uri?: vscode.Uri, diagnostic?: vscode.Diagnostic) => {
         return explainErrorWithComplexity(uri, diagnostic);
       },
     ),
     vscode.commands.registerCommand(
       'sidekick.explainError.eli5',
-      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+      async (uri?: vscode.Uri, diagnostic?: vscode.Diagnostic) => {
         return explainErrorWithComplexity(uri, diagnostic, 'eli5');
       },
     ),
     vscode.commands.registerCommand(
       'sidekick.explainError.curiousAmateur',
-      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+      async (uri?: vscode.Uri, diagnostic?: vscode.Diagnostic) => {
         return explainErrorWithComplexity(uri, diagnostic, 'curious-amateur');
       },
     ),
     vscode.commands.registerCommand(
       'sidekick.explainError.imposterSyndrome',
-      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+      async (uri?: vscode.Uri, diagnostic?: vscode.Diagnostic) => {
         return explainErrorWithComplexity(uri, diagnostic, 'imposter-syndrome');
       },
     ),
     vscode.commands.registerCommand(
       'sidekick.explainError.senior',
-      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+      async (uri?: vscode.Uri, diagnostic?: vscode.Diagnostic) => {
         return explainErrorWithComplexity(uri, diagnostic, 'senior');
       },
     ),
     vscode.commands.registerCommand(
       'sidekick.explainError.phd',
-      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
+      async (uri?: vscode.Uri, diagnostic?: vscode.Diagnostic) => {
         return explainErrorWithComplexity(uri, diagnostic, 'phd');
       },
     ),
@@ -2750,8 +2755,11 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'sidekick.fixError',
-      async (uri: vscode.Uri, diagnostic: vscode.Diagnostic) => {
-        const document = await vscode.workspace.openTextDocument(uri);
+      async (uri: vscode.Uri | undefined, passedDiagnostic: vscode.Diagnostic | undefined) => {
+        const resolved = await resolveDiagnosticAtSelection(uri, passedDiagnostic);
+        if (!resolved) return;
+        const { diagnostic } = resolved;
+        const document = await vscode.workspace.openTextDocument(resolved.uri);
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
