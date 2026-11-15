@@ -145,6 +145,19 @@ type DashboardFlushKind = 'stats' | 'timeline' | 'toolAnalytics' | 'plan' | 'bur
 /** The stats message without the timeline (sent separately as `updateTimeline`). */
 /** Minimum gap between subagent transcript rescans for the session total. */
 const SUBAGENT_TOKEN_REFRESH_MS = 15_000;
+/**
+ * Trailing throttle for the derived Session-tab panels (file changes, errors,
+ * attribution, analytics, the richer panels) while a session runs. A
+ * throttle, not a debounce: a steady event stream still refreshes them.
+ */
+const PANELS_REFRESH_MS = 4_000;
+/** Decision extraction rescans every tool call; it runs at most this often while live. */
+const DECISION_REFRESH_MS = 60_000;
+/** Token-usage samples kept for burn-rate re-seeding and the trend (see `_recentUsage`). */
+const RECENT_USAGE_WINDOW_MS = 10 * 60_000;
+const RECENT_USAGE_MAX = 500;
+/** While a session is live, Duration and tok/min are re-sent this often so they age. */
+const BURN_RATE_TICK_MS = 30_000;
 
 const HISTORICAL_RANGES: readonly HistoricalRange[] = ['today', 'week', 'month', 'all'];
 const HISTORICAL_SERIES: readonly HistoricalSeries[] = ['total', 'model', 'tool'];
@@ -230,6 +243,23 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Debounce timer for richer panel updates */
   private _richerPanelTimer?: ReturnType<typeof setTimeout>;
+  /** Throttle timer for the derived Session-tab panels; see PANELS_REFRESH_MS. */
+  private _panelsRefreshTimer?: ReturnType<typeof setTimeout>;
+  /** Live events arrived while the view was hidden; refresh the panels on show. */
+  private _panelsStale = false;
+  private _lastDecisionExtractMs = 0;
+  /** The decisions search the webview has open, so refreshes keep it applied. */
+  private _decisionsQuery: string | undefined;
+  /**
+   * Recent token-usage samples for this session. The monitor's
+   * `recentUsageEvents` is always empty, so without these a webview reload
+   * restarted tok/min from zero and the burn-rate trend never moved.
+   */
+  private _recentUsage: Array<{ timestamp: Date; tokens: number }> = [];
+  /** Re-sends the burn rate while the view is visible, so idle time shows. */
+  private _burnRateTimer?: ReturnType<typeof setInterval>;
+  /** Newest activity in the session (ms epoch), from event timestamps, not the wall clock. */
+  private _lastActivityMs = 0;
   /**
    * Coalesced webview sends. Hot handlers (token usage, timeline events, tool
    * analytics) mark a kind dirty; one trailing timer posts each dirty message
@@ -490,19 +520,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     webviewView.onDidChangeVisibility(
       () => {
         if (webviewView.visible) {
+          // Panels skipped while hidden are rebuilt before the state goes out.
+          if (this._panelsStale) this._refreshDerivedPanels();
           this._sendStateToWebview();
+          this._sendBurnRateUpdate();
           this._sendSessionList();
           this._sendProviderInfo();
           // Start quota refresh when visible
           this._quotaService?.startRefresh();
           this._providerStatusService?.startRefresh();
           this._peakHoursService?.startRefresh();
+          this._startBurnRateTicker();
           void this._sendBillingBlock();
         } else {
           // Stop quota + status refresh when hidden to save resources
           this._quotaService?.stopRefresh();
           this._providerStatusService?.stopRefresh();
           this._peakHoursService?.stopRefresh();
+          this._stopBurnRateTicker();
         }
       },
       undefined,
@@ -516,6 +551,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           this._quotaService?.stopRefresh();
           this._providerStatusService?.stopRefresh();
           this._peakHoursService?.stopRefresh();
+          this._stopBurnRateTicker();
           this._phrases.stop();
         }
         this._disposeViewBindings();
@@ -529,6 +565,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._quotaService?.startRefresh();
       this._providerStatusService?.startRefresh();
       this._peakHoursService?.startRefresh();
+      this._startBurnRateTicker();
       void this._sendBillingBlock();
     }
 
@@ -722,7 +759,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       case 'searchDecisions':
-        this._sendDecisionsToWebview(message.query);
+        this._sendDecisionsToWebview(message.query ?? '');
         break;
 
       case 'generateHandoff':
@@ -810,6 +847,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._postMessage({
       type: 'updateTimeline',
       events: allEvents,
+      search: true,
     });
   }
 
@@ -820,7 +858,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @param toolName - Name of the tool to get details for
    */
   private _handleToolCallDetails(toolName: string): void {
-    const stats = this._sessionMonitor.getStats();
+    // Open tool rows re-request as counts move; the view avoids copying the session.
+    const stats = this._sessionMonitor.getStatsView();
     const calls = stats.toolCalls
       .filter((tc) => tc.name === toolName)
       .map((tc) => {
@@ -1190,47 +1229,52 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     this._richerPanelTimer = setTimeout(() => {
-      const stats = this._sessionMonitor.getStats();
-
-      // Task Performance
-      const taskPerf = this._summaryService.getTaskPerformance(stats.taskState);
-      this._postMessage({ type: 'updateTaskPerformance', data: taskPerf });
-
-      // Cache Effectiveness
-      const cacheData = this._summaryService.getCacheEffectiveness(stats);
-      this._postMessage({ type: 'updateCacheEffectiveness', data: cacheData });
-
-      // Recovery Patterns (needs analyzer)
-      if (this._sessionAnalyzer) {
-        const analysisData = this._sessionAnalyzer.getCachedData();
-        const recoveryData = this._summaryService.getRecoveryPatterns(analysisData);
-        this._postMessage({ type: 'updateRecoveryPatterns', data: recoveryData });
-      }
-
-      // Advanced Burn Rate
-      const quotaState = this._quotaService?.getCachedQuota() ?? undefined;
-      const burnData = this._summaryService.getAdvancedBurnRate(
-        stats,
-        this._burnRateCalculator,
-        quotaState,
-      );
-      this._postMessage({ type: 'updateAdvancedBurnRate', data: burnData });
-
-      // Tool Efficiency
-      const toolEfficiency = this._summaryService.getToolEfficiency(stats);
-      this._postMessage({ type: 'updateToolEfficiency', data: toolEfficiency });
-
-      // Context Attribution
-      if (this._state.contextAttribution && this._state.contextAttribution.length > 0) {
-        this._postMessage({
-          type: 'updateContextAttribution',
-          attribution: this._state.contextAttribution,
-        });
-      }
+      this._richerPanelTimer = undefined;
+      this._postRicherPanels(this._sessionMonitor.getStatsView());
 
       // Decision extraction
       this._extractAndPersistDecisions();
     }, 2000);
+  }
+
+  /** Task performance, cache, recovery, burn rate, tool efficiency, attribution. */
+  private _postRicherPanels(stats: Readonly<SessionStats>): void {
+    // Task Performance
+    const taskPerf = this._summaryService.getTaskPerformance(stats.taskState);
+    this._postMessage({ type: 'updateTaskPerformance', data: taskPerf });
+
+    // Cache Effectiveness
+    const cacheData = this._summaryService.getCacheEffectiveness(stats);
+    this._postMessage({ type: 'updateCacheEffectiveness', data: cacheData });
+
+    // Recovery Patterns (needs analyzer)
+    if (this._sessionAnalyzer) {
+      const analysisData = this._sessionAnalyzer.getCachedData();
+      const recoveryData = this._summaryService.getRecoveryPatterns(analysisData);
+      this._postMessage({ type: 'updateRecoveryPatterns', data: recoveryData });
+    }
+
+    // Advanced Burn Rate (trend from this provider's own usage samples)
+    const quotaState = this._quotaService?.getCachedQuota() ?? undefined;
+    const burnData = this._summaryService.getAdvancedBurnRate(
+      stats,
+      this._burnRateCalculator,
+      quotaState,
+      this._recentUsage,
+    );
+    this._postMessage({ type: 'updateAdvancedBurnRate', data: burnData });
+
+    // Tool Efficiency
+    const toolEfficiency = this._summaryService.getToolEfficiency(stats);
+    this._postMessage({ type: 'updateToolEfficiency', data: toolEfficiency });
+
+    // Context Attribution
+    if (this._state.contextAttribution && this._state.contextAttribution.length > 0) {
+      this._postMessage({
+        type: 'updateContextAttribution',
+        attribution: this._state.contextAttribution,
+      });
+    }
   }
 
   /**
@@ -1238,6 +1282,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _extractAndPersistDecisions(): void {
     if (!this._decisionLogService) return;
+    this._lastDecisionExtractMs = Date.now();
 
     try {
       const analysisData = this._sessionAnalyzer?.getCachedData() ?? null;
@@ -1259,10 +1304,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
-   * Sends decision entries to the webview, optionally filtered by query.
+   * Sends decision entries to the webview, filtered by the open search (or
+   * the given query, which becomes the open search).
    */
-  private _sendDecisionsToWebview(query?: string): void {
+  private _sendDecisionsToWebview(query: string | undefined = this._decisionsQuery): void {
     if (!this._decisionLogService) return;
+    this._decisionsQuery = query?.trim() ? query : undefined;
 
     const entries = this._decisionLogService.getEntries(query);
     const totalCount = this._decisionLogService.getEntryCount();
@@ -1448,6 +1495,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Track burn rate on the same total the aggregator samples.
     this._burnRateCalculator.addEvent(usageTokens, usage.timestamp);
+    this._recordUsageSample(usageTokens, usage.timestamp);
+    this._noteActivity(usage.timestamp);
 
     // Update current context size (provider-specific formula).
     // OpenCode emits some assistant step rows with zero token signal; those
@@ -1474,6 +1523,68 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Send updated state to webview (coalesced)
     this._scheduleFlush('stats', 'burnRate');
     this._scheduleBillingBlockUpdate();
+    this._schedulePanelsRefresh();
+  }
+
+  /** Advances the session's last-activity time from an event timestamp. */
+  private _noteActivity(timestamp: Date | string | undefined): void {
+    if (!timestamp) return;
+    const ms = timestamp instanceof Date ? timestamp.getTime() : Date.parse(timestamp);
+    if (Number.isFinite(ms) && ms > this._lastActivityMs) this._lastActivityMs = ms;
+  }
+
+  /** Keeps the last RECENT_USAGE_WINDOW_MS of token samples (bounded). */
+  private _recordUsageSample(tokens: number, timestamp: Date): void {
+    if (!(tokens > 0)) return;
+    const at = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    if (Number.isNaN(at.getTime())) return;
+    this._recentUsage.push({ timestamp: at, tokens });
+    const cutoff = Date.now() - RECENT_USAGE_WINDOW_MS;
+    while (
+      this._recentUsage.length > RECENT_USAGE_MAX ||
+      (this._recentUsage.length > 0 && this._recentUsage[0].timestamp.getTime() < cutoff)
+    ) {
+      this._recentUsage.shift();
+    }
+  }
+
+  /**
+   * Arms the trailing panel refresh. While the view is hidden nothing is
+   * computed; the panels are marked stale and refreshed when it is shown.
+   */
+  private _schedulePanelsRefresh(): void {
+    if (!this._view?.visible) {
+      this._panelsStale = true;
+      return;
+    }
+    if (this._panelsRefreshTimer) return;
+    this._panelsRefreshTimer = setTimeout(() => {
+      this._panelsRefreshTimer = undefined;
+      this._refreshDerivedPanels();
+    }, PANELS_REFRESH_MS);
+  }
+
+  /** Recomputes the derived Session-tab panels from the live monitor. */
+  private _refreshDerivedPanels(): void {
+    if (!this._view?.visible) {
+      this._panelsStale = true;
+      return;
+    }
+    this._panelsStale = false;
+    if (!this._sessionMonitor.isActive()) return;
+    try {
+      const stats = this._sessionMonitor.getStatsView();
+      this._syncDerivedPanels(stats);
+      this._postContextHealth(stats);
+      this._postTruncations(stats);
+      this._postRicherPanels(stats);
+      if (Date.now() - this._lastDecisionExtractMs >= DECISION_REFRESH_MS) {
+        this._extractAndPersistDecisions();
+      }
+      this._scheduleFlush('stats');
+    } catch (error) {
+      logError('Dashboard: failed to refresh the session panels', error);
+    }
   }
 
   /**
@@ -1528,12 +1639,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._toolAnalytics.set(analytics.name, analytics);
     this._updateToolAnalyticsState();
     this._scheduleFlush('toolAnalytics', 'plan');
+    this._schedulePanelsRefresh();
   }
 
   /**
    * Handles timeline events from SessionMonitor.
    */
   private _handleTimelineEvent(event: TimelineEvent): void {
+    this._noteActivity(event.timestamp);
     // Add to beginning
     this._timeline.unshift(event);
 
@@ -1544,6 +1657,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     this._updateTimelineState();
     this._scheduleFlush('timeline');
+    this._schedulePanelsRefresh();
   }
 
   /**
@@ -1656,6 +1770,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state.subagentTokens = null;
     this._lastSubagentTokenRefresh = 0;
     this._currentContextSize = 0;
+    this._recentUsage = [];
+    this._lastActivityMs = 0;
   }
 
   /**
@@ -2037,10 +2153,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     });
 
     // Also update context health after each compaction
-    const stats = this._sessionMonitor.getStatsView();
+    this._postContextHealth(this._sessionMonitor.getStatsView());
+  }
+
+  /** Context health chip (score and compaction count) for the current session. */
+  private _postContextHealth(stats: Readonly<SessionStats>): void {
     this._postMessage({
       type: 'updateContextHealth',
-      score: stats.contextHealth,
+      score: stats.contextHealth ?? 100,
       compactionCount: stats.compactionEvents?.length ?? 0,
     });
   }
@@ -2050,7 +2170,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Posts truncation count and per-tool breakdown to the dashboard.
    */
   private _handleTruncation(): void {
-    const stats = this._sessionMonitor.getStatsView();
+    this._postTruncations(this._sessionMonitor.getStatsView());
+  }
+
+  /** Truncation count and per-tool breakdown for the current session (0 hides it). */
+  private _postTruncations(stats: Readonly<SessionStats>): void {
     const byTool: Array<{ tool: string; count: number }> = [];
     if (stats.truncationEvents) {
       const toolCounts = new Map<string, number>();
@@ -2063,7 +2187,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
     this._postMessage({
       type: 'updateTruncations',
-      count: stats.truncationCount,
+      count: stats.truncationCount ?? 0,
       byTool,
     });
   }
@@ -2194,22 +2318,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._timeline = [...stats.timeline].slice(0, MAX_DISPLAY_TIMELINE);
     this._updateTimelineState();
 
-    // Sync error details
-    this._state.errorDetails = Array.from(stats.errorDetails.entries()).map(([type, messages]) => ({
-      type,
-      count: messages.length,
-      messages,
-    }));
-
-    // Pre-populate burn rate calculator with recent events from session
-    // This ensures burn rate shows correctly when loading existing sessions
+    // Re-seed the burn rate from this session's recent samples, so a webview
+    // reload mid-session keeps tok/min (the monitor keeps no such samples).
     this._burnRateCalculator.reset();
-    for (const event of stats.recentUsageEvents) {
+    for (const event of this._recentUsage) {
       this._burnRateCalculator.addEvent(event.tokens, event.timestamp);
     }
-
-    // Compute file change summary
-    this._state.fileChangeSummary = this._computeFileChangeSummary(stats.toolCalls);
 
     // Sync latency stats
     if (stats.latencyStats) {
@@ -2231,7 +2345,32 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       }));
     }
 
+    this._syncDerivedPanels(stats);
+    this._postContextHealth(stats);
+    this._postTruncations(stats);
+
+    // Send richer panel updates (debounced)
+    this._sendRicherPanelUpdates();
+  }
+
+  /**
+   * The Session-tab panels derived from the whole session: errors, file
+   * changes, context attribution, per-turn breakdown, context waterfall, and
+   * the analytics charts. Run on attach/reset and, throttled, while live.
+   */
+  private _syncDerivedPanels(stats: Readonly<SessionStats>): void {
+    // Sync error details (copied: a stats view's arrays belong to the monitor)
+    this._state.errorDetails = Array.from(stats.errorDetails.entries()).map(([type, messages]) => ({
+      type,
+      count: messages.length,
+      messages: [...messages],
+    }));
+
+    // Compute file change summary
+    this._state.fileChangeSummary = this._computeFileChangeSummary(stats.toolCalls);
+
     // Sync context attribution
+    this._state.contextAttribution = [];
     if (stats.contextAttribution) {
       const attr = stats.contextAttribution;
       const total =
@@ -2305,6 +2444,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     // Sync permission mode and context timeline into state
     const aggregatedMetrics = this._sessionMonitor.getAggregatedMetrics?.();
     if (aggregatedMetrics) {
+      this._lastActivityMs = Math.max(
+        this._lastActivityMs,
+        aggregatedMetrics.lastEventTime ? Date.parse(aggregatedMetrics.lastEventTime) || 0 : 0,
+      );
       this._state.permissionMode = aggregatedMetrics.permissionMode ?? undefined;
       this._state.contextTimeline = aggregatedMetrics.contextTimeline ?? [];
       if (aggregatedMetrics.errorRollup.totalFailures > 0) {
@@ -2349,9 +2492,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         },
       });
     }
-
-    // Send richer panel updates (debounced)
-    this._sendRicherPanelUpdates();
   }
 
   /**
@@ -2566,7 +2706,23 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       type: 'updateBurnRate',
       burnRate: this._burnRateCalculator.calculateBurnRate(),
       sessionStartTime: stats.sessionStartTime?.toISOString() ?? null,
+      lastActivityTime: this._lastActivityMs > 0 ? new Date(this._lastActivityMs).toISOString() : null,
     });
+  }
+
+  /** While visible, re-send Duration and tok/min every BURN_RATE_TICK_MS so they age when idle. */
+  private _startBurnRateTicker(): void {
+    if (this._burnRateTimer) return;
+    this._burnRateTimer = setInterval(() => {
+      if (this._view?.visible && this._sessionMonitor.isActive()) this._sendBurnRateUpdate();
+    }, BURN_RATE_TICK_MS);
+  }
+
+  private _stopBurnRateTicker(): void {
+    if (this._burnRateTimer) {
+      clearInterval(this._burnRateTimer);
+      this._burnRateTimer = undefined;
+    }
   }
 
   /**
@@ -2800,6 +2956,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     if (this._richerPanelTimer) {
       clearTimeout(this._richerPanelTimer);
     }
+    if (this._panelsRefreshTimer) {
+      clearTimeout(this._panelsRefreshTimer);
+      this._panelsRefreshTimer = undefined;
+    }
+    this._stopBurnRateTicker();
     if (this._flushTimer) {
       clearTimeout(this._flushTimer);
       this._flushTimer = undefined;

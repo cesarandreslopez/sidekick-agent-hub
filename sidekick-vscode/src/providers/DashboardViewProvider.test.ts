@@ -148,6 +148,189 @@ function makeSessionMonitor() {
   };
 }
 
+function liveStatsView() {
+  return {
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalCacheWriteTokens: 0,
+    totalCacheReadTokens: 0,
+    messageCount: 0,
+    toolCalls: [],
+    modelUsage: new Map(),
+    lastUpdated: new Date(),
+    toolAnalytics: new Map(),
+    timeline: [],
+    errorDetails: new Map([['tool_error', ['boom']]]),
+    currentContextSize: 0,
+    recentUsageEvents: [],
+    sessionStartTime: null,
+    planState: undefined,
+    compactionEvents: [],
+    contextTimeline: [],
+    truncationEvents: [],
+    truncationCount: 0,
+    contextHealth: 100,
+  };
+}
+
+function aggregatedMetrics() {
+  return {
+    toolFrequency: [{ name: 'Read', count: 3 }],
+    wordFrequency: [],
+    patterns: [],
+    heatmapBuckets: [],
+    errorRollup: { totalFailures: 0, byToolCategory: [] },
+    contextTimeline: [],
+    permissionMode: null,
+    lastEventTime: null,
+  };
+}
+
+function liveProvider(visible = true) {
+  const monitor = makeSessionMonitor();
+  monitor.getStatsView.mockReturnValue(liveStatsView() as never);
+  (monitor as unknown as { getAggregatedMetrics: () => unknown }).getAggregatedMetrics = vi.fn(
+    aggregatedMetrics,
+  );
+  const provider = new DashboardViewProvider(
+    { fsPath: '/tmp/sidekick-extension' } as never,
+    monitor as never,
+  );
+  monitor.isActive.mockReturnValue(true);
+  const postMessage = vi.fn();
+  (provider as unknown as { _view: unknown })._view = { visible, webview: { postMessage } };
+  const count = (type: string) =>
+    postMessage.mock.calls.filter((call) => call[0].type === type).length;
+  return { monitor, provider, postMessage, count };
+}
+
+const liveUsage = () => ({
+  model: 'gpt-5.4',
+  inputTokens: 100,
+  outputTokens: 10,
+  cacheWriteTokens: 0,
+  cacheReadTokens: 0,
+  timestamp: new Date(),
+});
+
+describe('DashboardViewProvider live session panels', () => {
+  it('refreshes the derived panels on a trailing throttle while a session runs', () => {
+    vi.useFakeTimers();
+    try {
+      const { monitor, provider, count } = liveProvider();
+      for (let i = 0; i < 5; i += 1) monitor.handlers.tokenUsage!(liveUsage());
+      vi.advanceTimersByTime(3_000);
+      expect(count('updateAnalytics')).toBe(0);
+      vi.advanceTimersByTime(1_500);
+      // One refresh for the whole burst, with every derived panel.
+      expect(count('updateAnalytics')).toBe(1);
+      expect(count('updateTaskPerformance')).toBe(1);
+      expect(count('updateContextWaterfall')).toBe(1);
+      expect(count('updateContextHealth')).toBe(1);
+
+      // A steady stream keeps refreshing (a throttle, not a debounce).
+      for (let t = 0; t < 9_000; t += 500) {
+        monitor.handlers.tokenUsage!(liveUsage());
+        vi.advanceTimersByTime(500);
+      }
+      expect(count('updateAnalytics')).toBeGreaterThanOrEqual(3);
+      provider.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('computes nothing while hidden and refreshes the panels when shown', () => {
+    vi.useFakeTimers();
+    try {
+      const { monitor, provider, count } = liveProvider(false);
+      monitor.handlers.tokenUsage!(liveUsage());
+      vi.advanceTimersByTime(10_000);
+      expect(count('updateAnalytics')).toBe(0);
+      expect((provider as unknown as { _panelsStale: boolean })._panelsStale).toBe(true);
+
+      (provider as unknown as { _view: { visible: boolean } })._view.visible = true;
+      (provider as unknown as { _refreshDerivedPanels(): void })._refreshDerivedPanels();
+      expect(count('updateAnalytics')).toBe(1);
+      expect((provider as unknown as { _panelsStale: boolean })._panelsStale).toBe(false);
+      provider.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps an open decisions search applied when decisions are re-sent', () => {
+    const decisionLog = {
+      getEntries: vi.fn(() => []),
+      getEntryCount: vi.fn(() => 3),
+    };
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      decisionLog as never,
+    );
+    (provider as unknown as { _view: unknown })._view = {
+      visible: true,
+      webview: { postMessage: vi.fn() },
+    };
+    const internals = provider as unknown as {
+      _handleDashboardWebviewMessage(message: unknown): void;
+      _sendDecisionsToWebview(query?: string): void;
+    };
+    internals._handleDashboardWebviewMessage({ type: 'searchDecisions', query: 'cache' });
+    internals._sendDecisionsToWebview();
+    expect(decisionLog.getEntries).toHaveBeenLastCalledWith('cache');
+    internals._handleDashboardWebviewMessage({ type: 'searchDecisions', query: '' });
+    internals._sendDecisionsToWebview();
+    expect(decisionLog.getEntries).toHaveBeenLastCalledWith(undefined);
+    provider.dispose();
+  });
+
+  it('marks timeline search replies so live pushes cannot replace them', () => {
+    const monitor = makeSessionMonitor();
+    monitor.getStats.mockReturnValue({
+      sessionStartTime: null,
+      planState: undefined,
+      timeline: [{ type: 'tool_call', timestamp: new Date().toISOString(), description: 'grep' }],
+    } as never);
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    (
+      provider as unknown as { _handleDashboardWebviewMessage(message: unknown): void }
+    )._handleDashboardWebviewMessage({ type: 'searchTimeline', query: 'grep' });
+    const reply = postMessage.mock.calls.find((call) => call[0].type === 'updateTimeline')![0];
+    expect(reply.search).toBe(true);
+    expect(reply.events).toHaveLength(1);
+    provider.dispose();
+  });
+
+  it('re-seeds tok/min from its own samples when the view re-syncs', () => {
+    const { monitor, provider, postMessage } = liveProvider();
+    monitor.getStats.mockReturnValue({
+      ...liveStatsView(),
+      lastUpdated: new Date(),
+    } as never);
+    monitor.handlers.tokenUsage!(liveUsage());
+    monitor.handlers.tokenUsage!(liveUsage());
+    // The webview reloads: sync from the monitor, whose recentUsageEvents is empty.
+    (provider as unknown as { _syncFromSessionMonitor(): void })._syncFromSessionMonitor();
+    (provider as unknown as { _sendBurnRateUpdate(): void })._sendBurnRateUpdate();
+    const burn = postMessage.mock.calls.filter((call) => call[0].type === 'updateBurnRate').pop();
+    expect(burn![0].burnRate).toBeGreaterThan(0);
+    expect(burn![0].lastActivityTime).toEqual(expect.any(String));
+    provider.dispose();
+  });
+});
+
 describe('DashboardViewProvider quota UI', () => {
   it('handles quota history, context health, and truncations in the loaded inline script', () => {
     const provider = new DashboardViewProvider(

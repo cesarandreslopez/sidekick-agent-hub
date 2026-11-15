@@ -260,6 +260,7 @@ export class SessionSummaryService {
     stats: SessionStats,
     burnRateCalculator: BurnRateCalculator,
     quotaState?: QuotaState,
+    recentEvents: ReadonlyArray<{ timestamp: Date; tokens: number }> = stats.recentUsageEvents,
   ): AdvancedBurnRateData {
     const currentRate = burnRateCalculator.calculateBurnRate();
     const sessionDuration = stats.sessionStartTime
@@ -287,7 +288,7 @@ export class SessionSummaryService {
     }
 
     // Trend direction based on recent usage events
-    const trendDirection = this._computeTrend(stats.recentUsageEvents);
+    const trendDirection = this._computeTrend(recentEvents);
 
     // Project quota exhaustion
     let projectedQuotaExhaustion: string | null = null;
@@ -536,7 +537,7 @@ export class SessionSummaryService {
   }
 
   private _computeTrend(
-    recentEvents: Array<{ timestamp: Date; tokens: number }>,
+    recentEvents: ReadonlyArray<{ timestamp: Date; tokens: number }>,
   ): 'increasing' | 'stable' | 'decreasing' {
     if (recentEvents.length < 4) return 'stable';
 

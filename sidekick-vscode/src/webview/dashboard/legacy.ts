@@ -14,6 +14,7 @@ import { renderProviderStatus as renderPublicStatus } from './providerStatus';
 import { tokenMetricDisplay } from './tokens';
 import { quotaCardVisibility, quotaSectionTooltip, renderQuotaExtrasHtml } from './quotaWindows';
 import { blockCostText, formatCost as formatCostText, modelLabel, rowCostText, totalCostText, unpricedNote } from './cost';
+import { highlightMatches } from './text';
 import type { DashboardInit } from '../../types/dashboard';
 import type { LegacyHelpers } from './helpers';
 
@@ -1133,6 +1134,50 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         if (countEl) countEl.textContent = latency.cycleCount;
       }
 
+      // Tool rows the user opened stay open across live updates; their last
+      // details are cached so a re-render does not flash the skeleton.
+      let lastToolAnalyticsKey = null;
+      const expandedTools = new Set();
+      const toolDetailsCache = {};
+      const toolDetailsRequestedAt = {};
+      const TOOL_DETAILS_REFRESH_MS = 5000;
+
+      function requestToolDetails(toolName, force) {
+        const now = Date.now();
+        if (!force && toolDetailsRequestedAt[toolName] && now - toolDetailsRequestedAt[toolName] < TOOL_DETAILS_REFRESH_MS) return;
+        toolDetailsRequestedAt[toolName] = now;
+        vscode.postMessage({ type: 'requestToolCallDetails', toolName: toolName });
+      }
+
+      function findToolItem(toolName) {
+        const toolListEl = document.getElementById('tool-list');
+        if (!toolListEl) return null;
+        const items = toolListEl.querySelectorAll('.tool-item[data-tool-name]');
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].getAttribute('data-tool-name') === toolName) return items[i];
+        }
+        return null;
+      }
+
+      function toolDetailsHtml(toolName) {
+        const calls = toolDetailsCache[toolName];
+        if (!calls) {
+          return '<div style="padding: 4px;"><div class="sk-skeleton sk-skeleton-line" style="width: 80%;"></div><div class="sk-skeleton sk-skeleton-line" style="width: 60%;"></div></div>';
+        }
+        if (calls.length === 0) {
+          return '<div style="padding: 4px; font-size: 10px;">No calls recorded</div>';
+        }
+        return calls.slice(0, 20).map(function(call) {
+          const errorStyle = call.isError ? 'color: var(--vscode-errorForeground);' : '';
+          return '<div style="display: flex; gap: 6px; padding: 2px 4px; font-size: 10px; border-bottom: 1px solid var(--vscode-panel-border); ' + errorStyle + '">' +
+            '<span style="min-width: 45px; color: var(--vscode-descriptionForeground);">' + escapeHtml(call.time) + '</span>' +
+            '<span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="' + escapeHtml(call.description) + '">' + escapeHtml(call.description) + '</span>' +
+            '<span style="min-width: 40px; text-align: right;">' + escapeHtml(call.duration) + '</span>' +
+          '</div>';
+        }).join('') +
+        (calls.length > 20 ? '<div style="padding: 2px 4px; font-size: 10px; color: var(--vscode-descriptionForeground);">...and ' + (calls.length - 20) + ' more</div>' : '');
+      }
+
       /**
        * Updates tool analytics display.
        */
@@ -1140,7 +1185,13 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         const toolListEl = document.getElementById('tool-list');
         if (!toolListEl) return;
 
+        // Identical payloads (most flushes) leave the list, and what is open, alone.
+        const key = JSON.stringify(analytics || []);
+        if (key === lastToolAnalyticsKey) return;
+        lastToolAnalyticsKey = key;
+
         if (!analytics || analytics.length === 0) {
+          expandedTools.clear();
           toolListEl.innerHTML = '<div class="tool-item"><span class="tool-name">No tools used yet</span></div>';
           return;
         }
@@ -1150,74 +1201,72 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           const avgDuration = tool.avgDuration < 1000
             ? tool.avgDuration + 'ms'
             : (tool.avgDuration / 1000).toFixed(1) + 's';
+          const expanded = expandedTools.has(tool.name);
 
-          return '<div class="tool-item" data-tool-name="' + escapeHtml(tool.name) + '" style="cursor: pointer;">' +
-            '<div class="tool-header">' +
+          return '<div class="tool-item" data-tool-name="' + escapeHtml(tool.name) + '">' +
+            '<button type="button" class="tool-header tool-toggle" aria-expanded="' + expanded + '" title="Show recent calls">' +
               '<span class="tool-name">' + escapeHtml(tool.name) + '</span>' +
-              '<span class="tool-calls">' + tool.totalCalls + ' calls' +
+              '<span class="tool-calls">' + tool.totalCalls + (tool.totalCalls === 1 ? ' call' : ' calls') +
                 (tool.pendingCount > 0 ? ' (' + tool.pendingCount + ' pending)' : '') +
               '</span>' +
-            '</div>' +
+            '</button>' +
             '<div class="tool-stats">' +
               '<span class="success-rate ' + successClass + '">' +
                 tool.successRate.toFixed(0) + '% success' +
               '</span>' +
               '<span class="avg-duration">avg ' + avgDuration + '</span>' +
             '</div>' +
-            '<div class="tool-drilldown" style="display: none;"></div>' +
+            '<div class="tool-drilldown"' + (expanded ? '' : ' hidden') + '>' + (expanded ? toolDetailsHtml(tool.name) : '') + '</div>' +
           '</div>';
         }).join('');
 
-        // Add click handlers for drill-down
-        toolListEl.querySelectorAll('.tool-item[data-tool-name]').forEach(function(item) {
-          item.addEventListener('click', function() {
-            const toolName = item.getAttribute('data-tool-name');
-            const drilldown = item.querySelector('.tool-drilldown');
-            if (!drilldown) return;
+        // Add click handlers for drill-down (real buttons: keyboard works too)
+        toolListEl.querySelectorAll('.tool-toggle').forEach(function(button) {
+          button.addEventListener('click', function() {
+            const item = button.closest('.tool-item');
+            const toolName = item && item.getAttribute('data-tool-name');
+            const drilldown = item && item.querySelector('.tool-drilldown');
+            if (!toolName || !drilldown) return;
 
-            if (drilldown.style.display === 'none') {
-              // Request details from extension
-              vscode.postMessage({ type: 'requestToolCallDetails', toolName: toolName });
-              drilldown.innerHTML = '<div style="padding: 4px;"><div class="sk-skeleton sk-skeleton-line" style="width: 80%;"></div><div class="sk-skeleton sk-skeleton-line" style="width: 60%;"></div></div>';
-              drilldown.style.display = 'block';
+            const open = button.getAttribute('aria-expanded') !== 'true';
+            button.setAttribute('aria-expanded', String(open));
+            if (open) {
+              expandedTools.add(toolName);
+              drilldown.innerHTML = toolDetailsHtml(toolName);
+              drilldown.hidden = false;
+              requestToolDetails(toolName, true);
             } else {
-              drilldown.style.display = 'none';
+              expandedTools.delete(toolName);
+              drilldown.hidden = true;
             }
           });
         });
+
+        // Open rows refresh their calls as counts move (throttled per tool).
+        expandedTools.forEach(function(toolName) { requestToolDetails(toolName, false); });
       }
 
       /**
        * Renders tool call details in the drill-down area.
        */
       function renderToolCallDetails(toolName, calls) {
-        const toolListEl = document.getElementById('tool-list');
-        if (!toolListEl) return;
-
-        const item = toolListEl.querySelector('.tool-item[data-tool-name="' + escapeHtml(toolName) + '"]');
+        toolDetailsCache[toolName] = calls || [];
+        const item = findToolItem(toolName);
         if (!item) return;
 
         const drilldown = item.querySelector('.tool-drilldown');
-        if (!drilldown) return;
-
-        if (!calls || calls.length === 0) {
-          drilldown.innerHTML = '<div style="padding: 4px; font-size: 10px;">No calls recorded</div>';
-          return;
-        }
-
-        drilldown.innerHTML = calls.slice(0, 20).map(function(call) {
-          const errorStyle = call.isError ? 'color: var(--vscode-errorForeground);' : '';
-          return '<div style="display: flex; gap: 6px; padding: 2px 4px; font-size: 10px; border-bottom: 1px solid var(--vscode-panel-border); ' + errorStyle + '">' +
-            '<span style="min-width: 45px; color: var(--vscode-descriptionForeground);">' + call.time + '</span>' +
-            '<span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + escapeHtml(call.description) + '</span>' +
-            '<span style="min-width: 40px; text-align: right;">' + call.duration + '</span>' +
-          '</div>';
-        }).join('') +
-        (calls.length > 20 ? '<div style="padding: 2px 4px; font-size: 10px; color: var(--vscode-descriptionForeground);">...and ' + (calls.length - 20) + ' more</div>' : '');
+        if (!drilldown || !expandedTools.has(toolName)) return;
+        drilldown.innerHTML = toolDetailsHtml(toolName);
+        drilldown.hidden = false;
       }
 
       // Current timeline events cache for client-side filtering
       let currentTimelineEvents = [];
+      // Assistant responses the user expanded, by time + text, kept across re-renders.
+      const expandedTimelineKeys = new Set();
+      function timelineKey(event) {
+        return (event.time || '') + '|' + String(event.description || '').slice(0, 120);
+      }
 
       // Current filter state
       const timelineFilters = { showUser: true, showAi: true, showSystem: false, showSidechain: false };
@@ -1298,25 +1347,22 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           if (event.noiseLevel === 'noise') classes += ' noise';
           if (event.noiseLevel === 'system') classes += ' system-event';
 
-          // Highlight search matches
-          let desc = escapeHtml(event.description);
-          if (searchQuery) {
-            try {
-              const escaped = searchQuery.replace(/[-\/^$*+?.()|[\]{}]/g, String.fromCharCode(92) + '$&');
-              const re = new RegExp('(' + escaped + ')', 'gi');
-              desc = desc.replace(re, '<mark>$1</mark>');
-            } catch(ex) { /* invalid regex, skip highlighting */ }
-          }
+          // Highlight search matches (split first, then escape each piece)
+          const canExpand = event.type === 'assistant_response' && event.fullText;
+          const expanded = canExpand && expandedTimelineKeys.has(timelineKey(event));
+          const desc = expanded
+            ? escapeHtml(event.fullText)
+            : highlightMatches(event.description, searchQuery);
 
           // Add expand link for assistant responses with full text
           let expandLink = '';
-          if (event.type === 'assistant_response' && event.fullText) {
-            expandLink = ' <span class="expand-link" data-idx="' + idx + '" data-expanded="false">[more]</span>';
+          if (canExpand) {
+            expandLink = ' <button type="button" class="expand-link" data-idx="' + idx + '" data-expanded="' + expanded + '" aria-expanded="' + expanded + '">' + (expanded ? '[less]' : '[more]') + '</button>';
           }
 
-          return '<div class="' + classes + '" data-idx="' + idx + '">' +
-            '<span class="time">' + event.time + '</span>' +
-            '<span class="icon">' + icon + '</span>' +
+          return '<div class="' + classes + '" data-idx="' + idx + '" data-key="' + escapeHtml(timelineKey(event)) + '">' +
+            '<span class="time">' + escapeHtml(event.time) + '</span>' +
+            '<span class="icon" aria-hidden="true">' + icon + '</span>' +
             '<span class="description" data-truncated="' + escapeHtml(event.description) + '" data-full="' + (event.fullText ? escapeHtml(event.fullText) : '') + '">' + desc + expandLink + '</span>' +
           '</div>';
         }).join('');
@@ -1325,10 +1371,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         function setTimelineDescription(descEl, text, idx, expanded) {
           descEl.textContent = text || '';
           descEl.appendChild(document.createTextNode(' '));
-          const nextLink = document.createElement('span');
+          const nextLink = document.createElement('button');
+          nextLink.type = 'button';
           nextLink.className = 'expand-link';
           nextLink.setAttribute('data-idx', idx);
           nextLink.setAttribute('data-expanded', String(expanded));
+          nextLink.setAttribute('aria-expanded', String(expanded));
           nextLink.textContent = expanded ? '[less]' : '[more]';
           descEl.appendChild(nextLink);
           return nextLink;
@@ -1348,6 +1396,10 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             const isExpanded = clickedLink.getAttribute('data-expanded') === 'true';
             const truncated = descEl.getAttribute('data-truncated');
             const full = descEl.getAttribute('data-full');
+            const itemKey = item.getAttribute('data-key');
+            if (itemKey) {
+              if (isExpanded) expandedTimelineKeys.delete(itemKey); else expandedTimelineKeys.add(itemKey);
+            }
 
             const newLink = setTimelineDescription(
               descEl,
@@ -1672,6 +1724,10 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       /**
        * Updates error display with foldable groups.
        */
+      // Error groups the user opened stay open across live updates.
+      let lastErrorDetailsKey = null;
+      const expandedErrorTypes = new Set();
+
       function updateErrorDetails(errorDetails) {
         const sectionEl = document.getElementById('error-section');
         const listEl = document.getElementById('error-list');
@@ -1679,21 +1735,27 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
         if (!errorDetails || errorDetails.length === 0) {
           sectionEl.style.display = 'none';
+          lastErrorDetailsKey = null;
           return;
         }
 
         sectionEl.style.display = 'block';
+        const key = JSON.stringify(errorDetails);
+        if (key === lastErrorDetailsKey) return;
+        lastErrorDetailsKey = key;
+
         listEl.innerHTML = errorDetails.map(function(group, idx) {
           const messagesHtml = group.messages.map(function(msg) {
             return '<li>' + escapeHtml(msg) + '</li>';
           }).join('');
+          const expanded = expandedErrorTypes.has(group.type);
 
-          return '<div class="error-group" data-idx="' + idx + '">' +
-            '<div class="error-group-header">' +
-              '<span class="error-type">' + group.type + '</span>' +
-              '<span class="error-count">' + group.count + ' error' + (group.count > 1 ? 's' : '') + '</span>' +
-              '<span class="chevron">▶</span>' +
-            '</div>' +
+          return '<div class="error-group' + (expanded ? ' expanded' : '') + '" data-idx="' + idx + '" data-error-type="' + escapeHtml(group.type) + '">' +
+            '<button type="button" class="error-group-header" aria-expanded="' + expanded + '">' +
+              '<span class="error-type">' + escapeHtml(group.type) + '</span>' +
+              '<span class="error-count">' + group.count + ' error' + (group.count === 1 ? '' : 's') + '</span>' +
+              '<span class="chevron" aria-hidden="true">▶</span>' +
+            '</button>' +
             '<ul class="error-group-messages">' + messagesHtml + '</ul>' +
           '</div>';
         }).join('');
@@ -1701,7 +1763,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         // Add click listeners (CSP blocks inline onclick)
         listEl.querySelectorAll('.error-group-header').forEach(function(header) {
           header.addEventListener('click', function() {
-            header.parentElement.classList.toggle('expanded');
+            const group = header.parentElement;
+            const type = group.getAttribute('data-error-type');
+            const open = !group.classList.contains('expanded');
+            group.classList.toggle('expanded', open);
+            header.setAttribute('aria-expanded', String(open));
+            if (open) expandedErrorTypes.add(type); else expandedErrorTypes.delete(type);
           });
         });
       }
@@ -2479,6 +2546,18 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         section.style.display = entries.length > 0 ? 'block' : 'none';
       }
 
+      const searchInput = document.getElementById('timeline-search');
+      let researchTimer = null;
+      // New events while searching re-run the search, at most once a second.
+      function scheduleTimelineResearch() {
+        if (researchTimer) return;
+        researchTimer = setTimeout(function() {
+          researchTimer = null;
+          const query = searchInput ? searchInput.value.trim() : '';
+          if (query) vscode.postMessage({ type: 'searchTimeline', query: query });
+        }, 1000);
+      }
+
       // Handle messages from extension
       window.addEventListener('message', function(event) {
         const message = event.data;
@@ -2496,9 +2575,19 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             updateToolAnalytics(message.analytics);
             break;
 
-          case 'updateTimeline':
-            updateTimeline(message.events);
+          case 'updateTimeline': {
+            // While a search is open, its uncapped results stay on screen: a
+            // live (capped) push re-runs the search instead of replacing them.
+            const searching = Boolean(searchInput && searchInput.value.trim());
+            if (message.search) {
+              if (searching) updateTimeline(message.events);
+            } else if (searching) {
+              scheduleTimelineResearch();
+            } else {
+              updateTimeline(message.events);
+            }
             break;
+          }
 
           case 'sessionStart':
             statusEl.textContent = 'Active';
@@ -2872,7 +2961,6 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
       // Timeline search input handler (debounced)
       let searchTimer = null;
-      const searchInput = document.getElementById('timeline-search');
       if (searchInput) {
         searchInput.addEventListener('input', function() {
           if (searchTimer) clearTimeout(searchTimer);
@@ -2882,7 +2970,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               // Request all events from extension for search
               vscode.postMessage({ type: 'searchTimeline', query: query });
             } else {
-              // Clear search - re-render with current events
+              // Clearing asks the host for the live (capped) list again.
+              vscode.postMessage({ type: 'searchTimeline', query: '' });
               renderFilteredTimeline();
             }
           }, 300);

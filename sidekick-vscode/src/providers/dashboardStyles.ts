@@ -3138,6 +3138,31 @@ export const DASHBOARD_STYLES = `
     }
     .history-chart.empty { display: none; }
 
+    /* Row toggles rendered as real buttons (keyboard + screen reader) */
+    .tool-item .tool-toggle,
+    .error-group-header,
+    .timeline-item .expand-link {
+      font: inherit;
+      color: inherit;
+      border: 0;
+      text-align: left;
+      cursor: pointer;
+    }
+    .tool-item .tool-toggle {
+      width: 100%;
+      background: transparent;
+      padding: 0;
+    }
+    .error-group-header {
+      width: 100%;
+    }
+    .timeline-item .expand-link {
+      background: transparent;
+      padding: 0;
+      color: var(--vscode-textLink-foreground);
+      font-size: 10px;
+    }
+
     /* Health refresh: a standalone button (not one of the History range buttons) */
     .health-refresh-btn {
       padding: 4px 10px;

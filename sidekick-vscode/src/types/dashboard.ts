@@ -208,9 +208,16 @@ export type DashboardMessage =
    * bakes colors into the canvas and has to re-resolve them.
    */
   | { type: 'themeChanged' }
-  | { type: 'updateBurnRate'; burnRate: number; sessionStartTime: string | null }
+  | {
+      type: 'updateBurnRate';
+      burnRate: number;
+      sessionStartTime: string | null;
+      /** Newest event in the session; Duration stops at it once the session goes idle. */
+      lastActivityTime?: string | null;
+    }
   | { type: 'updateToolAnalytics'; analytics: ToolAnalyticsDisplay[] }
-  | { type: 'updateTimeline'; events: TimelineEventDisplay[] }
+  /** `search` marks the uncapped reply to a timeline search, not a live push. */
+  | { type: 'updateTimeline'; events: TimelineEventDisplay[]; search?: boolean }
   | { type: 'sessionStart'; sessionPath: string }
   | { type: 'sessionEnd' }
   | {
