@@ -789,6 +789,12 @@ ${getGraphLegendHtml()}
         return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       }
 
+      // Task and plan statuses read the same as the Kanban and Plans views.
+      const STATUS_TEXT = { in_progress: 'In Progress', pending: 'Pending', completed: 'Completed', failed: 'Failed', skipped: 'Skipped', deleted: 'Deleted' };
+      function statusText(status) {
+        return STATUS_TEXT[status] || String(status || '').replace('_', ' ');
+      }
+
       // Node colors by type, resolved from the active theme.
       const NODE_COLORS = ${JSON.stringify(nodeTypeVarRefs())};
       const COMPLEXITY_COLORS = ${JSON.stringify(complexityVarRefs())};
@@ -1570,7 +1576,7 @@ ${getGraphLegendHtml()}
               const actionCount = d.count || 0;
               const actionText = actionCount === 1 ? '1 action' : actionCount + ' actions';
               tooltipEl.innerHTML = '<strong>' + safeLabel + '</strong><br>' +
-                '<span style="color: ' + statusColor + '">● ' + escapeHtml(statusLabel.replace('_', ' ')) + '</span>' +
+                '<span style="color: ' + statusColor + '">● ' + escapeHtml(statusText(statusLabel)) + '</span>' +
                 '<br>' + actionText;
             } else if (d.type === 'plan') {
               // For plan root, show title and step count
@@ -1585,7 +1591,7 @@ ${getGraphLegendHtml()}
                                  : planStatus === 'failed' ? 'var(--vscode-charts-red, #f14c4c)'
                                  : 'var(--vscode-descriptionForeground)';
               let planTooltipHtml = '<strong>' + safeLabel + '</strong><br>' +
-                '<span style="color: ' + planStatusColor + '">● ' + escapeHtml(planStatus.replace('_', ' ')) + '</span>';
+                '<span style="color: ' + planStatusColor + '">● ' + escapeHtml(statusText(planStatus)) + '</span>';
               if (d.planStepComplexity) {
                 const cxColor = COMPLEXITY_COLORS[d.planStepComplexity] || COMPLEXITY_COLORS.low;
                 planTooltipHtml += '<br>Complexity: <span style="color:' + cxColor + '">' + escapeHtml(d.planStepComplexity) + '</span>';
