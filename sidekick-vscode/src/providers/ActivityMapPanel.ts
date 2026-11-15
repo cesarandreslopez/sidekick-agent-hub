@@ -225,7 +225,9 @@ export class ActivityMapPanel implements vscode.Disposable {
     // providers answer in a single query).
     const labels: Map<string, string | null> = provider.extractSessionLabelsAsync
       ? await provider.extractSessionLabelsAsync(sessions).catch(() => new Map())
-      : new Map(sessions.map((sessionPath) => [sessionPath, provider.extractSessionLabel(sessionPath)]));
+      : new Map(
+          sessions.map((sessionPath) => [sessionPath, provider.extractSessionLabel(sessionPath)]),
+        );
     const items = sessions.map((sessionPath) => {
       const id = provider.getSessionId(sessionPath).slice(0, 8);
       let modified = '';

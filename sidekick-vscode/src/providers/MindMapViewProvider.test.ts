@@ -12,7 +12,10 @@ vi.mock('vscode', () => ({
     file: (fsPath: string) => ({ fsPath }),
     parse: (value: string) => ({ value }),
   },
-  workspace: { openTextDocument: vi.fn(() => Promise.resolve({})), workspaceFolders: [{ uri: { fsPath: '/repo' } }] },
+  workspace: {
+    openTextDocument: vi.fn(() => Promise.resolve({})),
+    workspaceFolders: [{ uri: { fsPath: '/repo' } }],
+  },
   window: { showTextDocument: vi.fn() },
   env: { openExternal: vi.fn() },
 }));
@@ -88,11 +91,15 @@ describe('MindMapViewProvider node clicks', () => {
       _handleNodeClick(nodeId: string): void;
     };
     internals._state.graph = {
-      nodes: [{ id: 'subagent-a1-file-src/a.ts', type: 'file', label: 'a.ts', fullPath: 'src/a.ts' }],
+      nodes: [
+        { id: 'subagent-a1-file-src/a.ts', type: 'file', label: 'a.ts', fullPath: 'src/a.ts' },
+      ],
       links: [],
     };
     internals._handleNodeClick('subagent-a1-file-src/a.ts');
-    expect(vscodeMock.workspace.openTextDocument).toHaveBeenCalledWith({ fsPath: '/repo/src/a.ts' });
+    expect(vscodeMock.workspace.openTextDocument).toHaveBeenCalledWith({
+      fsPath: '/repo/src/a.ts',
+    });
     provider.dispose();
   });
 });

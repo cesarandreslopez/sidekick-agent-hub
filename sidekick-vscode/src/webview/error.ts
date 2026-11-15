@@ -544,7 +544,11 @@ function handleExtensionMessage(event: MessageEvent) {
   const message: ErrorExplainExtensionMessage = event.data;
 
   // Results from a superseded request never reach the screen.
-  if ('requestId' in message && message.type !== 'loadError' && message.requestId !== currentRequestId) {
+  if (
+    'requestId' in message &&
+    message.type !== 'loadError' &&
+    message.requestId !== currentRequestId
+  ) {
     return;
   }
 
@@ -610,7 +614,9 @@ function handleExtensionMessage(event: MessageEvent) {
           applyFixBtn.classList.remove('applied');
         }
       }
-      applyFixError = message.success ? undefined : (message.error ?? 'The fix could not be applied.');
+      applyFixError = message.success
+        ? undefined
+        : (message.error ?? 'The fix could not be applied.');
       renderApplyFixError();
       break;
     }

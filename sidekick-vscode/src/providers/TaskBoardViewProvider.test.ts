@@ -37,7 +37,9 @@ function monitor(
     getSubagentDisplayStates: () => displayStates,
     isActive: () => taskState !== undefined,
     getSessionPath: (): string | null => null,
-    getProvider: () => ({ getSessionId: (p: string) => p.replace(/^.*\//, '').replace('.jsonl', '') }),
+    getProvider: () => ({
+      getSessionId: (p: string) => p.replace(/^.*\//, '').replace('.jsonl', ''),
+    }),
   };
 }
 

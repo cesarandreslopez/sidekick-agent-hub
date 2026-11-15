@@ -1140,14 +1140,21 @@ export function mergePlanHistory(
     coveredSessions.add(plan.sessionId);
     if (activeSessionId && plan.sessionId === activeSessionId) continue;
     // Older records may carry an 8-character session prefix.
-    if (activeSessionId && plan.sessionId.length < activeSessionId.length && activeSessionId.startsWith(plan.sessionId)) continue;
+    if (
+      activeSessionId &&
+      plan.sessionId.length < activeSessionId.length &&
+      activeSessionId.startsWith(plan.sessionId)
+    )
+      continue;
     result.push({ plan, rawOnly: false });
   }
 
   const isCovered = (sessionId: string) =>
     sessionId === activeSessionId ||
     coveredSessions.has(sessionId) ||
-    [...coveredSessions].some((covered) => covered.length < sessionId.length && sessionId.startsWith(covered));
+    [...coveredSessions].some(
+      (covered) => covered.length < sessionId.length && sessionId.startsWith(covered),
+    );
 
   for (const plan of raw) {
     const sessions = plan.sessionIds ?? [];

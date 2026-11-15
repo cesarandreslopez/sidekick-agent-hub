@@ -259,8 +259,14 @@ describe('TaskPersistenceService', () => {
       const service = createService();
       await service.initialize();
 
-      service.saveSessionTasks('session-111', makeTaskState([makeTask({ taskId: '1', status: 'pending' })]));
-      service.saveSessionTasks('session-111', makeTaskState([makeTask({ taskId: '1', status: 'deleted' })]));
+      service.saveSessionTasks(
+        'session-111',
+        makeTaskState([makeTask({ taskId: '1', status: 'pending' })]),
+      );
+      service.saveSessionTasks(
+        'session-111',
+        makeTaskState([makeTask({ taskId: '1', status: 'deleted' })]),
+      );
       service.dispose();
 
       const service2 = createService();

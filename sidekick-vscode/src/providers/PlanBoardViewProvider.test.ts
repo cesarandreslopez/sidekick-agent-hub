@@ -151,7 +151,11 @@ describe('PlanBoardViewProvider', () => {
         return disposable;
       },
       getStatsView: () => ({
-        planState: { title: planTitle, steps: [{ id: 's', description: 'd', status: 'pending' }], active: true },
+        planState: {
+          title: planTitle,
+          steps: [{ id: 's', description: 'd', status: 'pending' }],
+          active: true,
+        },
       }),
     };
     const provider = new PlanBoardViewProvider({} as never, sessionMonitor as never, undefined);
@@ -217,7 +221,10 @@ describe('mergePlanHistory', () => {
   it('drops a raw plan file whose session already has a persisted plan', () => {
     const persisted = [plan({ id: 'aaaa1111-1', sessionId: 'aaaa1111-full-uuid' })];
     const raw = [
-      { ...plan({ id: 'claude-plan-otter', sessionId: 'otter' }), sessionIds: ['aaaa1111-full-uuid'] },
+      {
+        ...plan({ id: 'claude-plan-otter', sessionId: 'otter' }),
+        sessionIds: ['aaaa1111-full-uuid'],
+      },
     ];
     const merged = mergePlanHistory(persisted, raw, null);
     expect(merged.map((m) => m.plan.id)).toEqual(['aaaa1111-1']);
@@ -234,7 +241,9 @@ describe('mergePlanHistory', () => {
 
   it('falls back to matching markdown when session ids are unknown', () => {
     const persisted = [plan({ id: 'x', sessionId: 'x-session', rawMarkdown: '# Plan\n' })];
-    const raw = [{ ...plan({ id: 'claude-plan-y', sessionId: 'y', rawMarkdown: '# Plan' }), sessionIds: [] }];
+    const raw = [
+      { ...plan({ id: 'claude-plan-y', sessionId: 'y', rawMarkdown: '# Plan' }), sessionIds: [] },
+    ];
     expect(mergePlanHistory(persisted, raw, null).map((m) => m.plan.id)).toEqual(['x']);
   });
 });
