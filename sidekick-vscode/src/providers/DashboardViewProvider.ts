@@ -129,6 +129,7 @@ import {
 } from '../utils/providerStatusScope';
 import { formatProviderStatusDisplay } from '../utils/providerStatusDisplay';
 import { MAX_DISPLAY_TIMELINE, DEFAULT_CONTEXT_WINDOW } from '../constants';
+import { getSessionLiveness } from '../utils/sessionLiveness';
 
 /**
  * WebviewViewProvider for the session analytics dashboard.
@@ -287,6 +288,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Suppresses session list updates during provider switches */
   private _suppressSessionListUpdates = false;
+  /** The `live` flag last sent with the session availability, to re-send on a flip. */
+  private _lastLivePosted: boolean | undefined;
 
   /** Throttles the billing-block recomputation triggered by token usage. */
   private _billingBlockTimer?: ReturnType<typeof setTimeout>;
@@ -614,6 +617,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       case 'webviewReady':
         log('Dashboard webview ready, sending initial state');
+        // A reloaded webview starts with an empty search box.
+        this._decisionsQuery = undefined;
         // Always sync from session monitor to get current data
         if (this._sessionMonitor.isActive()) {
           this._syncFromSessionMonitor();
@@ -1621,6 +1626,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
     this._panelsStale = false;
     if (!this._sessionMonitor.isActive()) return;
+    this._repostLivenessIfChanged();
     try {
       const stats = this._sessionMonitor.getStatsView();
       this._syncDerivedPanels(stats);
@@ -2766,7 +2772,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _startBurnRateTicker(): void {
     if (this._burnRateTimer) return;
     this._burnRateTimer = setInterval(() => {
-      if (this._view?.visible && this._sessionMonitor.isActive()) this._sendBurnRateUpdate();
+      if (this._view?.visible && this._sessionMonitor.isActive()) {
+        this._sendBurnRateUpdate();
+        // Live decays to Viewing once the session goes quiet.
+        this._repostLivenessIfChanged();
+      }
     }, BURN_RATE_TICK_MS);
   }
 
@@ -2786,6 +2796,34 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
     const groups = this._sessionMonitor.getAllSessionsGrouped();
     const customPath = this._sessionMonitor.getCustomPath();
+    this._sendSessionAvailability();
+    this._postMessage({
+      type: 'updateSessionList',
+      groups,
+      isPinned: this._sessionMonitor.isPinned(),
+      isUsingCustomPath: this._sessionMonitor.isUsingCustomPath(),
+      customPathDisplay: customPath ? this._getShortPath(customPath) : null,
+    });
+  }
+
+  /** Whether the attached session counts as live (same rule as the other views). */
+  private _isAttachedSessionLive(): boolean | undefined {
+    if (!this._sessionMonitor.isActive()) return undefined;
+    return getSessionLiveness(this._sessionMonitor) === 'live';
+  }
+
+  /**
+   * The status pill only changes when availability is posted, which used to
+   * happen only with the session list. Re-send it when Live/Viewing flips.
+   */
+  private _repostLivenessIfChanged(): void {
+    if (this._suppressSessionListUpdates) return;
+    if (this._isAttachedSessionLive() !== this._lastLivePosted) this._sendSessionAvailability();
+  }
+
+  /** Sends whether a session is attached, live, paused or unavailable. */
+  private _sendSessionAvailability(): void {
+    const customPath = this._sessionMonitor.getCustomPath();
     const provider = this._sessionMonitor.getProvider();
     const workspacePath =
       this._sessionMonitor.getWorkspacePath() ??
@@ -2796,10 +2834,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const issue = operation
       ? !operation.usable && operation.runtimeStatus
       : runtime && !runtime.available && runtime;
-    // Attached is not live: the current card's own recency says which.
-    const current = (groups ?? [])
-      .flatMap((group) => group.sessions ?? [])
-      .find((session) => session.isCurrent);
+    // Attached is not live: the session file's own recency says which, by the
+    // same rule as the other views (independent of the capped session list).
+    const live = this._isAttachedSessionLive();
+    this._lastLivePosted = live;
     this._postMessage({
       type: 'updateSessionAvailability',
       availability: {
@@ -2810,20 +2848,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             : issue
               ? 'unavailable'
               : 'empty',
-        live: current ? current.isActive : undefined,
+        live,
         providerName: provider.displayName,
         workspacePath,
         sessionDirectory:
           customPath ?? (workspacePath ? provider.getSessionDirectory(workspacePath) : null),
         message: issue ? issue.message : undefined,
       },
-    });
-    this._postMessage({
-      type: 'updateSessionList',
-      groups,
-      isPinned: this._sessionMonitor.isPinned(),
-      isUsingCustomPath: this._sessionMonitor.isUsingCustomPath(),
-      customPathDisplay: customPath ? this._getShortPath(customPath) : null,
     });
   }
 

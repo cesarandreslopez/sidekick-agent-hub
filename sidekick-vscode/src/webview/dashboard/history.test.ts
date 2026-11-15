@@ -224,6 +224,33 @@ describe('series breakdowns', () => {
     expect(buildHistoryChartData(hourly, 'tokens').datasets[0].label).toBe('Tokens');
   });
 
+  it('stacks across a recorded chat-only day (empty breakdown) and adds no note to an empty range', () => {
+    const withChatDay: HistoricalSummary = {
+      ...base,
+      series: 'tool',
+      seriesKeys: ['Read'],
+      dataPoints: [point('Mon', 100, tool(4)), point('Tue', 80, {})],
+    };
+    expect(isStackable(withChatDay)).toBe(true);
+    expect(seriesFallbackNote(withChatDay)).toBeNull();
+
+    const emptyRange: HistoricalSummary = {
+      ...base,
+      series: 'tool',
+      seriesKeys: [],
+      dataPoints: [empty('Mon'), empty('Tue')],
+    };
+    expect(seriesFallbackNote(emptyRange)).toBeNull();
+
+    const noToolCalls: HistoricalSummary = {
+      ...base,
+      series: 'tool',
+      seriesKeys: [],
+      dataPoints: [point('Mon', 100, {}), empty('Tue')],
+    };
+    expect(seriesFallbackNote(noToolCalls)).toBe('No tool calls in this range.');
+  });
+
   it('names model series and folds the tail into Other', () => {
     const keys = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'];
     const breakdown = Object.fromEntries(

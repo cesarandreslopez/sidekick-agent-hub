@@ -114,14 +114,17 @@ function breakdownFrom(
   models: ModelUsageRecord[] | undefined,
   tools: ToolUsageRecord[] | undefined,
 ): Record<string, HistoricalBreakdownValue> | undefined {
+  // `undefined` means "not recorded" (older records); an empty list is a
+  // recorded period that simply had none, e.g. a chat-only day without tool
+  // calls, and must not turn the whole range into the totals fallback.
   if (series === 'model') {
-    if (!models || models.length === 0) return undefined;
+    if (!models) return undefined;
     const out: Record<string, HistoricalBreakdownValue> = {};
     for (const m of models) out[m.model] = { tokens: m.tokens, cost: m.cost, calls: m.calls };
     return out;
   }
   if (series === 'tool') {
-    if (!tools || tools.length === 0) return undefined;
+    if (!tools) return undefined;
     const out: Record<string, HistoricalBreakdownValue> = {};
     for (const t of tools) out[t.tool] = { tokens: 0, cost: 0, calls: t.calls };
     return out;

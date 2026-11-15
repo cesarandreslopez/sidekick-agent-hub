@@ -127,6 +127,7 @@ function makeSessionMonitor() {
     isPinned: vi.fn(() => false),
     getCustomPath: vi.fn(() => null),
     isUsingCustomPath: vi.fn(() => false),
+    getSessionPath: vi.fn((): string | null => null),
     getProvider: vi.fn(() => ({
       id: 'codex',
       displayName: 'Codex CLI',
@@ -419,17 +420,9 @@ describe('DashboardViewProvider live session panels', () => {
     provider.dispose();
   });
 
-  it('tells the webview whether the attached session is live or a past one', () => {
+  it('tells the webview whether the attached session is live or a past one, from its own file', () => {
     const monitor = makeSessionMonitor();
-    const card = (isActive: boolean) => ({
-      projectPath: '/workspace',
-      displayPath: '/workspace',
-      proximity: 'current',
-      sessions: [
-        { path: '/s/a', filename: 'a', modifiedTime: '', isCurrent: true, isActive },
-        { path: '/s/b', filename: 'b', modifiedTime: '', isCurrent: false, isActive: true },
-      ],
-    });
+    let mtime = Date.now();
     const provider = new DashboardViewProvider(
       { fsPath: '/tmp/sidekick-extension' } as never,
       monitor as never,
@@ -441,13 +434,22 @@ describe('DashboardViewProvider live session panels', () => {
         .filter((call) => call[0].type === 'updateSessionAvailability')
         .pop()![0].availability;
     monitor.isActive.mockReturnValue(true);
+    // Not on disk, so liveness reads the provider's metadata.
+    monitor.getSessionPath.mockReturnValue('/nonexistent/sidekick-test/a.jsonl');
+    monitor.getProvider.mockReturnValue({
+      id: 'codex',
+      displayName: 'Codex CLI',
+      getSessionDirectory: () => '/sessions',
+      getSessionMetadata: () => ({ mtime: new Date(mtime) }),
+    } as never);
+    // The attached session need not be among the (capped) listed cards.
+    monitor.getAllSessionsGrouped.mockReturnValue([] as never);
 
-    monitor.getAllSessionsGrouped.mockReturnValue([card(false)] as never);
-    (provider as unknown as { _sendSessionList(): void })._sendSessionList();
-    expect(availability()).toMatchObject({ status: 'active', live: false });
-    monitor.getAllSessionsGrouped.mockReturnValue([card(true)] as never);
     (provider as unknown as { _sendSessionList(): void })._sendSessionList();
     expect(availability()).toMatchObject({ status: 'active', live: true });
+    mtime = Date.now() - 10 * 60_000;
+    (provider as unknown as { _sendSessionList(): void })._sendSessionList();
+    expect(availability()).toMatchObject({ status: 'active', live: false });
     provider.dispose();
   });
 
@@ -1193,5 +1195,54 @@ it('keeps refresh paused and routes Resume and Doctor to their commands', () => 
   host._handleDashboardWebviewMessage({ type: 'runDoctor' });
   expect(commands.executeCommand).toHaveBeenCalledWith('sidekick.startMonitoring');
   expect(commands.executeCommand).toHaveBeenCalledWith('sidekick.doctor');
+  provider.dispose();
+});
+
+it('re-sends Live/Viewing when the attached session wakes up or goes quiet, without a list send', () => {
+  const monitor = makeSessionMonitor();
+  let mtime = Date.now() - 10 * 60_000; // quiet for 10 minutes
+  const withPath = {
+    ...monitor,
+    // A path that doesn't exist on disk, so liveness reads provider metadata.
+    getSessionPath: vi.fn(() => '/nonexistent/sidekick-test/session.jsonl'),
+    getProvider: vi.fn(() => ({
+      id: 'codex',
+      displayName: 'Codex CLI',
+      getSessionDirectory: () => '/sessions',
+      getSessionMetadata: () => ({ mtime: new Date(mtime) }),
+    })),
+  };
+  const provider = new DashboardViewProvider(
+    { fsPath: '/tmp/extension' } as never,
+    withPath as never,
+  );
+  monitor.isActive.mockReturnValue(true);
+  const postMessage = vi.fn();
+  const host = provider as unknown as {
+    _view: unknown;
+    _sendSessionList(): void;
+    _refreshDerivedPanels(): void;
+  };
+  host._view = { visible: true, webview: { postMessage } };
+  const livenessPosts = () =>
+    postMessage.mock.calls
+      .map((call) => call[0])
+      .filter((message) => message.type === 'updateSessionAvailability')
+      .map((message) => message.availability.live);
+
+  host._sendSessionList();
+  expect(livenessPosts()).toEqual([false]);
+
+  // The agent resumes: the next panel refresh flips the pill to Live.
+  mtime = Date.now();
+  host._refreshDerivedPanels();
+  expect(livenessPosts()).toEqual([false, true]);
+
+  // Unchanged liveness posts nothing more.
+  host._refreshDerivedPanels();
+  expect(livenessPosts()).toEqual([false, true]);
+  expect(
+    postMessage.mock.calls.filter((call) => call[0].type === 'updateSessionList'),
+  ).toHaveLength(1);
   provider.dispose();
 });

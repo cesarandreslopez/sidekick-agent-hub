@@ -33,7 +33,7 @@ export function axisCost(value: number): string {
   return `${sign}$${abs.toFixed(2).replace(/\.?0+$/, '') || '0'}`;
 }
 
-/** A session counts as live while its newest event is at most this old (matches the host). */
+/** Duration stops counting once the newest event is this old (the session is idle). */
 export const SESSION_IDLE_AFTER_MS = 5 * 60_000;
 
 /**

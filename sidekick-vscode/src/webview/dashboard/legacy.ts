@@ -2730,6 +2730,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           }
 
           case 'sessionStart': {
+            // Rows opened in the previous session must not show its cached calls.
+            expandedTools.clear();
+            Object.keys(toolDetailsCache).forEach(function(name) { delete toolDetailsCache[name]; });
+            expandedErrorTypes.clear();
+            lastToolAnalyticsKey = null;
+            lastErrorDetailsKey = null;
             // The Summary tab describes one session: clear it (and any
             // narrative), and rebuild it if it is the tab on screen.
             resetSummaryView();

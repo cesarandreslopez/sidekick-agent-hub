@@ -67,6 +67,15 @@ export function isStackable(summary: HistoricalSummary): boolean {
 export function seriesFallbackNote(summary: HistoricalSummary): string | null {
   const series = summary.series ?? 'total';
   if (series === 'total' || isStackable(summary)) return null;
+  const points = summary.dataPoints;
+  // An empty range has its own empty state; no note beside it.
+  if (points.every(pointIsEmpty)) return null;
+  if (
+    (summary.seriesKeys ?? []).length === 0 &&
+    points.every((p) => p.breakdown !== undefined || pointIsEmpty(p))
+  ) {
+    return series === 'tool' ? 'No tool calls in this range.' : 'No per-model usage in this range.';
+  }
   const what = series === 'tool' ? 'Per-tool' : 'Per-model';
   return summary.granularity === 'hourly'
     ? `${what} breakdown isn't recorded hourly; showing totals.`
