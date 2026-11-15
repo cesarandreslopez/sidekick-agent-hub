@@ -16,6 +16,7 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import type { SessionMonitor, SessionResetEvent } from '../services/SessionMonitor';
 import type { QuotaService } from '../services/QuotaService';
@@ -34,6 +35,7 @@ import type { HandoffService } from '../services/HandoffService';
 import {
   combineSessionTokenTotals,
   createSessionProviders,
+  getConfigDir,
   getPricingCatalogInfo,
   getProjectSlug,
   getTopFailingTools,
@@ -168,6 +170,20 @@ function isHistoricalRange(value: unknown): value is HistoricalRange {
 
 function isHistoricalSeries(value: unknown): value is HistoricalSeries {
   return typeof value === 'string' && (HISTORICAL_SERIES as readonly string[]).includes(value);
+}
+
+/**
+ * A path under the Sidekick config folder for display: `~`-abbreviated with
+ * forward slashes when it is under the home directory (so no username lands
+ * in a committed file), absolute otherwise. Built from `getConfigDir()`, so
+ * Windows (`%APPDATA%`) and `SIDEKICK_CONFIG_DIR` resolve where files really are.
+ */
+export function displayConfigPath(...segments: string[]): string {
+  const full = path.join(getConfigDir(), ...segments);
+  const home = os.homedir();
+  return full === home || full.startsWith(home + path.sep)
+    ? '~' + full.slice(home.length).split(path.sep).join('/')
+    : full;
 }
 
 function statsPayload(state: DashboardState): DashboardStatsPayload {
@@ -1067,11 +1083,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         ? path.join(wsFolder.uri.fsPath, target.primaryFile)
         : null;
 
+      const slug = wsFolder ? getProjectSlug(wsFolder.uri.fsPath) : '';
       let hasPointer = false;
       if (instructionFilePath) {
         try {
           const content = await fs.promises.readFile(instructionFilePath, 'utf-8');
-          hasPointer = content.includes('sidekick/handoffs/');
+          // Any earlier pointer names this file, wherever the config folder lives.
+          hasPointer =
+            content.includes('sidekick/handoffs/') || (slug !== '' && content.includes(`${slug}-latest.md`));
         } catch {
           // File doesn't exist yet — no pointer
         }
@@ -1096,8 +1115,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           'Skip',
         );
         if (action === `Add to ${target.primaryFile}` && wsFolder) {
-          const slug = getProjectSlug(wsFolder.uri.fsPath);
-          const oneLiner = `\nIf resuming prior work or need context on previous sessions, read ~/.config/sidekick/handoffs/${slug}-latest.md\n`;
+          // Where HandoffService really writes (getConfigDir(): %APPDATA% on
+          // Windows, or SIDEKICK_CONFIG_DIR), `~`-abbreviated under home.
+          const shown = displayConfigPath('handoffs', `${slug}-latest.md`);
+          const oneLiner = `\nIf resuming prior work or need context on previous sessions, read ${shown}\n`;
 
           let existingContent = '';
           try {
@@ -2970,6 +2991,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       extVersion,
       extDate,
       initJson: this._safeJsonForScript(init),
+      eventLogDir: displayConfigPath('event-logs'),
     });
   }
 

@@ -2215,7 +2215,7 @@ export const DASHBOARD_STYLES = `
     }
 
     .notification-unread {
-      background: rgba(97, 175, 239, 0.08);
+      background: color-mix(in srgb, var(--vscode-charts-blue, #61afef) 8%, transparent);
     }
 
     .notification-read {
@@ -2642,7 +2642,7 @@ export const DASHBOARD_STYLES = `
     }
 
     .status-dot.active {
-      background: #3fb950;
+      background: var(--vscode-testing-iconPassed, #3fb950);
     }
 
     .session-card-content {

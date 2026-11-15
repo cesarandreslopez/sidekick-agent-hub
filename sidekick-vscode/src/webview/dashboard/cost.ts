@@ -11,8 +11,13 @@
 
 import { formatCost as sharedFormatCost, parseModelId } from 'sidekick-shared/pricing';
 
-/** `$0.0123` / `$1.23`, or `—` for a missing (unpriced) value. */
+/**
+ * `$0.0123` / `$1.23`, `$0.00` for nothing spent, or `—` for a missing
+ * (unpriced) value. Zero is special-cased here: the shared formatter's four
+ * decimals for sub-cent amounts made a fresh session read `$0.0000`.
+ */
 export function formatCost(cost: number | null | undefined): string {
+  if (cost === 0) return '$0.00';
   return sharedFormatCost(cost);
 }
 
@@ -43,7 +48,8 @@ export function blockCostText(
   block: { costProvenance?: string; unpricedCalls?: number },
 ): string {
   if (block.costProvenance === 'unpriced') return '—';
-  const text = `$${cost.toFixed(2)}`;
+  // The same cost text as the rest of the view (sub-cent amounts keep 4 decimals).
+  const text = formatCost(cost);
   return (block.unpricedCalls ?? 0) > 0 ? `${text} (partial)` : text;
 }
 

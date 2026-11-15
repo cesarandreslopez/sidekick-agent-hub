@@ -3,6 +3,7 @@ import {
   axisCost,
   compactNumber,
   exactNumber,
+  frequentWords,
   plural,
   sessionDurationText,
   statusLabel,
@@ -29,6 +30,21 @@ describe('dashboard format helpers', () => {
     expect(statusLabel('in_progress')).toBe('In Progress');
     expect(statusLabel('completed')).toBe('Completed');
     expect(statusLabel('waiting_on_user')).toBe('Waiting On User');
+  });
+
+  it('drops stopwords before taking the top words', () => {
+    const words = [
+      { name: 'the', count: 90 },
+      { name: 'and', count: 80 },
+      { name: 'file', count: 70 },
+      { name: 'ok', count: 60 },
+      { name: 'migration', count: 50 },
+      { name: 'schema', count: 40 },
+      { name: 'Tests', count: 30 },
+    ];
+    expect(frequentWords(words, 2).map((w) => w.name)).toEqual(['migration', 'schema']);
+    expect(frequentWords(words, 8).map((w) => w.name)).toEqual(['migration', 'schema', 'Tests']);
+    expect(frequentWords(undefined, 8)).toEqual([]);
   });
 
   it('stops the session duration at the last event once idle', () => {

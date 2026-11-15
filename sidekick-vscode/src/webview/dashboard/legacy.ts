@@ -15,7 +15,7 @@ import { tokenMetricDisplay } from './tokens';
 import { quotaCardVisibility, quotaSectionTooltip, renderQuotaExtrasHtml } from './quotaWindows';
 import { blockCostText, formatCost as formatCostText, modelLabel, rowCostText, totalCostText, unpricedNote } from './cost';
 import { highlightMatches } from './text';
-import { compactNumber, exactNumber, plural, sessionDurationText, statusLabel } from './format';
+import { compactNumber, exactNumber, frequentWords, plural, sessionDurationText, statusLabel } from './format';
 import type { DashboardInit } from '../../types/dashboard';
 import type { LegacyHelpers } from './helpers';
 
@@ -249,7 +249,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         if (!content) return;
 
         if (suggestions.length === 0) {
-          content.innerHTML = '<div class="suggestions-empty">No suggestions generated. Try using Claude Code more before analyzing.</div>';
+          content.innerHTML = '<div class="suggestions-empty">No suggestions yet. Let the agent work a little longer, then analyze again.</div>';
           return;
         }
 
@@ -608,7 +608,19 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           Chart.defaults.color = t.label;
           Chart.defaults.borderColor = t.grid;
         }
-        [historyChart, contextChart, turnAttributionChart, waterfallChart, toolFreqChart, eventDistChart]
+        // Dataset colors resolved from theme variables at creation time.
+        if (toolFreqChart && toolFreqChart.data.datasets[0]) {
+          toolFreqChart.data.datasets[0].backgroundColor = withAlpha(chartColor('blue'), 0.7);
+          toolFreqChart.data.datasets[0].borderColor = chartColor('blue');
+        }
+        if (eventDistChart && eventDistChart.data.datasets[0]) {
+          eventDistChart.data.datasets[0].backgroundColor = chartPalette(0.7).slice(0, eventDistChart.data.labels.length);
+        }
+        if (waterfallChart && waterfallChart.data.datasets[0]) {
+          waterfallChart.data.datasets[0].borderColor = withAlpha(chartColor('blue'), 0.8);
+          waterfallChart.data.datasets[0].backgroundColor = withAlpha(chartColor('blue'), 0.15);
+        }
+        [historyChart, contextChart, quota5hChart, quota7dChart, turnAttributionChart, waterfallChart, toolFreqChart, eventDistChart]
           .forEach(function (chart) {
             if (!chart || !chart.options) return;
             var scales = chart.options.scales || {};
@@ -631,6 +643,28 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               /* a chart mid-teardown must not break the others */
             }
           });
+        // Gauges and the history bars bake their fill per value: redraw them now
+        // rather than waiting for the next sample.
+        updateContextGauge(lastContextPercent);
+        if (currentQuota) updateQuota(currentQuota, currentQuotaFailure);
+        if (currentHistoryData) updateHistoryChart(currentHistoryData);
+      }
+
+      // VS Code's chart palette (re-themes with the editor); fallbacks for old hosts.
+      var CHART_COLOR_FALLBACKS = {
+        blue: '#3794ff', green: '#89d185', yellow: '#cca700', orange: '#d18616',
+        red: '#f14c4c', purple: '#b180d7'
+      };
+      function chartColor(name) {
+        return cssVar('--vscode-charts-' + name, CHART_COLOR_FALLBACKS[name] || '#3794ff');
+      }
+      function chartPalette(alpha) {
+        return ['blue', 'green', 'yellow', 'purple', 'red', 'orange'].map(function(name) {
+          return withAlpha(chartColor(name), alpha);
+        }).concat([
+          withAlpha(cssVar('--vscode-charts-foreground', '#cccccc'), alpha),
+          withAlpha(cssVar('--vscode-descriptionForeground', '#8b949e'), alpha)
+        ]);
       }
 
       /**
@@ -700,7 +734,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       /**
        * Updates the context gauge with new percentage.
        */
+      let lastContextPercent = 0;
       function updateContextGauge(percent) {
+        lastContextPercent = percent;
         const clampedPercent = Math.min(100, Math.max(0, percent));
 
         if (contextChart) {
@@ -942,6 +978,10 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             : 'Official (status line): 5h ' + Math.round(official.fiveHourUtilization) + '% used'
               + resetsIn(official.fiveHourResetsAt) + ' · 7d ' + Math.round(official.sevenDayUtilization) + '%';
           officialEl.classList.add('official');
+        } else if (currentProviderId === 'opencode') {
+          // OpenCode has no official status-line sample to compare against.
+          officialEl.textContent = '';
+          officialEl.classList.remove('official');
         } else {
           officialEl.textContent = 'No official sample yet — install the status line to compare.';
           officialEl.classList.remove('official');
@@ -1528,10 +1568,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         }).join('');
       }
 
+      // The shared compact vocabulary (12.3k / 4.5M); never "1000K".
       function formatTokensShort(tokens) {
-        if (tokens >= 1000000) return (tokens / 1000000).toFixed(1) + 'M';
-        if (tokens >= 1000) return Math.round(tokens / 1000) + 'K';
-        return String(tokens);
+        return compactNumber(tokens);
       }
 
       // Per-turn attribution stacked area chart
@@ -1658,11 +1697,11 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
         // Segment colors: red after compaction points
         const segmentColor = function(ctx) {
-          if (compactionIndices.length === 0) return 'rgba(97, 175, 239, 0.6)';
+          if (compactionIndices.length === 0) return withAlpha(chartColor('blue'), 0.6);
           for (let i = 0; i < compactionIndices.length; i++) {
-            if (ctx.p0DataIndex === compactionIndices[i]) return 'rgba(224, 108, 117, 0.8)';
+            if (ctx.p0DataIndex === compactionIndices[i]) return withAlpha(chartColor('red'), 0.8);
           }
-          return 'rgba(97, 175, 239, 0.6)';
+          return withAlpha(chartColor('blue'), 0.6);
         };
 
         if (waterfallChart) {
@@ -1680,8 +1719,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               datasets: [{
                 label: 'Context Size',
                 data: data,
-                borderColor: 'rgba(97, 175, 239, 0.8)',
-                backgroundColor: 'rgba(97, 175, 239, 0.15)',
+                borderColor: withAlpha(chartColor('blue'), 0.8),
+                backgroundColor: withAlpha(chartColor('blue'), 0.15),
                 fill: true,
                 tension: 0.2,
                 pointRadius: 1,
@@ -2295,8 +2334,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
                     labels: ptf.labels,
                     datasets: [{
                       data: ptf.data,
-                      backgroundColor: 'rgba(75, 192, 192, 0.7)',
-                      borderColor: 'rgba(75, 192, 192, 1)',
+                      backgroundColor: withAlpha(chartColor('blue'), 0.7),
+                      borderColor: chartColor('blue'),
                       borderWidth: 1
                     }]
                   },
@@ -2311,8 +2350,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
                     scales: {
                       x: {
                         beginAtZero: true,
-                        ticks: { color: cssVar('--vscode-descriptionForeground'), font: { size: 10 } },
-                        grid: { color: 'rgba(128,128,128,0.15)' }
+                        ticks: { color: chartTheme().tick, font: { size: 10 } },
+                        grid: { color: chartTheme().grid }
                       },
                       y: {
                         ticks: { color: cssVar('--vscode-foreground'), font: { size: 10 } },
@@ -2328,26 +2367,18 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           }
         }
 
-        // Event type distribution doughnut chart
+        // Frequent words in event summaries (doughnut). Common English words are
+        // dropped before taking the top eight, or "the" and "and" lead.
         var eventDistSection = document.getElementById('event-dist-section');
         if (eventDistSection) {
-          var wf = analytics.wordFrequency;
-          if (wf && wf.length > 0) {
+          var wf = frequentWords(analytics.wordFrequency, 8);
+          if (wf.length > 0) {
             eventDistSection.style.display = '';
 
-            var topWords = wf.slice(0, 8);
+            var topWords = wf;
             var wLabels = topWords.map(function(w) { return w.name; });
             var wData = topWords.map(function(w) { return w.count; });
-            var wColors = [
-              'rgba(75, 192, 192, 0.7)',
-              'rgba(54, 162, 235, 0.7)',
-              'rgba(255, 206, 86, 0.7)',
-              'rgba(153, 102, 255, 0.7)',
-              'rgba(255, 99, 132, 0.7)',
-              'rgba(255, 159, 64, 0.7)',
-              'rgba(75, 192, 75, 0.7)',
-              'rgba(201, 203, 207, 0.7)'
-            ];
+            var wColors = chartPalette(0.7);
 
             if (eventDistChart) {
               eventDistChart.data.labels = wLabels;
@@ -2379,8 +2410,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
+                      // Below the doughnut: on the right it squeezed the chart in a sidebar.
                       legend: {
-                        position: 'right',
+                        position: 'bottom',
                         labels: {
                           color: cssVar('--vscode-foreground'),
                           font: { size: 10 },
@@ -2421,8 +2453,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
                 var b = buckets[ci];
                 var intensity = maxCount > 0 ? b.count / maxCount : 0;
                 var alpha = Math.max(0.08, intensity * 0.9 + 0.1);
-                var bgColor = 'rgba(75, 192, 192, ' + alpha.toFixed(2) + ')';
-                if (b.count === 0) bgColor = 'rgba(128, 128, 128, 0.1)';
+                var bgColor = withAlpha(chartColor('blue'), Number(alpha.toFixed(2)));
+                if (b.count === 0) bgColor = withAlpha(cssVar('--vscode-descriptionForeground', '#8b949e'), 0.1);
                 var time = b.timestamp ? new Date(b.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                 cellsHtml += '<div class="heatmap-cell" style="background:' + bgColor + ';" title="' + time + ': ' + b.count + ' events"></div>';
               }
@@ -2599,6 +2631,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         const entries = [];
         if (payload && payload.providers && payload.providers.claude) entries.push(['Claude', payload.providers.claude.cells]);
         if (payload && payload.providers && payload.providers.codex) entries.push(['Codex', payload.providers.codex.cells]);
+        if (payload && payload.providers && payload.providers.zai) entries.push(['z.ai', payload.providers.zai.cells]);
         body.innerHTML = '';
         entries.forEach(function(entry) {
           const row = document.createElement('div');
@@ -2607,7 +2640,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           label.className = 'quota-history-provider-label';
           label.textContent = entry[0];
           row.appendChild(label);
-          row.appendChild(renderQuotaHistoryGrid(entry[1], payload.weeks));
+          const grid = renderQuotaHistoryGrid(entry[1], payload.weeks);
+          grid.setAttribute('aria-label', entry[0] + ' quota history, peak utilization per day over the last ' + payload.weeks + ' weeks');
+          row.appendChild(grid);
           body.appendChild(row);
         });
         section.style.display = entries.length > 0 ? 'block' : 'none';

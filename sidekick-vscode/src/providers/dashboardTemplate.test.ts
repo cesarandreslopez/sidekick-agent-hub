@@ -40,6 +40,26 @@ describe('renderDashboardHtml', () => {
     expect(inlineScripts).toBeNull();
   });
 
+  it('names the real event-log folder instead of a hardcoded Unix path', () => {
+    const base = {
+      nonce: 'n',
+      cspSource: 'vscode-webview:',
+      chartjsUri: '',
+      scriptUri: '',
+      iconUri: '',
+      extVersion: '0.33.2',
+      extDate: '',
+      initJson: '{}',
+    };
+    const windows = renderDashboardHtml({
+      ...base,
+      eventLogDir: 'C:\\Users\\dev\\AppData\\Roaming\\sidekick\\event-logs',
+    });
+    expect(windows).toContain('Record all session events to C:\\Users\\dev\\AppData');
+    expect(windows).not.toContain('~/.config/sidekick/event-logs/');
+    expect(renderDashboardHtml(base)).toContain('the Sidekick config folder (event-logs/)');
+  });
+
   it('uses real buttons and dialog semantics, and keeps live regions to the status pill', () => {
     const html = renderDashboardHtml({
       nonce: 'n',

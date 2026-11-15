@@ -55,6 +55,31 @@ export function sessionDurationText(
   return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 }
 
+/** Words too common to say anything about a session. */
+const STOPWORDS = new Set(
+  (
+    'the and for with that this from into onto then than they them their there these those ' +
+    'was were are is be been being have has had not but you your our its it\'s all any can ' +
+    'will would should could just also only out over under about after before when where ' +
+    'which while what who how why each per via use used using file files tool tools call ' +
+    'calls result results'
+  ).split(/\s+/),
+);
+
+/**
+ * The top `limit` entries of a word-frequency list with stopwords (and
+ * one- or two-letter words) removed. Filtering happens before slicing so the
+ * chart still shows `limit` meaningful words.
+ */
+export function frequentWords(
+  words: ReadonlyArray<{ name: string; count: number }> | null | undefined,
+  limit: number,
+): Array<{ name: string; count: number }> {
+  return (words ?? [])
+    .filter((word) => word.name.length > 2 && !STOPWORDS.has(word.name.toLowerCase()))
+    .slice(0, limit);
+}
+
 /** `1 file` / `3 files`. */
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
   return `${count} ${count === 1 ? singular : pluralForm}`;

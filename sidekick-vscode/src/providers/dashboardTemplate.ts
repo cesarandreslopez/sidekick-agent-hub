@@ -28,9 +28,23 @@ export interface DashboardTemplateOptions {
   extDate: string;
   /** Script-safe JSON of a `DashboardInit` (see `_safeJsonForScript`). */
   initJson: string;
+  /**
+   * Where event logs are written, for display (`~/.config/sidekick/event-logs`
+   * on Unix, `%APPDATA%\\sidekick\\event-logs` on Windows, or the override).
+   */
+  eventLogDir?: string;
+}
+
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 export function renderDashboardHtml(options: DashboardTemplateOptions): string {
+  const eventLogDir = escapeAttr(options.eventLogDir ?? 'the Sidekick config folder (event-logs/)');
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -115,7 +129,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 
     <div id="dashboard" style="display: none;">
       <div class="metric-toggles" role="toolbar" aria-label="Metric toggles">
-        <button class="metric-btn active" data-metric="quota" aria-pressed="true">Quota</button>
+        <button class="metric-btn active" data-metric="quota" aria-pressed="true" title="Context window and plan usage gauges">Quota</button>
         <button class="metric-btn" data-metric="cost" aria-pressed="false">Cost</button>
         <button class="metric-btn" data-metric="tokens" aria-pressed="false">Tokens</button>
         <button class="metric-btn" data-metric="cache" aria-pressed="false">Cache</button>
@@ -257,7 +271,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
         <div class="section-title section-title-with-info">
           Response Times
           <span class="info-icon">?<div class="tooltip">
-            <p>How long Claude takes to respond to your prompts.</p>
+            <p>How long the model takes to respond to your prompts.</p>
             <p><strong>First Token:</strong> Time until streaming begins (thinking time)</p>
             <p><strong>Total:</strong> Time for complete response</p>
           </div></span>
@@ -331,7 +345,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
             <span class="details-title">Session Activity <span class="group-count-badge" id="activity-count-badge" style="display:none;">0</span></span>
             <span class="group-summary" id="session-activity-summary"></span>
           </button>
-          <label class="filter-toggle event-log-toggle" title="Record all session events to ~/.config/sidekick/event-logs/ for debugging. Events are written in real-time as a JSONL audit trail.">
+          <label class="filter-toggle event-log-toggle" title="Record all session events to ${eventLogDir} for debugging. Events are written in real time as a JSONL audit trail.">
             <input type="checkbox" id="event-log-toggle" /> Event Log
           </label>
         </div>
@@ -342,9 +356,9 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
               Context Attribution
               <span class="info-icon">?<div class="tooltip">
                 <p>Estimated breakdown of where context tokens are spent.</p>
-                <p><strong>System Prompt:</strong> CLAUDE.md, system reminders</p>
+                <p><strong>System Prompt:</strong> Instruction files (CLAUDE.md / AGENTS.md), system reminders</p>
                 <p><strong>User Messages:</strong> Your prompts and text</p>
-                <p><strong>Assistant:</strong> Claude's text responses</p>
+                <p><strong>Assistant:</strong> The agent's text responses</p>
                 <p><strong>Tool I/O:</strong> Tool inputs and outputs</p>
                 <p><strong>Thinking:</strong> Extended thinking blocks</p>
               </div></span>
@@ -387,7 +401,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
               Context Compactions
               <span class="info-icon">?<div class="tooltip">
                 <p>Context compaction occurs when the context window fills up.</p>
-                <p>Claude summarizes the conversation to reclaim space.</p>
+                <p>The agent summarizes the conversation to reclaim space.</p>
                 <p><strong>Before/After:</strong> Context size in tokens</p>
                 <p><strong>Reclaimed:</strong> Tokens freed by compaction</p>
               </div></span>
@@ -418,7 +432,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
               <span class="info-icon">?<div class="tooltip">
                 <p>Chronological log of session events.</p>
                 <p><strong>User prompts:</strong> Messages you sent</p>
-                <p><strong>Tool calls:</strong> Actions Claude performed</p>
+                <p><strong>Tool calls:</strong> Actions the agent performed</p>
                 <p><strong>Results:</strong> Outcomes of tool executions</p>
                 <p><strong>Compaction:</strong> Context window was compacted</p>
               </div></span>
@@ -495,10 +509,9 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
             <div class="section-title section-title-with-info">
               Model Breakdown
               <span class="info-icon">?<div class="tooltip">
-                <p>Shows which Claude models have been used in this session.</p>
-                <p><strong>Opus:</strong> Highest quality, best for complex tasks</p>
-                <p><strong>Sonnet:</strong> Balanced speed and quality</p>
-                <p><strong>Haiku:</strong> Fast and efficient for simple tasks</p>
+                <p>The models used in this session.</p>
+                <p>Each row shows its calls, tokens (cache included), and estimated cost.</p>
+                <p>"—" means the model has no known price.</p>
               </div></span>
             </div>
             <div class="model-list" id="model-list">
@@ -510,7 +523,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
             <div class="section-title section-title-with-info">
               Tool Analytics
               <span class="info-icon">?<div class="tooltip">
-                <p>Tools invoked by Claude during this session.</p>
+                <p>Tools the agent invoked during this session.</p>
                 <p><strong>Count:</strong> Number of times each tool was called</p>
                 <p><strong>Success rate:</strong> Percentage of successful executions</p>
                 <p><strong>Avg time:</strong> Average execution duration</p>
@@ -604,7 +617,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
           </div>
 
           <div class="section" id="event-dist-section" style="display: none;">
-            <div class="section-title">Event Distribution</div>
+            <div class="section-title">Frequent Words <span class="section-hint">in event summaries</span></div>
             <div class="chart-container" style="height:140px;">
               <canvas id="eventDistChart"></canvas>
             </div>
@@ -632,7 +645,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
   <div id="summary-tab" class="tab-content" role="tabpanel" aria-label="Summary">
     <div class="summary-empty" id="summary-empty">
       <p>No session summary available yet.</p>
-      <p>A summary will be generated when a session ends, or you can request one during an active session.</p>
+      <p>Open this tab during a session to build one, or run "Sidekick: Generate Session Summary". One is also built when a session ends.</p>
     </div>
     <div id="summary-content" style="display: none;">
       <div class="summary-metrics-row" id="summary-metrics">

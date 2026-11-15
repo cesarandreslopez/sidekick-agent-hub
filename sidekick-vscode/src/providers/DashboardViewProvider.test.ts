@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 vi.mock('vscode', () => ({
@@ -68,7 +69,7 @@ vi.mock('../services/Logger', () => ({
 
 import { formatLocalDateKey, normalizeProviderUsage } from 'sidekick-shared';
 import { commands } from 'vscode';
-import { DashboardViewProvider } from './DashboardViewProvider';
+import { DashboardViewProvider, displayConfigPath } from './DashboardViewProvider';
 import { addUsageToPricing, type ModelUsageEntry } from '../services/ModelPricingService';
 
 // The behaviour lives in the bundled legacy module now; the document only
@@ -211,6 +212,26 @@ const liveUsage = () => ({
   cacheWriteTokens: 0,
   cacheReadTokens: 0,
   timestamp: new Date(),
+});
+
+describe('displayConfigPath', () => {
+  it('abbreviates the real config folder under home and keeps it absolute elsewhere', () => {
+    const previous = process.env.SIDEKICK_CONFIG_DIR;
+    try {
+      process.env.SIDEKICK_CONFIG_DIR = path.join(os.homedir(), '.sidekick-test-config');
+      expect(displayConfigPath('handoffs', 'proj-latest.md')).toBe(
+        '~/.sidekick-test-config/handoffs/proj-latest.md',
+      );
+      const outside = path.join(path.parse(os.homedir()).root, 'opt', 'sidekick-config');
+      process.env.SIDEKICK_CONFIG_DIR = outside;
+      expect(displayConfigPath('handoffs', 'proj-latest.md')).toBe(
+        path.join(outside, 'handoffs', 'proj-latest.md'),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.SIDEKICK_CONFIG_DIR;
+      else process.env.SIDEKICK_CONFIG_DIR = previous;
+    }
+  });
 });
 
 describe('DashboardViewProvider live session panels', () => {
@@ -724,6 +745,15 @@ describe('DashboardViewProvider quota UI', () => {
     // ...and the One Dark attribution palette, previously declared three times.
     expect(rendered).not.toContain("'System Prompt': '#e06c75'");
     expect(rendered).not.toContain("systemPrompt: '#e06c75'");
+
+    // The waterfall, tool-frequency, word, and heatmap literals that ignored the theme.
+    expect(rendered).not.toContain('rgba(97, 175, 239');
+    expect(rendered).not.toContain('rgba(224, 108, 117');
+    expect(rendered).not.toContain('rgba(255, 206, 86');
+    expect(rendered).not.toContain("'rgba(75, 192, 192, ' + alpha");
+    // A theme switch redraws the quota gauges and the history bars too.
+    expect(rendered).toContain('quota5hChart, quota7dChart');
+    expect(rendered).toContain('if (currentHistoryData) updateHistoryChart(currentHistoryData);');
 
     expect(rendered).toContain('function chartTheme(');
     expect(rendered).toContain('function attrColor(');

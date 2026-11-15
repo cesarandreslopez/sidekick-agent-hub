@@ -12,7 +12,8 @@ describe('dashboard cost text', () => {
   it('formats numbers as before and missing values as a dash', () => {
     expect(formatCost(0.001234)).toBe('$0.0012');
     expect(formatCost(1.234)).toBe('$1.23');
-    expect(formatCost(0)).toBe('$0.0000');
+    // Nothing spent reads $0.00, not the shared formatter's $0.0000.
+    expect(formatCost(0)).toBe('$0.00');
     expect(formatCost(null)).toBe('—');
     expect(formatCost(undefined)).toBe('—');
   });
@@ -20,7 +21,7 @@ describe('dashboard cost text', () => {
   it('never shows a wholly unpriced total as $0', () => {
     expect(totalCostText(0, 1)).toBe('—');
     expect(totalCostText(1.5, 1)).toBe('$1.50');
-    expect(totalCostText(0, 0)).toBe('$0.0000');
+    expect(totalCostText(0, 0)).toBe('$0.00');
     expect(unpricedNote(0)).toBe('');
     expect(unpricedNote(1)).toBe('1 model unpriced');
     expect(unpricedNote(2)).toBe('2 models unpriced');
@@ -38,6 +39,9 @@ describe('dashboard cost text', () => {
     expect(blockCostText(1.2, { costProvenance: 'estimated', unpricedCalls: 2 })).toBe(
       '$1.20 (partial)',
     );
+    // Same text as the rest of the view: no "$0.00" for a sub-cent block.
+    expect(blockCostText(0.004, { costProvenance: 'estimated' })).toBe('$0.0040');
+    expect(blockCostText(0, { costProvenance: 'estimated' })).toBe('$0.00');
   });
 });
 
