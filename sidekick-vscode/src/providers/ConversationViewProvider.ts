@@ -3,8 +3,9 @@
  *
  * Opens a webview panel in an editor tab that renders the complete
  * conversation from a provider session file in a chat-style layout.
- * Supports collapsible tool calls, syntax highlighting markers,
- * and real-time updates for active sessions.
+ * Supports collapsible tool output, search with highlighted matches,
+ * and a Refresh action that re-reads the session (the panel is a snapshot,
+ * not a live view).
  *
  * @module providers/ConversationViewProvider
  */
@@ -325,6 +326,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export class ConversationViewProvider implements vscode.Disposable {
   private panel: vscode.WebviewPanel | null = null;
+  private currentPath: string | null = null;
   private disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -360,20 +362,39 @@ export class ConversationViewProvider implements vscode.Disposable {
       this.panel.onDidDispose(
         () => {
           this.panel = null;
+          this.currentPath = null;
+        },
+        null,
+        this.disposables,
+      );
+
+      this.panel.webview.onDidReceiveMessage(
+        (message: { type?: string }) => {
+          if (message?.type === 'refresh' && this.currentPath) {
+            void this.render(this.currentPath);
+          }
         },
         null,
         this.disposables,
       );
     }
 
+    this.currentPath = targetPath;
+
     // Set title to session filename
     const provider = this.sessionMonitor.getProvider();
     const filename = provider.getSessionId(targetPath) || 'Session';
     this.panel.title = `Conversation: ${filename.substring(0, 8)}...`;
 
-    // Parse and render
+    await this.render(targetPath);
+  }
+
+  /** Parses the session and (re)renders the panel. */
+  private async render(targetPath: string): Promise<void> {
+    if (!this.panel) return;
     try {
       const chunks = await this.parseSession(targetPath);
+      if (!this.panel) return;
       this.panel.webview.html = this.getHtml(this.panel.webview, chunks);
     } catch (err) {
       logError('ConversationViewProvider: Failed to parse session', err);
@@ -439,14 +460,14 @@ export class ConversationViewProvider implements vscode.Disposable {
           const outputSection = `<div class="tool-section"><div class="tool-section-label">${chunk.isError ? 'Error' : 'Output'}</div><pre class="tool-content${errorClass}">${this.escapeHtml(chunk.toolOutput)}</pre></div>`;
 
           return `<div class="chunk tool-chunk${sidechain}" id="chunk-${i}">
-          <div class="tool-header" data-toggle="tool-body-${i}">
+          <button type="button" class="tool-header tool-toggle" data-toggle="tool-body-${i}" aria-expanded="false" aria-controls="tool-body-${i}">
             <span class="tool-icon">${chunk.isError ? '!' : '>'}</span>
             <span class="tool-name">${this.escapeHtml(chunk.toolName || 'Tool')}</span>
             ${summary}
             <span class="chunk-time">${time}</span>
-            <span class="toggle-arrow">+</span>
-          </div>
-          <div class="tool-body" id="tool-body-${i}" style="display:none;">
+            <span class="toggle-arrow" aria-hidden="true">+</span>
+          </button>
+          <div class="tool-body" id="tool-body-${i}">
             ${outputSection}
           </div>
         </div>`;
@@ -667,7 +688,50 @@ export class ConversationViewProvider implements vscode.Disposable {
     }
 
     .tool-body {
+      display: none;
       padding: 0 12px 8px;
+    }
+
+    .tool-body.open {
+      display: block;
+    }
+
+    button.tool-header {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
+    }
+
+    button.tool-header:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: -1px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .refresh-btn {
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+      border: none;
+      border-radius: 3px;
+      padding: 3px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .refresh-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground);
+    }
+
+    .refresh-btn:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder);
     }
 
     .tool-section {
@@ -731,41 +795,94 @@ export class ConversationViewProvider implements vscode.Disposable {
 <body>
   <div class="conversation-header">
     <h2>Session Conversation</h2>
-    <span class="chunk-count">${chunks.length} messages</span>
+    <div class="header-actions">
+      <span class="chunk-count" id="chunk-count">${chunks.length} ${chunks.length === 1 ? 'entry' : 'entries'}</span>
+      <button type="button" class="refresh-btn" id="refresh-btn" title="Re-read the session file">Refresh</button>
+    </div>
   </div>
   <div class="search-bar">
-    <input type="text" id="search-input" placeholder="Search conversation..." />
+    <input type="text" id="search-input" placeholder="Search conversation..." aria-label="Search conversation" />
   </div>
   <div id="conversation">
     ${chunksHtml}
   </div>
   <script nonce="${nonce}">
     (function() {
-      // Tool call toggle
-      document.addEventListener('click', function(e) {
-        var header = e.target.closest('.tool-header');
-        if (!header) return;
-        var targetId = header.getAttribute('data-toggle');
-        var body = document.getElementById(targetId);
+      var vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
+      var totalLabel = ${JSON.stringify(`${chunks.length} ${chunks.length === 1 ? 'entry' : 'entries'}`)};
+
+      function setOpen(header, open) {
+        var body = document.getElementById(header.getAttribute('data-toggle'));
         if (!body) return;
+        body.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', open ? 'true' : 'false');
         var arrow = header.querySelector('.toggle-arrow');
-        if (body.style.display === 'none') {
-          body.style.display = 'block';
-          if (arrow) arrow.textContent = '-';
-        } else {
-          body.style.display = 'none';
-          if (arrow) arrow.textContent = '+';
-        }
+        if (arrow) arrow.textContent = open ? '-' : '+';
+      }
+
+      // Tool output toggle (buttons, so Enter/Space work natively)
+      document.addEventListener('click', function(e) {
+        var header = e.target.closest('.tool-toggle');
+        if (!header) return;
+        setOpen(header, header.getAttribute('aria-expanded') !== 'true');
       });
 
-      // Search
+      var refreshBtn = document.getElementById('refresh-btn');
+      if (refreshBtn && vscode) {
+        refreshBtn.addEventListener('click', function() {
+          refreshBtn.disabled = true;
+          refreshBtn.textContent = 'Refreshing…';
+          vscode.postMessage({ type: 'refresh' });
+        });
+      }
+
+      function clearHighlights() {
+        var marks = document.querySelectorAll('mark.highlight');
+        marks.forEach(function(mark) {
+          var parent = mark.parentNode;
+          if (!parent) return;
+          parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+          parent.normalize();
+        });
+      }
+
+      function highlightIn(root, query) {
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+        var nodes = [];
+        var node;
+        while ((node = walker.nextNode())) {
+          if (node.nodeValue && node.nodeValue.toLowerCase().indexOf(query) >= 0) nodes.push(node);
+        }
+        nodes.forEach(function(textNode) {
+          var text = textNode.nodeValue;
+          var lower = text.toLowerCase();
+          var frag = document.createDocumentFragment();
+          var pos = 0;
+          var idx;
+          while ((idx = lower.indexOf(query, pos)) >= 0) {
+            if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+            var mark = document.createElement('mark');
+            mark.className = 'highlight';
+            mark.textContent = text.slice(idx, idx + query.length);
+            frag.appendChild(mark);
+            pos = idx + query.length;
+          }
+          if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+          textNode.parentNode.replaceChild(frag, textNode);
+        });
+      }
+
+      // Search: filter, highlight, and open collapsed matches
       var searchInput = document.getElementById('search-input');
+      var countEl = document.getElementById('chunk-count');
       var searchTimer = null;
       searchInput.addEventListener('input', function() {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(function() {
           var query = searchInput.value.trim().toLowerCase();
           var chunks = document.querySelectorAll('.chunk');
+          clearHighlights();
+          var shown = 0;
           chunks.forEach(function(chunk) {
             if (!query) {
               chunk.classList.remove('hidden');
@@ -774,10 +891,17 @@ export class ConversationViewProvider implements vscode.Disposable {
             var text = chunk.textContent.toLowerCase();
             if (text.indexOf(query) >= 0) {
               chunk.classList.remove('hidden');
+              shown++;
+              highlightIn(chunk, query);
+              var toggle = chunk.querySelector('.tool-toggle');
+              var body = chunk.querySelector('.tool-body');
+              if (toggle && body && body.textContent.toLowerCase().indexOf(query) >= 0) setOpen(toggle, true);
+              if (chunk.tagName === 'DETAILS') chunk.open = true;
             } else {
               chunk.classList.add('hidden');
             }
           });
+          if (countEl) countEl.textContent = query ? shown + ' of ' + totalLabel : totalLabel;
         }, 200);
       });
     })();

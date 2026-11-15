@@ -16,7 +16,23 @@ import type { ToolCall } from '../types/claudeSession';
 import { getNonce } from '../utils/nonce';
 import { log } from '../services/Logger';
 import { formatToolSummary } from 'sidekick-shared';
+import { formatDurationMs } from 'sidekick-shared/browser';
+
+/** Output longer than this keeps its head and tail; errors usually sit at the end. */
+const OUTPUT_HEAD_CHARS = 1500;
+const OUTPUT_TAIL_CHARS = 1500;
 import { splitToolInput } from '../utils/toolInputOrigin';
+
+/** Keeps the start and the end of long output, marking how much was cut. */
+export function truncateHeadTail(
+  text: string,
+  head = OUTPUT_HEAD_CHARS,
+  tail = OUTPUT_TAIL_CHARS,
+): string {
+  if (text.length <= head + tail) return text;
+  const omitted = text.length - head - tail;
+  return `${text.slice(0, head)}\n... (${omitted.toLocaleString()} characters omitted) ...\n${text.slice(text.length - tail)}`;
+}
 
 /**
  * Opens a tool inspector panel for the current session.
@@ -157,10 +173,31 @@ export class ToolInspectorProvider implements vscode.Disposable {
       display: flex;
       align-items: center;
       gap: 8px;
+      width: 100%;
       padding: 8px 12px;
+      border: none;
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
       background: var(--vscode-sideBar-background, rgba(255,255,255,0.03));
       cursor: pointer;
       font-size: 12px;
+    }
+
+    .tool-call-header:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: -1px;
+    }
+
+    .call-count {
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+    }
+
+    .tool-note {
+      color: var(--vscode-descriptionForeground);
+      font-style: italic;
+      font-size: 11px;
     }
 
     .tool-call-header:hover {
@@ -285,7 +322,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
 <body>
   <div class="header">
     <h2>Tool Inspector</h2>
-    <span style="color:var(--vscode-descriptionForeground);font-size:12px">${calls.length} calls</span>
+    <span class="call-count">${calls.length} ${calls.length === 1 ? 'call' : 'calls'}</span>
   </div>
   <div class="filter-bar" role="toolbar" aria-label="Filter by tool type">
     <button class="filter-btn active" data-tool="all" aria-pressed="true">All (${allCalls.length})</button>
@@ -345,7 +382,9 @@ export class ToolInspectorProvider implements vscode.Disposable {
           second: '2-digit',
         })
       : '';
-    const durationStr = call.duration ? `${Math.round(call.duration)}ms` : '';
+    const durationStr = call.duration
+      ? formatDurationMs(call.duration, { includeMilliseconds: true, invalid: '' })
+      : '';
     const errorBadge = call.isError ? '<span class="tool-error-badge">ERROR</span>' : '';
     // Where the call came from: the provider's own tool name and MCP server,
     // recorded by the parser in `_sidekick*` input keys.
@@ -385,8 +424,8 @@ export class ToolInspectorProvider implements vscode.Disposable {
     }
 
     return `<div class="tool-call" data-tool="${this.escapeHtml(call.name)}" id="call-${index}">
-      <div class="tool-call-header" role="button" aria-expanded="false" aria-label="${this.escapeHtml(call.name)} ${this.escapeHtml(toolSummary)}">
-        <span class="toggle-arrow">+</span>
+      <button type="button" class="tool-call-header" aria-expanded="false" aria-controls="call-body-${index}" aria-label="${this.escapeHtml(call.name)} ${this.escapeHtml(toolSummary)}">
+        <span class="toggle-arrow" aria-hidden="true">+</span>
         <span class="tool-name">${this.escapeHtml(call.name)}</span>
         <span class="tool-summary">${this.escapeHtml(toolSummary)}</span>
         ${rawNameBadge}
@@ -394,8 +433,8 @@ export class ToolInspectorProvider implements vscode.Disposable {
         ${errorBadge}
         ${durationStr ? `<span class="tool-duration">${durationStr}</span>` : ''}
         <span class="tool-time">${time}</span>
-      </div>
-      <div class="tool-body">
+      </button>
+      <div class="tool-body" id="call-body-${index}">
         ${bodyContent}
       </div>
     </div>`;
@@ -433,20 +472,35 @@ export class ToolInspectorProvider implements vscode.Disposable {
 
   private renderEditCall(call: ToolCall): string {
     const filePath = (call.input.file_path as string) || '';
-    const oldStr = (call.input.old_string as string) || '';
-    const newStr = (call.input.new_string as string) || '';
+    // MultiEdit carries an `edits` array; Edit carries one old/new pair.
+    const pairs: Array<{ oldStr: string; newStr: string }> = Array.isArray(call.input.edits)
+      ? (call.input.edits as Array<Record<string, unknown>>).map((edit) => ({
+          oldStr: typeof edit?.old_string === 'string' ? edit.old_string : '',
+          newStr: typeof edit?.new_string === 'string' ? edit.new_string : '',
+        }))
+      : [
+          {
+            oldStr: (call.input.old_string as string) || '',
+            newStr: (call.input.new_string as string) || '',
+          },
+        ];
 
     const diffLines: string[] = [];
-    if (oldStr) {
-      for (const line of oldStr.split('\n').slice(0, 20)) {
+    pairs.forEach(({ oldStr, newStr }, i) => {
+      if (i > 0 && (oldStr || newStr)) diffLines.push('<span class="tool-note">…</span>');
+      for (const line of oldStr ? oldStr.split('\n').slice(0, 20) : []) {
         diffLines.push(`<span class="diff-del">- ${this.escapeHtml(line)}</span>`);
       }
-    }
-    if (newStr) {
-      for (const line of newStr.split('\n').slice(0, 20)) {
+      for (const line of newStr ? newStr.split('\n').slice(0, 20) : []) {
         diffLines.push(`<span class="diff-add">+ ${this.escapeHtml(line)}</span>`);
       }
-    }
+    });
+
+    // Codex apply_patch calls are normalized to Edit with only a file path.
+    const changes =
+      diffLines.length > 0
+        ? `<pre class="tool-content">${diffLines.join('\n')}</pre>`
+        : '<div class="tool-note">Patch content not recorded for this call.</div>';
 
     return `<div class="tool-section">
       <div class="tool-section-label">File</div>
@@ -454,7 +508,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
     </div>
     <div class="tool-section">
       <div class="tool-section-label">Changes</div>
-      <pre class="tool-content">${diffLines.join('\n')}</pre>
+      ${changes}
     </div>${this.renderOutputSection(call)}`;
   }
 
@@ -508,7 +562,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
   private renderOutputSection(call: ToolCall): string {
     if (!call.output) return '';
 
-    const preview = call.output.substring(0, 3000);
+    const preview = truncateHeadTail(call.output);
     const isError = call.isError;
     const label = isError ? 'Error Output' : 'Output';
     const labelClass = isError
@@ -518,7 +572,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
 
     return `<div class="tool-section">
       <div class="${labelClass}">${label}</div>
-      <pre class="${contentClass}">${this.escapeHtml(preview)}${call.output.length > 3000 ? '\n... (truncated)' : ''}</pre>
+      <pre class="${contentClass}">${this.escapeHtml(preview)}</pre>
     </div>`;
   }
 
