@@ -505,7 +505,7 @@ export async function activate(context: vscode.ExtensionContext) {
               location: silent
                 ? vscode.ProgressLocation.Window
                 : vscode.ProgressLocation.Notification,
-              title: 'Importing historical Claude Code data...',
+              title: 'Importing historical session data...',
               cancellable: false,
             },
             async (progress) => {

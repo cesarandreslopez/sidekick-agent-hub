@@ -530,6 +530,7 @@
       },
       {
         "title": "Activity Map",
+        "order": 3.5,
         "properties": {
           "sidekick.activityMap.motion": {
             "type": "string",
@@ -681,7 +682,7 @@
               "phd"
             ],
             "default": "imposter-syndrome",
-            "description": "Explanation complexity level for Explain-First mode",
+            "description": "Default detail level for Explain Selected Code. The Explain submenu picks a level for one explanation.",
             "enumDescriptions": [
               "ELI5 - Explain for complete beginners",
               "Curious Amateur - Explain for someone learning",
@@ -720,17 +721,17 @@
           "sidekick.notifications.triggers.env-access": {
             "type": "boolean",
             "default": true,
-            "description": "Notify when Claude accesses credential files (.env, .pem, .key, etc.)"
+            "description": "Notify when the agent accesses credential files (.env, .pem, .key, etc.)"
           },
           "sidekick.notifications.triggers.destructive-cmd": {
             "type": "boolean",
             "default": true,
-            "description": "Notify when Claude runs destructive commands (rm -rf, git push --force, etc.)"
+            "description": "Notify when the agent runs destructive commands (rm -rf, git push --force, etc.)"
           },
           "sidekick.notifications.triggers.tool-error": {
             "type": "boolean",
             "default": true,
-            "description": "Notify when Claude encounters multiple consecutive tool errors"
+            "description": "Notify when the agent hits multiple consecutive tool errors"
           },
           "sidekick.notifications.triggers.compaction": {
             "type": "boolean",
@@ -740,7 +741,7 @@
           "sidekick.notifications.triggers.sensitive-path-write": {
             "type": "boolean",
             "default": true,
-            "description": "Notify when Claude modifies files in sensitive system paths (/etc, /boot, .ssh, .gnupg, etc.)"
+            "description": "Notify when the agent modifies files in sensitive system paths (/etc, /boot, .ssh, .gnupg, etc.)"
           },
           "sidekick.notifications.triggers.cycle-detected": {
             "type": "boolean",
@@ -1147,7 +1148,7 @@
       },
       {
         "command": "sidekick.selectSessionFolder",
-        "title": "Browse Session Folders...",
+        "title": "Browse Session Folders…",
         "category": "Sidekick",
         "icon": "$(folder-opened)"
       },
@@ -1210,7 +1211,7 @@
       },
       {
         "command": "sidekick.injectKnowledgeNotes",
-        "title": "Inject Knowledge Notes into CLAUDE.md",
+        "title": "Inject Knowledge Notes into CLAUDE.md / AGENTS.md",
         "category": "Sidekick"
       },
       {

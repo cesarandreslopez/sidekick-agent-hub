@@ -6,7 +6,7 @@ Monitor your coding agent sessions in real-time with a comprehensive analytics d
 
 ## Accessing the Dashboard
 
-Click the **Agent Hub** icon in the activity bar (left sidebar) to access all monitoring views. Session Analytics is expanded on first run; Accounts, Mind Map, Kanban Board, Plans, Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream start collapsed — click a section header to expand one, and VS Code remembers your layout from then on. With `sidekick.enableSessionMonitoring` set to `false`, the eight monitoring views from Mind Map to Event Stream are hidden entirely, Accounts stays available, and Session Analytics shows a placeholder that can turn monitoring back on.
+Click the **Agent Hub** icon in the activity bar (left sidebar) to access all monitoring views. Session Analytics is expanded on first run; Accounts, Mind Map, Activity Map, Kanban Board, Plans, Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream start collapsed — click a section header to expand one, and VS Code remembers your layout from then on. With `sidekick.enableSessionMonitoring` set to `false`, the nine monitoring views from Mind Map to Event Stream are hidden entirely, Accounts stays available, and Session Analytics shows a placeholder that can turn monitoring back on.
 
 ## Session Analytics Dashboard
 
@@ -179,7 +179,7 @@ Capture reusable knowledge — gotchas, patterns, guidelines, and tips — attac
 
 The monitor automatically discovers sessions based on your configured provider. If the session is in a different directory:
 
-- Use **"Sidekick: Browse Session Folders..."** to manually select a session folder
+- Use **"Sidekick: Browse Session Folders…"** to manually select a session folder
 - Selection persists across VS Code restarts
 - **"Sidekick: Reset to Auto-Detect Session"** clears manual selection
 - Codex sessions that Codex compressed (`.jsonl.zst`) are listed and read whole when VS Code's Node runtime has built-in Zstandard (Node 22.15 or later), and skipped otherwise

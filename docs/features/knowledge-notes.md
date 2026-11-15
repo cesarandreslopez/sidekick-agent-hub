@@ -67,7 +67,7 @@ Importance level affects how quickly a note ages — critical notes decay slower
 
 ## Injecting Notes into Your Agent
 
-Run **Sidekick: Inject Knowledge Notes into CLAUDE.md** from the Command Palette to append all active notes to your instruction file (CLAUDE.md or AGENTS.md, depending on your agent provider). This generates a `## File-Specific Knowledge` section that your agent reads at the start of every session.
+Run **Sidekick: Inject Knowledge Notes into CLAUDE.md / AGENTS.md** from the Command Palette to append all active notes to your instruction file (CLAUDE.md or AGENTS.md, depending on your agent provider). This generates a `## File-Specific Knowledge` section that your agent reads at the start of every session.
 
 ## Auto-Extraction
 

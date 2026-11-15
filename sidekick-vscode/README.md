@@ -260,7 +260,7 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Uninstall Statusline          | —                     | Restore the previous Claude Code `statusLine` block                                                                                        |
 | Run Doctor                    | —                     | Cross-provider health diagnostics and the pricing basis; focuses the Health tab                                                            |
 | Open External Session Handoff | —                     | Open the configured handoff URL for the active session                                                                                     |
-| Browse Session Folders...     | —                     | Select session folder to monitor                                                                                                           |
+| Browse Session Folders…       | —                     | Select session folder to monitor                                                                                                           |
 | Check for Updates             | —                     | Check for a newer version of the extension now (Update, Release Notes, or Skip This Version)                                               |
 
 Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS. Transform and Explain require a selection. Requires VS Code 1.85 or later.
