@@ -7,36 +7,11 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import type { PanelItem } from '../panels/types';
 import { parseBlessedTags } from './parseBlessedTags';
+import { tokenizeTagged, truncateTagged, wrapTaggedLines } from '../blessedText';
 
-const TAG_RE = /\{\/?\w[\w-]*\}/g;
-
-/** Truncate a blessed-tagged string to maxVisible visible characters. */
+/** Truncate a blessed-tagged label to maxVisible terminal columns. */
 function truncateTaggedLabel(label: string, maxVisible: number): string {
-  const stripped = label.replace(TAG_RE, '');
-  if (stripped.length <= maxVisible) return label;
-
-  // Walk the label, counting visible chars, and cut when we hit the limit
-  let visible = 0;
-  let cutIndex = label.length;
-  let i = 0;
-  while (i < label.length) {
-    if (label[i] === '{') {
-      const close = label.indexOf('}', i);
-      if (close !== -1) {
-        i = close + 1;
-        continue;
-      }
-    }
-    visible++;
-    if (visible >= maxVisible - 1) {
-      cutIndex = i + 1;
-      break;
-    }
-    i++;
-  }
-  // Close any open blessed tags by appending a reset — but since parseBlessedTags
-  // handles unclosed tags gracefully, just truncate and add ellipsis
-  return label.substring(0, cutIndex) + '\u2026';
+  return truncateTagged(label, Math.max(1, maxVisible));
 }
 
 interface SideListProps {
@@ -53,6 +28,10 @@ interface SideListProps {
   filterString?: string;
 }
 
+function escapeBraces(text: string): string {
+  return text.replace(/[{}]/g, (brace) => (brace === '{' ? '{open}' : '{close}'));
+}
+
 /** Apply search-term highlighting to a blessed-tagged label. */
 function applySearchHighlight(label: string, filterString: string): string {
   if (!filterString) return label;
@@ -64,12 +43,18 @@ function applySearchHighlight(label: string, filterString: string): string {
   } catch {
     return label;
   }
-  // Split on blessed tags, only highlight within non-tag segments
-  const parts = label.split(/(\{\/?\w[\w-]*\})/g);
-  return parts
-    .map((part) => {
-      if (part.startsWith('{') && part.endsWith('}')) return part;
-      return part.replace(pattern, '{blue-bg}{white-fg}$1{/white-fg}{/blue-bg}');
+  // Highlight only inside text runs, never inside a tag.
+  return tokenizeTagged(label)
+    .map((token) => {
+      if (token.kind !== 'text') return token.raw;
+      return token.text
+        .split(pattern)
+        .map((part, i) =>
+          i % 2 === 1
+            ? `{blue-bg}{white-fg}${escapeBraces(part)}{/white-fg}{/blue-bg}`
+            : escapeBraces(part),
+        )
+        .join('');
     })
     .join('');
 }
@@ -86,7 +71,9 @@ export function SideList({
   emptyStateHint,
   filterString,
 }: SideListProps): React.ReactElement {
-  const borderColor = focused ? 'magenta' : 'gray';
+  // Unfocused chrome is dim default-colour, not ANSI bright-black ("gray"),
+  // which disappears on Solarized-style themes.
+  const borderColor = focused ? 'magenta' : undefined;
   const borderStyle = focused ? 'double' : 'single';
   // Inner width minus border (2) and padding (1)
   const innerWidth = Math.max(1, width - 3);
@@ -96,17 +83,39 @@ export function SideList({
   const hasMoreAbove = scrollOffset > 0;
   const hasMoreBelow = scrollOffset + viewportHeight < items.length;
 
+  // Empty-state rows, pre-wrapped so the fill below counts real rows.
+  const emptyRows: string[] = [];
+  if (items.length === 0 && viewportHeight >= 3) {
+    const lines: string[] = [];
+    if (filterString) {
+      lines.push(`No matches for "${escapeBraces(filterString)}"`);
+      lines.push('{magenta-fg}{bold}Esc{/bold}{/magenta-fg}{grey-fg} clears the filter{/grey-fg}');
+    } else if (sessionFilterActive) {
+      lines.push('{grey-fg}No items in this session{/grey-fg}');
+      lines.push('{grey-fg}Press {/grey-fg}{magenta-fg}{bold}f{/bold}{/magenta-fg}{grey-fg} to see all{/grey-fg}');
+    } else {
+      lines.push('{grey-fg}No items yet{/grey-fg}');
+      if (emptyStateHint && viewportHeight >= 5) lines.push(`{grey-fg}${emptyStateHint}{/grey-fg}`);
+    }
+    emptyRows.push('');
+    for (const line of lines) emptyRows.push(...wrapTaggedLines(line, innerWidth));
+    emptyRows.splice(Math.max(1, viewportHeight - visibleItems.length));
+  }
+  const fillCount = Math.max(0, viewportHeight - visibleItems.length - emptyRows.length);
+
   return (
     <Box
       width={width}
+      flexShrink={0}
       flexDirection="column"
       borderStyle={borderStyle}
       borderColor={borderColor}
+      borderDimColor={!focused}
       overflow="hidden"
     >
       {/* Label */}
       <Box>
-        <Text color={borderColor}>
+        <Text color={borderColor} dimColor={!focused} wrap="truncate-end">
           {' '}
           {panelTitle} ({items.length}){' '}
         </Text>
@@ -115,7 +124,7 @@ export function SideList({
       {/* Scroll indicator top */}
       {hasMoreAbove && (
         <Box justifyContent="center" width={innerWidth}>
-          <Text color="gray">▲</Text>
+          <Text dimColor>▲</Text>
         </Box>
       )}
 
@@ -130,11 +139,11 @@ export function SideList({
         return (
           <Box key={item.id} width={innerWidth}>
             {isSelected ? (
-              <Text inverse>
+              <Text inverse wrap="truncate-end">
                 <Text bold>{marker}</Text> {parseBlessedTags(label)}
               </Text>
             ) : (
-              <Text>
+              <Text wrap="truncate-end">
                 {marker} {parseBlessedTags(label)}
               </Text>
             )}
@@ -143,61 +152,23 @@ export function SideList({
       })}
 
       {/* Empty-state hint */}
-      {items.length === 0 && viewportHeight >= 3 && (
-        <>
-          <Box key="empty-hint-pad" width={innerWidth}>
-            <Text> </Text>
-          </Box>
-          <Box key="empty-hint-1" justifyContent="center" width={innerWidth}>
-            <Text color="gray">
-              {sessionFilterActive ? 'No items in this session' : 'No items yet'}
-            </Text>
-          </Box>
-          {sessionFilterActive && (
-            <Box key="empty-hint-2" justifyContent="center" width={innerWidth}>
-              <Text color="gray">Press </Text>
-              <Text color="magenta" bold>
-                f
-              </Text>
-              <Text color="gray"> to see all</Text>
-            </Box>
-          )}
-          {!sessionFilterActive && emptyStateHint && viewportHeight >= 5 && (
-            <Box key="empty-hint-desc" justifyContent="center" width={innerWidth}>
-              <Text dimColor>{emptyStateHint}</Text>
-            </Box>
-          )}
-        </>
-      )}
+      {emptyRows.map((row, i) => (
+        <Box key={`empty-hint-${i}`} justifyContent="center" width={innerWidth}>
+          <Text wrap="truncate-end">{parseBlessedTags(row) ?? ' '}</Text>
+        </Box>
+      ))}
 
       {/* Fill remaining space */}
-      {visibleItems.length < viewportHeight &&
-        Array.from(
-          {
-            length: Math.max(
-              0,
-              viewportHeight -
-                visibleItems.length -
-                (items.length === 0 && viewportHeight >= 3
-                  ? sessionFilterActive
-                    ? 3
-                    : !sessionFilterActive && emptyStateHint && viewportHeight >= 5
-                      ? 3
-                      : 2
-                  : 0),
-            ),
-          },
-          (_, i) => (
-            <Box key={`empty-${i}`} width={innerWidth}>
-              <Text> </Text>
-            </Box>
-          ),
-        )}
+      {Array.from({ length: fillCount }, (_, i) => (
+        <Box key={`empty-${i}`} width={innerWidth}>
+          <Text> </Text>
+        </Box>
+      ))}
 
       {/* Scroll indicator bottom */}
       {hasMoreBelow && (
         <Box justifyContent="center" width={innerWidth}>
-          <Text color="gray">▼</Text>
+          <Text dimColor>▼</Text>
         </Box>
       )}
     </Box>

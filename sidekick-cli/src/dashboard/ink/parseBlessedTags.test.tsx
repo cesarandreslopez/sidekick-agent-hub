@@ -57,10 +57,25 @@ describe('parseBlessedTags', () => {
     expect(s).toContain('Error');
   });
 
-  it('maps grey to gray', () => {
+  it('renders grey as dim default-colour text, not ANSI bright-black', () => {
+    // Bright-black ("gray") is invisible on Solarized Dark and faint on light themes.
     const result = parseBlessedTags('{grey-fg}dim{/grey-fg}');
     const s = serialize(result);
-    expect(s).toContain('color="gray"');
+    expect(s).toContain('dimColor=true');
+    expect(s).not.toContain('color="gray"');
+  });
+
+  it('a colour nested in grey replaces the dim style', () => {
+    const s = serialize(parseBlessedTags('{grey-fg}a {red-fg}b{/red-fg} c{/grey-fg}'));
+    expect(s).toMatch(/dimColor=undefined color="red"[^>]*>b/);
+    expect(s).toMatch(/dimColor=true[^>]*> c/);
+  });
+
+  it('keeps braced text that is not a known tag literal', () => {
+    // `${HOME}`, JSON objects and `{foo}` placeholders are data.
+    expect(serialize(parseBlessedTags('echo ${HOME} && ls'))).toContain('echo ${HOME} && ls');
+    expect(serialize(parseBlessedTags('{grey-fg}{{/grey-fg}'))).toMatch(/dimColor=true[^>]*>\{</);
+    expect(serialize(parseBlessedTags('{"a": {"b": 1}}'))).toContain('{"a": {"b": 1}}');
   });
 
   it('handles nested tags', () => {
@@ -109,15 +124,18 @@ describe('parseBlessedTags', () => {
   });
 
   it('ignores unmatched close tags instead of popping a live style', () => {
-    const s = serialize(parseBlessedTags('{cyan-fg}before{/missing} after{/cyan-fg}'));
+    const s = serialize(parseBlessedTags('{cyan-fg}before{/red-fg} after{/cyan-fg}'));
     expect(s).toMatch(/color="cyan"[^>]*> after/);
+  });
+
+  it('renders an unknown close tag as the literal text it is', () => {
+    const s = serialize(parseBlessedTags('{cyan-fg}before{/missing} after{/cyan-fg}'));
+    expect(s).toMatch(/color="cyan"[^>]*>before\{\/missing\} after/);
   });
 
   it('renders the {open} and {close} escapes as literal braces in the current style', () => {
     const s = serialize(parseBlessedTags('{red-fg}{open}red-fg{close} stays text{/red-fg}'));
-    expect(s).toMatch(/color="red"[^>]*>\{/);
-    expect(s).toContain('red-fg');
-    expect(s).toMatch(/color="red"[^>]*>\}/);
+    expect(s).toMatch(/color="red"[^>]*>\{red-fg\} stays text</);
     expect(s).not.toMatch(/color="red-fg"/);
   });
 });

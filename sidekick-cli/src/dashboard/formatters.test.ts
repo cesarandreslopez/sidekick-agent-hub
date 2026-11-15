@@ -8,12 +8,14 @@ import {
   wordWrap,
   detailWidth,
   truncate,
+  heatmapAxis,
 } from './formatters';
 
 describe('shared display formatting', () => {
   it('delegates compact number formatting through the shared helper', () => {
     expect(fmtNum(42)).toBe('42');
-    expect(fmtNum(12_500)).toBe('12.5K');
+    // Lowercase k, matching the VS Code extension and the one-shot commands.
+    expect(fmtNum(12_500)).toBe('12.5k');
     expect(fmtNum(1_500_000)).toBe('1.5M');
   });
 
@@ -130,5 +132,41 @@ describe('truncate', () => {
 
   it('truncates and adds ellipsis', () => {
     expect(truncate('hello world!', 8)).toBe('hello...');
+  });
+});
+
+describe('wordWrap hard breaks', () => {
+  it('breaks a word longer than the width instead of overflowing', () => {
+    const out = wordWrap('see /Users/someone/projects/sidekick/src/dashboard/file.ts now', 20);
+    for (const line of out.split('\n')) expect(visibleLength(line)).toBeLessThanOrEqual(20);
+  });
+
+  it('applies the continuation indent to every wrapped row', () => {
+    const out = wordWrap('aaaa bbbb cccc dddd eeee ffff', 10, '  ');
+    const lines = out.split('\n');
+    expect(lines.length).toBeGreaterThan(2);
+    for (const line of lines.slice(1)) expect(line.startsWith('  ')).toBe(true);
+    for (const line of lines) expect(visibleLength(line)).toBeLessThanOrEqual(10);
+  });
+});
+
+describe('heatmapAxis', () => {
+  it('is never wider than the heat line it labels', () => {
+    for (const n of [1, 5, 9, 48, 51, 60]) {
+      const buckets = Array.from({ length: n }, (_, i) => ({
+        timestamp: new Date(2026, 0, 1, 10, i).toISOString(),
+      }));
+      expect(heatmapAxis(buckets).length).toBeLessThanOrEqual(n);
+    }
+  });
+
+  it('places labels at fixed ten-column steps', () => {
+    const buckets = Array.from({ length: 25 }, (_, i) => ({
+      timestamp: new Date(2026, 0, 1, 10, i).toISOString(),
+    }));
+    const axis = heatmapAxis(buckets);
+    expect(axis.slice(0, 5)).toBe('10:00');
+    expect(axis.slice(10, 15)).toBe('10:10');
+    expect(axis.slice(20, 25)).toBe('10:20');
   });
 });

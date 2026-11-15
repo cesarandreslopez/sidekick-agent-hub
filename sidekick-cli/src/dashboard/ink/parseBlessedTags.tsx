@@ -1,29 +1,32 @@
 /**
  * Stack-based parser converting blessed tag strings to React/Ink nodes.
  *
- * Supports: {bold}, {underline}, {color-fg}, {/tag}, nested tags, and the
- * escapes {open} / {close} for literal braces.
+ * Supports: {bold}, {underline}, {color-fg}, {color-bg}, {/tag}, nested tags,
+ * and the escapes {open} / {close} for literal braces. Any other braced text
+ * (`${HOME}`, JSON, `{foo}`) is literal — see blessedText.ts for the pattern.
  * Ignores: {center} (handled at layout level).
+ *
+ * `{grey-fg}` renders as dim text in the terminal's default colour rather
+ * than ANSI bright-black, which is invisible on some themes (Solarized Dark)
+ * and low-contrast on light backgrounds.
  */
 
 import React from 'react';
 import { Text } from 'ink';
-
-/** Map blessed color names to Ink-compatible color strings. */
-function mapColor(c: string): string {
-  if (c === 'grey') return 'gray';
-  return c;
-}
+import { tokenizeTagged } from '../blessedText';
 
 interface StyleFrame {
   tag?: string;
   bold?: boolean;
   underline?: boolean;
+  dim?: boolean;
   color?: string;
   backgroundColor?: string;
 }
 
-const TAG_RE = /\{(\/?)([^}]+)\}/g;
+function isGrey(color: string): boolean {
+  return color === 'grey' || color === 'gray';
+}
 
 /**
  * Parse a single line of blessed-tagged text into a React node.
@@ -42,29 +45,16 @@ export function parseBlessedTags(input: string): React.ReactNode {
 
   const segments: React.ReactNode[] = [];
   const styleStack: StyleFrame[] = [{}];
-  let lastIndex = 0;
   let segKey = 0;
 
-  TAG_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = TAG_RE.exec(input)) !== null) {
-    const beforeText = input.slice(lastIndex, match.index);
-    if (beforeText) {
-      segments.push(renderSpan(beforeText, currentStyle(styleStack), segKey++));
-    }
-    lastIndex = match.index + match[0].length;
-
-    const isClose = match[1] === '/';
-    const tagName = match[2];
-
-    // `{open}` / `{close}` are escapes for literal braces (see escapeBlessed).
-    if (!isClose && (tagName === 'open' || tagName === 'close')) {
-      segments.push(renderSpan(tagName === 'open' ? '{' : '}', currentStyle(styleStack), segKey++));
+  for (const token of tokenizeTagged(input)) {
+    if (token.kind === 'text') {
+      segments.push(renderSpan(token.text, currentStyle(styleStack), segKey++));
       continue;
     }
 
-    if (isClose) {
+    const tagName = token.name;
+    if (token.kind === 'close') {
       let matchingIndex = -1;
       for (let index = styleStack.length - 1; index > 0; index--) {
         if (styleStack[index].tag === tagName) {
@@ -79,25 +69,23 @@ export function parseBlessedTags(input: string): React.ReactNode {
       styleStack.push({ ...currentStyle(styleStack), tag: tagName, underline: true });
     } else if (tagName.endsWith('-fg')) {
       const color = tagName.slice(0, -3);
-      styleStack.push({ ...currentStyle(styleStack), tag: tagName, color: mapColor(color) });
+      styleStack.push(
+        isGrey(color)
+          ? { ...currentStyle(styleStack), tag: tagName, color: undefined, dim: true }
+          : { ...currentStyle(styleStack), tag: tagName, color, dim: false },
+      );
     } else if (tagName.endsWith('-bg')) {
       const color = tagName.slice(0, -3);
       styleStack.push({
         ...currentStyle(styleStack),
         tag: tagName,
-        backgroundColor: mapColor(color),
+        backgroundColor: isGrey(color) ? 'gray' : color,
       });
     } else {
-      // No-op frames keep unsupported/structural tags balanced so their close
+      // No-op frames keep structural tags ({center}) balanced so their close
       // tags cannot pop an unrelated foreground or emphasis style.
       styleStack.push({ ...currentStyle(styleStack), tag: tagName });
     }
-  }
-
-  // Trailing text after last tag
-  const trailing = input.slice(lastIndex);
-  if (trailing) {
-    segments.push(renderSpan(trailing, currentStyle(styleStack), segKey++));
   }
 
   if (segments.length === 0) return null;
@@ -110,7 +98,8 @@ function currentStyle(stack: StyleFrame[]): StyleFrame {
 }
 
 function renderSpan(text: string, style: StyleFrame, key: number): React.ReactNode {
-  const hasStyle = style.bold || style.underline || style.color || style.backgroundColor;
+  const hasStyle =
+    style.bold || style.underline || style.dim || style.color || style.backgroundColor;
   if (!hasStyle) {
     return <Text key={key}>{text}</Text>;
   }
@@ -119,6 +108,7 @@ function renderSpan(text: string, style: StyleFrame, key: number): React.ReactNo
       key={key}
       bold={style.bold}
       underline={style.underline}
+      dimColor={style.dim || undefined}
       color={style.color}
       backgroundColor={style.backgroundColor}
     >

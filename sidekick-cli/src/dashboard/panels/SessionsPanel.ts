@@ -76,6 +76,7 @@ import {
   TOKEN_TOTAL_LABEL,
 } from 'sidekick-shared';
 import { localDateOnlyTimestamp } from '../dateFilterExpression';
+import { truncateTagged } from '../blessedText';
 
 type MindMapView = 'tree' | 'boxed' | 'flow';
 type MindMapFilter =
@@ -679,7 +680,9 @@ export class SessionsPanel implements SidePanel {
     return events
       .map((ev) => {
         const time = formatTime(ev.timestamp);
-        const color = EVENT_COLORS[ev.type] || 'white';
+        // Unknown types use the terminal's default colour (white is invisible
+        // on light backgrounds).
+        const color = EVENT_COLORS[ev.type];
         const label = ev.type.padEnd(12);
         // Build suffix first so we know how much space is left for the summary
         let suffix = '';
@@ -692,16 +695,18 @@ export class SessionsPanel implements SidePanel {
           suffix = `  (${fmtNum(total)} tok · ${fmtNum(ev.tokens.output)} out)`;
           if (ev.cost) suffix += ` ${formatCost(ev.cost)}`;
         }
-        // Prefix visible width: "[HH:MM:SS] event_type   " = ~23 chars
-        const prefixLen = 1 + time.length + 2 + 12; // [time] + space + label
+        // Prefix visible width: "[" + time + "] " + label(12) + " "
+        const prefixLen = 1 + time.length + 2 + 12 + 1;
         const summaryMax = Math.max(10, w - prefixLen - suffix.length);
         const rawSummary = truncate(ev.summary || '', summaryMax);
         const summary = highlightEvent(rawSummary, 'blessed');
-        let line = `{${color}-fg}[${time}] ${label}{/${color}-fg} ${summary}`;
+        const head = color ? `{${color}-fg}[${time}] ${label}{/${color}-fg}` : `[${time}] ${label}`;
+        let line = `${head} ${summary}`;
         if (suffix) {
           line += `  {grey-fg}${suffix.trimStart()}{/grey-fg}`;
         }
-        return line;
+        // Narrow panes: the summary floor can still overflow; cut at the edge.
+        return truncateTagged(line, w);
       })
       .join('\n');
   }
@@ -770,15 +775,19 @@ export class SessionsPanel implements SidePanel {
       lines.push(`{bold}{cyan-fg}── ${minute} ──{/cyan-fg}{/bold}`);
       for (const ev of evts) {
         const sec = formatTime(ev.timestamp).substring(6, 8);
-        const color = EVENT_COLORS[ev.type] || 'white';
+        const color = EVENT_COLORS[ev.type];
         const toolAnnotation = ev.toolName ? ` [${ev.toolName}]` : '';
         // Prefix visible width: "  :SS type       [toolName] "
         const prefixLen = 2 + 1 + 2 + 1 + 10 + toolAnnotation.length + 1;
-        const summaryMax = Math.max(10, (ctx?.width ?? detailWidth()) - prefixLen);
+        const flowWidth = ctx?.width ?? detailWidth();
+        const summaryMax = Math.max(10, flowWidth - prefixLen);
         const summary = truncate(ev.summary || '', summaryMax);
         const toolTag = ev.toolName ? ` {green-fg}[${ev.toolName}]{/green-fg}` : '';
+        const typeLabel = color
+          ? `{${color}-fg}${ev.type.padEnd(10)}{/${color}-fg}`
+          : ev.type.padEnd(10);
         lines.push(
-          `  {grey-fg}:${sec}{/grey-fg} {${color}-fg}${ev.type.padEnd(10)}{/${color}-fg}${toolTag} ${summary}`,
+          truncateTagged(`  {grey-fg}:${sec}{/grey-fg} ${typeLabel}${toolTag} ${summary}`, flowWidth),
         );
       }
     }
@@ -950,7 +959,8 @@ function renderContextAttribution(attr: ContextAttribution): string[] {
     { label: 'Tool Inputs', tokens: attr.toolInputs, color: 'yellow', char: '\u2588' },
     { label: 'Tool Outputs', tokens: attr.toolOutputs, color: 'grey', char: '\u2588' },
     { label: 'Thinking', tokens: attr.thinking, color: 'blue', char: '\u2588' },
-    { label: 'Other', tokens: attr.other, color: 'white', char: '\u2588' },
+    // '' = the terminal's default colour (white vanishes on light themes).
+    { label: 'Other', tokens: attr.other, color: '', char: '\u2588' },
   ];
 
   const total = categories.reduce((sum, c) => sum + c.tokens, 0);
@@ -964,7 +974,7 @@ function renderContextAttribution(attr: ContextAttribution): string[] {
   for (const cat of categories) {
     if (cat.tokens === 0) continue;
     const width = Math.max(1, Math.round((cat.tokens / total) * barWidth));
-    bar += `{${cat.color}-fg}${cat.char.repeat(width)}{/${cat.color}-fg}`;
+    bar += colorize(cat.color, cat.char.repeat(width));
   }
   lines.push(bar);
   lines.push('');
@@ -974,11 +984,16 @@ function renderContextAttribution(attr: ContextAttribution): string[] {
     if (cat.tokens === 0) continue;
     const pct = ((cat.tokens / total) * 100).toFixed(0);
     lines.push(
-      `  {${cat.color}-fg}${cat.char}{/${cat.color}-fg} ${cat.label.padEnd(16)} ${fmtNum(cat.tokens).padStart(7)}  ${pct.padStart(3)}%`,
+      `  ${colorize(cat.color, cat.char)} ${cat.label.padEnd(16)} ${fmtNum(cat.tokens).padStart(7)}  ${pct.padStart(3)}%`,
     );
   }
 
   return lines;
+}
+
+/** Wrap text in a colour tag; an empty colour leaves the default foreground. */
+function colorize(color: string, text: string): string {
+  return color ? `{${color}-fg}${text}{/${color}-fg}` : text;
 }
 
 /** One quota bar row: `  7d  ████░░░░ 17% → 136%`. */

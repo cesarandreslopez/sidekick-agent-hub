@@ -17,6 +17,8 @@ import {
   sectionHeader,
   fmtNum,
   detailWidth,
+  escapeBlessed,
+  truncate,
 } from '../formatters';
 
 export class ChartsPanel implements SidePanel {
@@ -120,11 +122,12 @@ export class ChartsPanel implements SidePanel {
     const barWidth = Math.max(10, w - 25);
     for (const [type, count] of sorted) {
       const pct = (count / total) * 100;
-      const color = colors[type] || 'white';
+      const color = colors[type];
       const label = type.padEnd(12);
-      const bar = makeColorBar(pct, barWidth, color);
+      const bar = makeColorBar(pct, barWidth, color ?? 'grey');
       const countStr = `${fmtNum(count)} (${pct.toFixed(0)}%)`;
-      lines.push(`{${color}-fg}${label}{/${color}-fg} ${bar} ${countStr}`);
+      // Unknown types keep the default foreground (white vanishes on light themes).
+      lines.push(`${color ? `{${color}-fg}${label}{/${color}-fg}` : label} ${bar} ${countStr}`);
     }
 
     lines.push('');
@@ -197,19 +200,21 @@ export class ChartsPanel implements SidePanel {
     const maxCount = top[0]?.count ?? 1;
     const barWidth = Math.max(8, Math.floor(w * 0.3));
 
+    // bar + " " + count(5) + "  " = the column the template starts at.
+    const textColumn = barWidth + 8;
+    const textWidth = Math.max(10, w - textColumn);
     for (const pattern of top) {
       const pct = (pattern.count / maxCount) * 100;
       const bar = makeColorBar(pct, barWidth, 'magenta');
       const count = fmtNum(pattern.count).padStart(5);
-      lines.push(`${bar} ${count}  {magenta-fg}${pattern.template}{/magenta-fg}`);
+      lines.push(
+        `${bar} ${count}  {magenta-fg}${escapeBlessed(truncate(pattern.template, textWidth))}{/magenta-fg}`,
+      );
 
       // Show first example in grey
       if (pattern.examples.length > 0) {
-        const example =
-          pattern.examples[0].length > w - 15
-            ? pattern.examples[0].substring(0, w - 18) + '...'
-            : pattern.examples[0];
-        lines.push(`${''.padStart(barWidth + 8)}{grey-fg}e.g. ${example}{/grey-fg}`);
+        const example = truncate(pattern.examples[0], Math.max(5, textWidth - 5));
+        lines.push(`${''.padStart(textColumn)}{grey-fg}e.g. ${escapeBlessed(example)}{/grey-fg}`);
       }
     }
 

@@ -45,6 +45,7 @@ import { getPanelItemsOnce } from './panelItems';
 import { visibleToasts } from './toastStack';
 import { describeDataStatus, type DataStatus } from './dataStatus';
 import type { DashboardNotice } from './notice';
+import { stripTagged, truncateTagged, wrapTaggedLines } from '../blessedText';
 
 const changelogEntries = parseChangelog(changelogMd, 5);
 
@@ -247,7 +248,7 @@ export function Dashboard({
           }
         } else {
           items = items.filter((it) => {
-            const searchText = panel.getSearchableText?.(it) ?? it.label.replace(/\{[^}]*\}/g, '');
+            const searchText = panel.getSearchableText?.(it) ?? stripTagged(it.label);
             switch (mode) {
               case 'fuzzy': {
                 const lower = searchText.toLowerCase();
@@ -317,8 +318,9 @@ export function Dashboard({
   const detailPhrase = useMemo(() => getRandomPhraseBlessedTag(), [selectedItem?.id, tabIdx]);
 
   // Usable detail-pane columns for the current layout: total minus the side
-  // panel minus border/padding overhead (parity with the legacy 29 - 26 = 3).
-  const detailContentWidth = Math.max(40, columns - sideWidth - 3);
+  // panel minus the pane's border (2) and left padding (1). This is the real
+  // width — renderers told a larger one wrap every line they size to it.
+  const detailContentWidth = Math.max(10, columns - sideWidth - 3);
   // Visible detail rows; computed before the render so tabs that fill the
   // pane (the activity map) can size themselves to it.
   const detailViewportHeight = Math.max(1, rows - 5);
@@ -329,7 +331,7 @@ export function Dashboard({
       const tab = detailTabs[tabIdx];
       const tabLabel = tab.label;
       const skipPhrase = tabLabel === 'Timeline' || tabLabel === 'Mind Map' || tabLabel === 'Map';
-      const prefix = skipPhrase ? '' : detailPhrase + '\n';
+      const prefix = skipPhrase ? '' : truncateTagged(detailPhrase, detailContentWidth) + '\n';
       return (
         prefix +
         tab.render(selectedItem, metrics, staticData, {
@@ -359,7 +361,12 @@ export function Dashboard({
     sessionFilterActive,
   ]);
 
-  const detailLines = detailContent.split('\n');
+  // One entry per physical row: wrapping here keeps scrolling, indicators and
+  // the pane height counting the same rows, whatever a renderer emitted.
+  const detailLines = useMemo(
+    () => wrapTaggedLines(detailContent, detailContentWidth),
+    [detailContent, detailContentWidth],
+  );
 
   // Auto-scroll for tabs that request it (e.g., Timeline)
   const activeTab = detailTabs[tabIdx];
@@ -367,12 +374,16 @@ export function Dashboard({
     if (!activeTab?.autoScrollBottom) return;
     const contentKey = `${panel.id}:${selectedItem?.id ?? 'none'}:${tabIdx}`;
     if (detailLines.length <= detailViewportHeight) return;
+    const wasAtBottom =
+      state.detailScrollOffset >=
+      maxDetailScroll(prevDetailLineCountRef.current, detailViewportHeight);
     if (
       shouldAutoScrollDetail(
         contentKey,
         prevDetailContentKeyRef.current,
         detailLines.length,
         prevDetailLineCountRef.current,
+        wasAtBottom,
       )
     ) {
       const bottomOffset = maxDetailScroll(detailLines.length, detailViewportHeight);
@@ -696,10 +707,10 @@ export function Dashboard({
             )}
 
             {/* Detail area */}
-            <Box flexDirection="column" flexGrow={1}>
+            <Box flexDirection="column" flexGrow={1} minWidth={0} overflow="hidden">
               <DetailTabBar tabs={detailTabs} activeIndex={tabIdx} />
               <DetailPane
-                content={detailContent}
+                rows={detailLines}
                 scrollOffset={state.detailScrollOffset}
                 viewportHeight={detailViewportHeight}
                 focused={state.focusTarget === 'detail'}

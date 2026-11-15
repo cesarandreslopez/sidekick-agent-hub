@@ -4,6 +4,7 @@
  */
 
 import { formatDurationMs, formatTokenCount } from 'sidekick-shared';
+import { displayWidth, stripTagged, truncateTagged, wrapTaggedLines } from './blessedText';
 
 /** Shorten a file path to show only the last 3 segments. */
 export function shortenPath(p: string): string {
@@ -12,9 +13,9 @@ export function shortenPath(p: string): string {
   return '.../' + parts.slice(-3).join('/');
 }
 
-/** Format a number with K/M suffixes. */
+/** Format a count compactly (12.3k, 4.5M) — the same vocabulary as VS Code. */
 export function fmtNum(n: number): string {
-  return formatTokenCount(n, { suffixCase: 'upper' });
+  return formatTokenCount(n);
 }
 
 /** Format a duration in ms to a human-readable string. */
@@ -32,11 +33,7 @@ export function formatDuration(ms: number): string {
  * literal braces they stand for.
  */
 export function stripBlessedTags(text: string): string {
-  return text.replace(/\{(\/?)([^}]*)\}/g, (_match, slash: string, name: string) => {
-    if (!slash && name === 'open') return '{';
-    if (!slash && name === 'close') return '}';
-    return '';
-  });
+  return stripTagged(text);
 }
 
 /**
@@ -49,15 +46,25 @@ export function escapeBlessed(text: string): string {
   return text.replace(/[{}]/g, (brace) => (brace === '{' ? '{open}' : '{close}'));
 }
 
-/** Return the visible (non-tag) length of text containing blessed tags. */
+/**
+ * Return the visible width, in terminal columns, of text containing blessed
+ * tags (emoji and CJK count as two).
+ */
 export function visibleLength(text: string): number {
-  return stripBlessedTags(text).length;
+  return displayWidth(stripBlessedTags(text));
 }
 
-/** Truncate text to maxLength, appending "..." if truncated. */
+/**
+ * Truncate plain text to `maxLength` terminal columns, appending "..." if
+ * truncated. Braces in the text are escaped by the cut, so pass plain text.
+ */
 export function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength - 3) + '...';
+  if (displayWidth(text) <= maxLength) return text;
+  return stripTagged(truncateTagged(escapeForCut(text), maxLength, '...'));
+}
+
+function escapeForCut(text: string): string {
+  return text.replace(/[{}]/g, (brace) => (brace === '{' ? '{open}' : '{close}'));
 }
 
 /** Format a timestamp to HH:MM:SS. */
@@ -151,16 +158,25 @@ export function makeHeatmap(
     })
     .join('');
 
-  // Time labels every 5 columns
-  const labels: string[] = [];
-  for (let i = 0; i < trimmed.length; i += 5) {
-    const ts = new Date(trimmed[i].timestamp);
-    const hh = ts.getHours().toString().padStart(2, '0');
-    const mm = ts.getMinutes().toString().padStart(2, '0');
-    labels.push(`${hh}:${mm}`);
-  }
+  return `{cyan-fg}${heatLine}{/cyan-fg}\n{grey-fg}${heatmapAxis(trimmed)}{/grey-fg}`;
+}
 
-  return `{cyan-fg}${heatLine}{/cyan-fg}\n{grey-fg}${labels.join(' ')}{/grey-fg}`;
+/**
+ * Time axis under a heatmap: exactly as wide as the heat line, with an
+ * HH:MM label at fixed columns (every 10, starting at 0) so labels sit above
+ * the minute they name and never push the axis past the heat line.
+ */
+export function heatmapAxis(buckets: { timestamp: string }[]): string {
+  const axis = Array.from({ length: buckets.length }, () => ' ');
+  for (let i = 0; i + 5 <= buckets.length; i += 10) {
+    const ts = new Date(buckets[i].timestamp);
+    const label = `${ts.getHours().toString().padStart(2, '0')}:${ts
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}`;
+    for (let j = 0; j < label.length; j++) axis[i + j] = label[j];
+  }
+  return axis.join('').trimEnd();
 }
 
 /** Build a progress bar of given width. */
@@ -180,38 +196,22 @@ export function detailWidth(): number {
 }
 
 /** Word-wrap text to a given column width, preserving existing line breaks.
- *  Tag-aware: blessed tags like `{cyan-fg}` are not counted toward visible width.
+ *  Tag-aware: blessed tags like `{cyan-fg}` are not counted toward visible width,
+ *  widths are terminal columns, and words longer than the width (paths, URLs)
+ *  are hard-broken instead of overflowing.
  *  @param continuationIndent Optional string prepended to continuation lines (hanging indent). */
 export function wordWrap(text: string, width: number, continuationIndent = ''): string {
   const indentLen = visibleLength(continuationIndent);
+  const w = Math.max(1, width);
   return text
     .split('\n')
     .map((line) => {
-      if (visibleLength(line) <= width) return line;
-      const words = line.split(' ');
-      const wrapped: string[] = [];
-      let current = '';
-      let currentVisible = 0;
-      const isFirst = () => wrapped.length === 0;
-      for (const word of words) {
-        const wordVisible = visibleLength(word);
-        if (currentVisible === 0) {
-          current = word;
-          currentVisible = wordVisible;
-        } else {
-          const limit = isFirst() ? width : width - indentLen;
-          if (currentVisible + 1 + wordVisible <= limit) {
-            current += ' ' + word;
-            currentVisible += 1 + wordVisible;
-          } else {
-            wrapped.push(current);
-            current = word;
-            currentVisible = wordVisible;
-          }
-        }
-      }
-      if (current) wrapped.push(current);
-      return wrapped.map((l, i) => (i === 0 ? l : continuationIndent + l)).join('\n');
+      if (visibleLength(line) <= w) return line;
+      // First row at full width; the rest leave room for the indent.
+      const [first, ...rest] = wrapTaggedLines(line, w);
+      if (rest.length === 0) return first;
+      const restRows = indentLen > 0 ? wrapTaggedLines(rest.join(' '), Math.max(1, w - indentLen)) : rest;
+      return [first, ...restRows.map((row) => continuationIndent + row)].join('\n');
     })
     .join('\n');
 }

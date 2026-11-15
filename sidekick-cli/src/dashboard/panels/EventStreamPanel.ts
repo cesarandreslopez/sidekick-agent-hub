@@ -7,7 +7,15 @@
 
 import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
 import type { DashboardMetrics } from '../DashboardState';
-import { formatTime, sectionHeader, wordWrap, detailWidth } from '../formatters';
+import {
+  detailWidth,
+  escapeBlessed,
+  fmtNum,
+  formatTime,
+  sectionHeader,
+  wordWrap,
+} from '../formatters';
+import { truncateTagged } from '../blessedText';
 import { formatCost, highlightEvent } from 'sidekick-shared';
 
 const EVENT_TYPE_BADGES: Record<string, string> = {
@@ -91,9 +99,13 @@ export class EventStreamPanel implements SidePanel {
     if (tokens) {
       const total =
         (tokens.input ?? 0) + (tokens.output ?? 0) + (cache?.read ?? 0) + (cache?.write ?? 0);
-      lines.push(
-        `{bold}Tokens:{/bold}   ${total} total incl. cache (in=${tokens.input ?? 0}  cache-read=${cache?.read ?? 0}  cache-write=${cache?.write ?? 0}  out=${tokens.output ?? 0})`,
-      );
+      const breakdown = `in ${fmtNum(tokens.input ?? 0)} · cache read ${fmtNum(cache?.read ?? 0)} · cache write ${fmtNum(cache?.write ?? 0)} · out ${fmtNum(tokens.output ?? 0)}`;
+      if (w >= 75) {
+        lines.push(`{bold}Tokens:{/bold}   ${fmtNum(total)} total incl. cache (${breakdown})`);
+      } else {
+        lines.push(`{bold}Tokens:{/bold}   ${fmtNum(total)} total incl. cache`);
+        lines.push(`          {grey-fg}${breakdown}{/grey-fg}`);
+      }
       if (ev.usageKind === 'correction') {
         lines.push(
           '{grey-fg}          (top-up: a later line of this response reported more tokens){/grey-fg}',
@@ -118,8 +130,10 @@ export class EventStreamPanel implements SidePanel {
     try {
       const json = JSON.stringify(ev, null, 2);
       const jsonLines = json.split('\n');
+      // Escaped: JSON braces are data, not style tags. Long lines wrap in the
+      // pane with a hanging indent that follows the JSON nesting.
       for (const jl of jsonLines) {
-        lines.push(`{grey-fg}${jl}{/grey-fg}`);
+        lines.push(`{grey-fg}${escapeBlessed(jl)}{/grey-fg}`);
       }
     } catch {
       lines.push('{grey-fg}(could not serialize){/grey-fg}');
@@ -153,9 +167,11 @@ export class EventStreamPanel implements SidePanel {
       const summary = highlightEvent(ev.summary || '', 'blessed');
 
       if (i === idx) {
-        lines.push(`{bold}{magenta-fg}▸ ${time} ${badge} ${summary}{/magenta-fg}{/bold}`);
+        lines.push(
+          truncateTagged(`{bold}{magenta-fg}▸ ${time} ${badge} ${summary}{/magenta-fg}{/bold}`, w),
+        );
       } else {
-        lines.push(`  {grey-fg}${time}{/grey-fg} ${badge} ${summary}`);
+        lines.push(truncateTagged(`  {grey-fg}${time}{/grey-fg} ${badge} ${summary}`, w));
       }
     }
 
