@@ -787,7 +787,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
     </div>
     <div class="section">
       <div class="section-title">Session Providers</div>
-      <div id="health-diagnostics" class="health-empty">Open this tab to probe the session providers.</div>
+      <div id="health-diagnostics" class="health-empty">Checking…</div>
     </div>
     <div class="section">
       <div class="section-title">Failing Tools <span class="section-hint">last 7 and 30 days</span></div>

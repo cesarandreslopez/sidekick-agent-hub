@@ -382,6 +382,22 @@ describe('DashboardViewProvider live session panels', () => {
     provider.dispose();
   });
 
+  it('tells the Health tab when its checks fail instead of leaving the placeholder', async () => {
+    sharedMocks.createSessionProviders.mockReturnValue({ providers: [] });
+    sharedMocks.getTopFailingTools.mockResolvedValue([]);
+    sharedMocks.runDoctor.mockRejectedValueOnce(new Error('doctor broke'));
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    await (provider as unknown as { _sendHealth(): Promise<void> })._sendHealth();
+    expect(postMessage).toHaveBeenCalledWith({ type: 'healthError', message: 'doctor broke' });
+    expect(postMessage).toHaveBeenLastCalledWith({ type: 'healthLoading', loading: false });
+    provider.dispose();
+  });
+
   it('resumes session list updates when the provider switch command rejects', async () => {
     const monitor = makeSessionMonitor();
     const provider = new DashboardViewProvider(

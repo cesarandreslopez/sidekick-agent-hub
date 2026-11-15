@@ -248,6 +248,8 @@ export type DashboardMessage =
   | { type: 'historicalDataLoading'; loading: boolean }
   | { type: 'updateHealth'; data: DashboardHealthPayload }
   | { type: 'healthLoading'; loading: boolean }
+  /** The Health checks failed to run; the tab shows the reason and a Retry. */
+  | { type: 'healthError'; message: string }
   /** Activate a dashboard tab (the doctor command focuses Health). */
   | { type: 'showTab'; tab: DashboardTab }
   | { type: 'updateLatency'; latency: LatencyDisplay }

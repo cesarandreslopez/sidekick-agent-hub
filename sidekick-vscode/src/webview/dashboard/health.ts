@@ -122,9 +122,21 @@ export interface HealthMountOptions {
   post(message: DashboardWebviewMessage): void;
 }
 
+/** The banner shown when the checks could not run, with a Retry button. */
+export function renderHealthErrorHtml(message: string): string {
+  return (
+    `<div class="health-status unhealthy" role="alert">` +
+    `<span class="health-status-label">Couldn't run checks</span>` +
+    `<span class="health-status-detail">${escapeHtml(message || 'Unknown error')}</span>` +
+    `<button type="button" class="health-refresh-btn" id="health-retry">Retry</button>` +
+    `</div>`
+  );
+}
+
 export interface HealthView {
   mount(options: HealthMountOptions): void;
   render(data: DashboardHealthPayload): void;
+  renderError(message: string): void;
   setLoading(loading: boolean): void;
 }
 
@@ -138,6 +150,12 @@ export function createHealthView(doc: Document): HealthView {
       doc
         .getElementById(HEALTH_IDS.refresh)
         ?.addEventListener('click', () => options.post({ type: 'requestHealth' }));
+      // Retry lives in the banner, which is re-rendered: listen on its container.
+      doc.getElementById(HEALTH_IDS.banner)?.addEventListener('click', (event) => {
+        if ((event.target as Element | null)?.closest('#health-retry')) {
+          options.post({ type: 'requestHealth' });
+        }
+      });
     },
     render(data) {
       const html = renderHealthHtml(data);
@@ -146,6 +164,14 @@ export function createHealthView(doc: Document): HealthView {
       set(HEALTH_IDS.diagnostics, html.diagnostics);
       set(HEALTH_IDS.tools, html.tools);
       set(HEALTH_IDS.pricing, html.pricing);
+    },
+    renderError(message) {
+      set(HEALTH_IDS.banner, renderHealthErrorHtml(message));
+      // Leave nothing that reads as a result of a check that never ran.
+      set(HEALTH_IDS.checks, '');
+      set(HEALTH_IDS.diagnostics, '<div class="health-empty">Not checked.</div>');
+      set(HEALTH_IDS.tools, '');
+      set(HEALTH_IDS.pricing, '');
     },
     setLoading(loading) {
       const el = doc.getElementById(HEALTH_IDS.loading);

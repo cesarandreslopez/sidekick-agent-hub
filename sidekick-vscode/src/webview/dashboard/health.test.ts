@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, renderHealthHtml } from './health';
+import { escapeHtml, renderHealthErrorHtml, renderHealthHtml } from './health';
 import type { DashboardHealthPayload } from '../../types/dashboard';
 
 function payload(overrides: Partial<DashboardHealthPayload> = {}): DashboardHealthPayload {
@@ -85,5 +85,16 @@ describe('renderHealthHtml', () => {
     expect(escapeHtml(`<a href="x">'&'</a>`)).toBe(
       '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;',
     );
+  });
+});
+
+describe('renderHealthErrorHtml', () => {
+  it('says the checks could not run, escaped, with a Retry button', () => {
+    const html = renderHealthErrorHtml('<sqlite3> exploded');
+    expect(html).toContain("Couldn't run checks");
+    expect(html).toContain('&lt;sqlite3&gt; exploded');
+    expect(html).toContain('id="health-retry"');
+    expect(html).toContain('role="alert"');
+    expect(renderHealthErrorHtml('')).toContain('Unknown error');
   });
 });

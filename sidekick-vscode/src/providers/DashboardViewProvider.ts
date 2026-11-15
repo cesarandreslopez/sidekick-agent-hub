@@ -1446,6 +1446,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       });
     } catch (error) {
       logError('Dashboard: failed to build the Health tab', error);
+      this._postMessage({
+        type: 'healthError',
+        message: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       this._healthInFlight = false;
       this._postMessage({ type: 'healthLoading', loading: false });

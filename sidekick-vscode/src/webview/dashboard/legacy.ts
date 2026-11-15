@@ -15,6 +15,7 @@ import { tokenMetricDisplay } from './tokens';
 import { quotaCardVisibility, quotaSectionTooltip, renderQuotaExtrasHtml } from './quotaWindows';
 import { blockCostText, formatCost as formatCostText, modelLabel, rowCostText, totalCostText, unpricedNote } from './cost';
 import { highlightMatches } from './text';
+import { mergeUiState, readUiState } from './uiState';
 import { compactNumber, exactNumber, frequentWords, plural, sessionDurationText, statusLabel } from './format';
 import type { DashboardInit } from '../../types/dashboard';
 import type { LegacyHelpers } from './helpers';
@@ -85,9 +86,20 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       const historyLoading = document.getElementById('history-loading');
       const historySummary = document.getElementById('history-summary');
 
+      // Saved UI state (tab, Session metric, History range/series/metric):
+      // restored now, before the first requests go out.
+      const savedUi = readUiState(vscode.getState && vscode.getState());
+      function saveUi(patch) {
+        try {
+          vscode.setState(mergeUiState(vscode.getState && vscode.getState(), patch));
+        } catch (e) {
+          /* state is a convenience; never let it break the view */
+        }
+      }
+
       // Current state
-      let currentMetric = 'quota';
-      let currentRange = 'week';
+      let currentMetric = savedUi.metric || 'quota';
+      let currentRange = savedUi.historyRange || 'week';
       let currentHistoryData = null;
       // The value the History chart actually plots (tool series plot calls),
       // read by its axis and tooltip callbacks.
@@ -329,8 +341,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       helpers.navigation.mount({
         post: function(message) { vscode.postMessage(message); },
         onTabChange: function(tab) {
+          saveUi({ tab: tab });
           if (tab === 'history') {
-            vscode.postMessage(helpers.history.request(currentRange, 'tokens'));
+            vscode.postMessage(helpers.history.request(currentRange, historyMetricSelect ? historyMetricSelect.value : 'tokens'));
           } else if (tab === 'summary') {
             vscode.postMessage({ type: 'requestSessionSummary' });
           } else if (tab === 'health') {
@@ -348,9 +361,30 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           metricBtns.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
           btn.classList.add('active');
           btn.setAttribute('aria-pressed', 'true');
+          saveUi({ metric: currentMetric });
           updatePrimaryMetric();
         });
       });
+
+      // Restore the saved toggles, range, and selects into the controls.
+      metricBtns.forEach(function(b) {
+        const on = b.getAttribute('data-metric') === currentMetric;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+      rangeBtns.forEach(function(b) {
+        const on = b.getAttribute('data-range') === currentRange;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+      if (historyMetricSelect && savedUi.historyMetric) historyMetricSelect.value = savedUi.historyMetric;
+      const historySeriesSelect = document.getElementById('history-series-select');
+      if (historySeriesSelect && savedUi.historySeries) historySeriesSelect.value = savedUi.historySeries;
+      if (historySeriesSelect) {
+        historySeriesSelect.addEventListener('change', function() {
+          saveUi({ historySeries: historySeriesSelect.value });
+        });
+      }
 
       // History range buttons
       rangeBtns.forEach(function(btn) {
@@ -358,6 +392,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           const range = btn.getAttribute('data-range');
           if (!helpers.history.isRange(range)) return;
           currentRange = range;
+          saveUi({ historyRange: range });
           rangeBtns.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
           btn.classList.add('active');
           btn.setAttribute('aria-pressed', 'true');
@@ -368,6 +403,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       // History metric selector
       if (historyMetricSelect) {
         historyMetricSelect.addEventListener('change', function() {
+          saveUi({ historyMetric: historyMetricSelect.value });
           if (currentHistoryData) {
             updateHistoryChart(currentHistoryData);
           }
@@ -2809,6 +2845,10 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             helpers.health.setLoading(message.loading);
             break;
 
+          case 'healthError':
+            helpers.health.renderError(message.message);
+            break;
+
           case 'showTab': {
             const tabButton = document.querySelector('.tab-btn[data-tab="' + message.tab + '"]');
             if (tabButton) tabButton.click();
@@ -3569,5 +3609,11 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       }
 
       vscode.postMessage({ type: 'webviewReady' });
+
+      // Reopen the saved tab last, so its request follows the initial state.
+      if (savedUi.tab && savedUi.tab !== 'session') {
+        const savedTabBtn = document.querySelector('.tab-btn[data-tab="' + savedUi.tab + '"]');
+        if (savedTabBtn) savedTabBtn.click();
+      }
     })();
 }
