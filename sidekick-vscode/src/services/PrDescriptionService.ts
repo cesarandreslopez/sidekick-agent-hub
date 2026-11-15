@@ -57,9 +57,13 @@ export function githubCompareUrl(
 ): string | undefined {
   const match = remoteUrl
     .trim()
-    .match(/^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
+    .match(
+      /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?\/?$/,
+    );
   if (!match || !head || head === 'HEAD') return undefined;
-  const baseName = base.replace(/^[^/]+\//, (prefix) => (prefix === 'origin/' || prefix === 'upstream/' ? '' : prefix));
+  const baseName = base.replace(/^[^/]+\//, (prefix) =>
+    prefix === 'origin/' || prefix === 'upstream/' ? '' : prefix,
+  );
   const enc = (ref: string) => ref.split('/').map(encodeURIComponent).join('/');
   const repo = `https://github.com/${match[1]}/${match[2]}`;
   // An upstream of the same branch is no base; let GitHub pick the default branch.

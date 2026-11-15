@@ -131,7 +131,6 @@ import {
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
 
-
 /** Status bar manager for multi-state status display */
 /** Set while sidekick.setSessionProvider updates the setting and switches live. */
 let sessionProviderSwitchInFlight = false;
@@ -1163,7 +1162,11 @@ export async function activate(context: vscode.ExtensionContext) {
         });
 
         vscode.commands.executeCommand('sidekick.walkthrough.noteCaptured');
-        void vscode.commands.executeCommand('setContext', 'sidekick.walkthrough.noteCaptured', true);
+        void vscode.commands.executeCommand(
+          'setContext',
+          'sidekick.walkthrough.noteCaptured',
+          true,
+        );
 
         vscode.window.showInformationMessage(`Knowledge note added to ${relativePath}`);
       }),
@@ -2118,7 +2121,9 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.workspace.getConfiguration('sidekick').get<string>('inferenceProvider') ?? 'auto';
       for (const p of providers) {
         if (configured === 'auto' && p.id === 'auto') {
-          const resolvedName = providers.find((q) => q.id === current)?.label.replace(/^\$\([^)]*\)\s*/, '');
+          const resolvedName = providers
+            .find((q) => q.id === current)
+            ?.label.replace(/^\$\([^)]*\)\s*/, '');
           p.description += resolvedName ? ` (current → ${resolvedName})` : ' (current)';
         } else if (configured !== 'auto' && p.id === current) {
           p.description += ' (current)';
@@ -2457,7 +2462,9 @@ export async function activate(context: vscode.ExtensionContext) {
       }
       // The keybinding's `!editorReadonly` doesn't cover the Command Palette.
       if (isReadonlyDocument(editor.document)) {
-        vscode.window.showWarningMessage('This editor is read-only, so code cannot be transformed.');
+        vscode.window.showWarningMessage(
+          'This editor is read-only, so code cannot be transformed.',
+        );
         return;
       }
 

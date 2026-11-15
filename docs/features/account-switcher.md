@@ -105,13 +105,13 @@ Press `A` in `sidekick dashboard` for the accounts overlay: `Enter` switches, `u
 
 Claude Code refresh tokens expire about three weeks after they were last used, and Codex reports its own refresh time. Sidekick records a secret-free health file next to each profile whenever it stores a credential, so every surface can show:
 
-| State      | Meaning                                                                                     | Action                                               |
-| ---------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `fresh`    | Access token valid; refresh token has days left                                             | none                                                 |
-| `expiring` | Access token lapsed (the CLI refreshes on next use) or refresh token ends within three days | switch to it soon, or turn on keep-alive             |
+| State      | Meaning                                                                                     | Action                                                           |
+| ---------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `fresh`    | Access token valid; refresh token has days left                                             | none                                                             |
+| `expiring` | Access token lapsed (the CLI refreshes on next use) or refresh token ends within three days | switch to it soon, or turn on keep-alive                         |
 | `expired`  | Refresh token expired (recorded, or estimated from the snapshot age)                        | **Sign In Again to Account…** / `sidekick accounts login <name>` |
-| `missing`  | No stored credentials                                                                       | sign in                                              |
-| `unknown`  | The stored credential carries no expiry (API-key logins)                                    | none                                                 |
+| `missing`  | No stored credentials                                                                       | sign in                                                          |
+| `unknown`  | The stored credential carries no expiry (API-key logins)                                    | none                                                             |
 
 A switch to an `expired` or `missing` account is refused with a sign-in hint instead of installing a dead credential; pass `--force` on the CLI to override the health check. Codex consumer checks, leases, backup verification, and freshness rules remain mandatory.
 

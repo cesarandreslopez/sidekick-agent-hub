@@ -202,7 +202,7 @@ Browse sessions, tasks, decisions, knowledge notes, live event streams, charts, 
 | `sidekick.sessionProvider`                        | `auto`         | Session monitor: `auto`, `claude-code`, `opencode`, `codex`                                                                                                                                                 |
 | `sidekick.inlineModel`                            | `auto`         | Model for completions (fast tier)                                                                                                                                                                           |
 | `sidekick.transformModel`                         | `auto`         | Model for transforms (powerful tier)                                                                                                                                                                        |
-| `sidekick.debounceMs`                             | `1000`         | Completion delay (ms)                                                                                                                                                                                       |
+| `sidekick.debounceMs`                             | `0`            | Delay before a triggered completion request is sent (ms)                                                                                                                                                    |
 | `sidekick.commitMessageStyle`                     | `conventional` | Commit format: `conventional` or `simple`                                                                                                                                                                   |
 | `sidekick.enableSessionMonitoring`                | `true`         | Enable agent session monitoring                                                                                                                                                                             |
 | `sidekick.accounts.keepAlive`                     | `false`        | Refresh saved-but-inactive accounts through the official CLIs after activation and every six hours                                                                                                          |
@@ -226,42 +226,42 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 
 ## Commands
 
-| Command                       | Keybinding            | Description                                                                                                                                |
-| ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Toggle Inline Completions     | —                     | Enable/disable inline completions                                                                                                          |
+| Command                       | Keybinding                | Description                                                                                                                                |
+| ----------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Toggle Inline Completions     | —                         | Enable/disable inline completions                                                                                                          |
 | Trigger Completion            | `Ctrl+K Ctrl+Shift+Space` | Manually request completion                                                                                                                |
-| Transform Selected Code       | `Ctrl+K Ctrl+Shift+M` | Transform selected code                                                                                                                    |
-| Quick Ask (Inline Chat)       | `Ctrl+K Ctrl+A`       | Inline chat                                                                                                                                |
-| Generate Documentation        | `Ctrl+K Ctrl+G`       | Generate documentation                                                                                                                     |
-| Explain Selected Code         | `Ctrl+K Ctrl+E`       | Explain selected code (five detail levels in the editor context menu)                                                                      |
-| Generate Commit Message       | SCM sparkle icon      | AI commit message                                                                                                                          |
-| Review My Changes             | SCM eye icon          | Pre-commit review                                                                                                                          |
-| Generate PR Description       | SCM PR icon           | Auto-generate PR description                                                                                                               |
-| Set API Key                   | —                     | Store the Claude API key for the `claude-api` provider                                                                                     |
-| Test Connection               | —                     | Check local CLI readiness or an authenticated request for the current provider                                                             |
-| Switch Inference Provider     | —                     | Change inference provider                                                                                                                  |
-| Show Menu                     | Status bar item       | Quick pick of every Sidekick command                                                                                                       |
-| Switch Account…               | `Ctrl+K Ctrl+Shift+A` | Grouped quick pick of every saved account with health; also Add, Open Terminal, Sign In Again, Undo                                        |
-| Add Account…                  | —                     | Sign in to another account in an isolated profile via the integrated terminal; the current login is untouched                              |
-| Sign In Again to Account…     | Accounts view         | Re-authenticate an expired saved account in place, keeping its label and id                                                                |
-| Open Terminal as Account      | Accounts view         | Start a terminal whose `claude` / `codex` use a saved account without switching the live login (the live account opens in the normal home) |
-| Undo Last Account Switch      | —                     | Revert the most recent switch                                                                                                              |
-| Register Current Login        | —                     | Save the account you are signed in to right now                                                                                            |
-| Remove Account                | —                     | Remove a saved account and its credentials                                                                                                 |
-| Open Session Dashboard        | —                     | Open session analytics                                                                                                                     |
-| Open Activity Map             | Activity Map view     | Open the activity map large in an editor tab, with insights and a replay bar                                                               |
-| Export Activity Map…          | Activity Map view     | Save the map as SVG or the session's activity as JSON                                                                                      |
-| Extract Session Assets        | —                     | Pick URLs, file paths, commands, or plans from recent sessions                                                                             |
-| Search Across Sessions        | —                     | Full-text search over every session                                                                                                        |
-| View Session Conversation     | —                     | Read the current session's transcript with search                                                                                          |
-| Dump Session Report           | —                     | Export session data as text/markdown/JSON/HTML                                                                                             |
-| Generate HTML Report          | —                     | Full transcript report in a webview panel                                                                                                  |
-| Install Statusline            | —                     | Wire `sidekick statusline` into Claude Code's status line                                                                                  |
-| Uninstall Statusline          | —                     | Restore the previous Claude Code `statusLine` block                                                                                        |
-| Run Doctor                    | —                     | Cross-provider health diagnostics and the pricing basis; focuses the Health tab                                                            |
-| Open External Session Handoff | —                     | Open the configured handoff URL for the active session                                                                                     |
-| Browse Session Folders…       | —                     | Select session folder to monitor                                                                                                           |
-| Check for Updates             | —                     | Check for a newer version of the extension now (Update, Release Notes, or Skip This Version)                                               |
+| Transform Selected Code       | `Ctrl+K Ctrl+Shift+M`     | Transform selected code                                                                                                                    |
+| Quick Ask (Inline Chat)       | `Ctrl+K Ctrl+A`           | Inline chat                                                                                                                                |
+| Generate Documentation        | `Ctrl+K Ctrl+G`           | Generate documentation                                                                                                                     |
+| Explain Selected Code         | `Ctrl+K Ctrl+E`           | Explain selected code (five detail levels in the editor context menu)                                                                      |
+| Generate Commit Message       | SCM sparkle icon          | AI commit message                                                                                                                          |
+| Review My Changes             | SCM eye icon              | Pre-commit review                                                                                                                          |
+| Generate PR Description       | SCM PR icon               | Auto-generate PR description                                                                                                               |
+| Set API Key                   | —                         | Store the Claude API key for the `claude-api` provider                                                                                     |
+| Test Connection               | —                         | Check local CLI readiness or an authenticated request for the current provider                                                             |
+| Switch Inference Provider     | —                         | Change inference provider                                                                                                                  |
+| Show Menu                     | Status bar item           | Quick pick of every Sidekick command                                                                                                       |
+| Switch Account…               | `Ctrl+K Ctrl+Shift+A`     | Grouped quick pick of every saved account with health; also Add, Open Terminal, Sign In Again, Undo                                        |
+| Add Account…                  | —                         | Sign in to another account in an isolated profile via the integrated terminal; the current login is untouched                              |
+| Sign In Again to Account…     | Accounts view             | Re-authenticate an expired saved account in place, keeping its label and id                                                                |
+| Open Terminal as Account      | Accounts view             | Start a terminal whose `claude` / `codex` use a saved account without switching the live login (the live account opens in the normal home) |
+| Undo Last Account Switch      | —                         | Revert the most recent switch                                                                                                              |
+| Register Current Login        | —                         | Save the account you are signed in to right now                                                                                            |
+| Remove Account                | —                         | Remove a saved account and its credentials                                                                                                 |
+| Open Session Dashboard        | —                         | Open session analytics                                                                                                                     |
+| Open Activity Map             | Activity Map view         | Open the activity map large in an editor tab, with insights and a replay bar                                                               |
+| Export Activity Map…          | Activity Map view         | Save the map as SVG or the session's activity as JSON                                                                                      |
+| Extract Session Assets        | —                         | Pick URLs, file paths, commands, or plans from recent sessions                                                                             |
+| Search Across Sessions        | —                         | Full-text search over every session                                                                                                        |
+| View Session Conversation     | —                         | Read the current session's transcript with search                                                                                          |
+| Dump Session Report           | —                         | Export session data as text/markdown/JSON/HTML                                                                                             |
+| Generate HTML Report          | —                         | Full transcript report in a webview panel                                                                                                  |
+| Install Statusline            | —                         | Wire `sidekick statusline` into Claude Code's status line                                                                                  |
+| Uninstall Statusline          | —                         | Restore the previous Claude Code `statusLine` block                                                                                        |
+| Run Doctor                    | —                         | Cross-provider health diagnostics and the pricing basis; focuses the Health tab                                                            |
+| Open External Session Handoff | —                         | Open the configured handoff URL for the active session                                                                                     |
+| Browse Session Folders…       | —                         | Select session folder to monitor                                                                                                           |
+| Check for Updates             | —                         | Check for a newer version of the extension now (Update, Release Notes, or Skip This Version)                                               |
 
 Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS. Transform and Explain require a selection. Requires VS Code 1.85 or later.
 

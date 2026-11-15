@@ -35,13 +35,13 @@ After [installing](installation.md) the extension and setting up a [provider](pr
 
 ## Key Shortcuts
 
-| Action             | Shortcut           |
-| ------------------ | ------------------ |
+| Action             | Shortcut                  |
+| ------------------ | ------------------------- |
 | Trigger Completion | `Ctrl+K Ctrl+Shift+Space` |
 | Transform Code     | `Ctrl+K Ctrl+Shift+M`     |
-| Generate Docs      | `Ctrl+K Ctrl+G`    |
-| Explain Code       | `Ctrl+K Ctrl+E`    |
-| Quick Ask          | `Ctrl+K Ctrl+A`    |
+| Generate Docs      | `Ctrl+K Ctrl+G`           |
+| Explain Code       | `Ctrl+K Ctrl+E`           |
+| Quick Ask          | `Ctrl+K Ctrl+A`           |
 
 !!! tip
 

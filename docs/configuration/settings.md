@@ -64,7 +64,7 @@ See [Model Resolution](model-resolution.md) for details on how tiers map to mode
 | Setting                          | Default | Description                                                      |
 | -------------------------------- | ------- | ---------------------------------------------------------------- |
 | `sidekick.enabled`               | `true`  | Enable inline completions                                        |
-| `sidekick.debounceMs`            | `1000`  | Delay before requesting completion (ms)                          |
+| `sidekick.debounceMs`            | `0`     | Delay before a triggered completion request is sent (ms)         |
 | `sidekick.inlineContextLines`    | `30`    | Lines of context before/after cursor                             |
 | `sidekick.multiline`             | `false` | Enable multi-line completions (prose files always use multiline) |
 | `sidekick.transformContextLines` | `50`    | Lines of context for transforms                                  |

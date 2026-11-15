@@ -25,11 +25,11 @@ const mocks = vi.hoisted(() => {
     (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
       task({ report: vi.fn() }, { onCancellationRequested: vi.fn() }),
   );
-  const showInformationMessage = vi.fn(
-    (..._args: unknown[]) => Promise.resolve<string | undefined>(undefined),
+  const showInformationMessage = vi.fn((..._args: unknown[]) =>
+    Promise.resolve<string | undefined>(undefined),
   );
-  const showWarningMessage = vi.fn(
-    (..._args: unknown[]) => Promise.resolve<string | undefined>(undefined),
+  const showWarningMessage = vi.fn((..._args: unknown[]) =>
+    Promise.resolve<string | undefined>(undefined),
   );
   const applyEdit = vi.fn((_edit: unknown) => Promise.resolve(true));
   const replaceCalls: unknown[][] = [];
@@ -273,7 +273,12 @@ describe('InlineChatProvider edit placement', () => {
   function respond(provider: InlineChatProvider, editor: unknown, code: string, t: EditTarget) {
     return (
       provider as unknown as {
-        handleEditResponse(e: unknown, r: InlineChatRequest, c: string, t: EditTarget): Promise<void>;
+        handleEditResponse(
+          e: unknown,
+          r: InlineChatRequest,
+          c: string,
+          t: EditTarget,
+        ): Promise<void>;
       }
     ).handleEditResponse(editor, request, code, t);
   }
