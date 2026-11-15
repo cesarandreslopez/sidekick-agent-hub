@@ -190,10 +190,10 @@ export function getGraphLegendHtml(): string {
   return (Object.keys(NODE_TYPES) as NodeType[])
     .map(
       (key) =>
-        `    <div class="legend-item" data-node-type="${key}">
-      <span class="legend-dot" style="background: var(${NODE_TYPE_VARS[key]});"></span>
+        `    <button type="button" class="legend-item" data-node-type="${key}" aria-pressed="false">
+      <span class="legend-dot" style="background: var(${NODE_TYPE_VARS[key]});" aria-hidden="true"></span>
       <span>${NODE_TYPES[key].label}</span>
-    </div>`,
+    </button>`,
     )
     .join('\n');
 }

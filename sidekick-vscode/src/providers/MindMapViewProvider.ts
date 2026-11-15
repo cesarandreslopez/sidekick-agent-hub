@@ -14,6 +14,7 @@
  * @module providers/MindMapViewProvider
  */
 
+import * as path from 'path';
 import * as vscode from 'vscode';
 import type { SessionMonitor } from '../services/SessionMonitor';
 import { MindMapDataService } from '../services/MindMapDataService';
@@ -30,6 +31,7 @@ import {
 } from '../utils/themePalette';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
+import { getSessionLiveness, SESSION_LIVENESS_LABELS } from '../utils/sessionLiveness';
 
 /**
  * WebviewViewProvider for the session mind map visualization.
@@ -191,18 +193,26 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
    * @param nodeId - ID of the clicked node
    */
   private _handleNodeClick(nodeId: string): void {
-    // If it's a file node, try to open the file
-    if (nodeId.startsWith('file-')) {
-      const filePath = nodeId.replace('file-', '');
+    // Resolve from the graph the host sent: subagent nodes carry prefixed ids
+    // ("subagent-<id>-file-<path>"), so the id alone can't be parsed.
+    const node = this._state.graph.nodes.find((n) => n.id === nodeId);
+    if (!node?.fullPath) return;
+
+    if (node.type === 'file') {
+      const filePath = resolveNodeFilePath(
+        node.fullPath,
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+      );
       const uri = vscode.Uri.file(filePath);
       vscode.workspace.openTextDocument(uri).then(
         (doc) => vscode.window.showTextDocument(doc),
-        () => log(`Could not open file: ${filePath}`),
+        () => {
+          log(`Could not open file: ${filePath}`);
+          void vscode.window.showWarningMessage(`Could not open ${filePath}.`);
+        },
       );
-    }
-    // If it's a URL node, open in browser
-    else if (nodeId.startsWith('url-')) {
-      const urlOrQuery = nodeId.replace('url-', '');
+    } else if (node.type === 'url') {
+      const urlOrQuery = node.fullPath;
       try {
         // Check if it's a valid URL
         const url = new URL(urlOrQuery);
@@ -255,6 +265,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   private _handleSessionEnd(): void {
     log('Mind map: session ended');
     this._state.sessionActive = false;
+    this._state.sessionStatus = SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)];
     this._postMessage({ type: 'sessionEnd' });
     this._sendStateToWebview();
   }
@@ -268,6 +279,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     const knowledgeNotes = this._knowledgeNoteService?.getActiveNotes();
     this._state.graph = MindMapDataService.buildGraph(stats, subagents, knowledgeNotes);
     this._state.sessionActive = this._sessionMonitor.isActive();
+    this._state.sessionStatus = SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)];
     this._state.lastUpdated = new Date().toISOString();
   }
 
@@ -337,6 +349,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     .header {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: var(--sk-space-2);
       padding: var(--sk-space-2) var(--sk-space-3);
       border-bottom: 1px solid var(--sk-border-primary);
@@ -605,17 +618,41 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       background: var(--vscode-editorWidget-background);
       border: 1px solid var(--vscode-editorWidget-border);
       border-radius: 4px;
-      padding: 8px;
+      padding: 4px 8px;
       font-size: 10px;
+      max-height: calc(100% - 20px);
+      overflow-y: auto;
+    }
+
+    .legend summary {
+      cursor: pointer;
+      color: var(--vscode-descriptionForeground);
+      padding: 2px 0;
+    }
+
+    .legend[open] summary {
+      margin-bottom: 4px;
     }
 
     .legend-item {
       display: flex;
       align-items: center;
       gap: 6px;
+      width: 100%;
       margin-bottom: 4px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
       cursor: pointer;
       transition: opacity 0.2s;
+    }
+
+    .legend-item:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder);
+      border-radius: 3px;
     }
 
     .legend-item:hover {
@@ -718,8 +755,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     <h1>Mind Map</h1>
     <div class="header-actions">
       <button id="toggle-layout" class="icon-button" type="button" title="Toggle circular layout" aria-pressed="false" disabled>Circular</button>
-      <button id="reset-layout" class="icon-button" type="button" title="Reset graph layout" disabled>Reset Layout</button>
-      <span id="status" class="status" aria-live="polite">No Session</span>
+      <button id="reset-layout" class="icon-button" type="button" title="Reset graph layout and follow new activity again" disabled>Reset Layout</button>
+      <button id="follow" class="icon-button" type="button" title="Pan to new activity as it happens" aria-pressed="true" disabled>Follow</button>
+      <span id="status" class="status">No session</span>
     </div>
   </div>
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
@@ -736,9 +774,10 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
   <div class="tooltip" id="tooltip"></div>
 
-  <div class="legend" id="legend" style="display: none;">
+  <details class="legend" id="legend" style="display: none;">
+    <summary>Legend</summary>
 ${getGraphLegendHtml()}
-  </div>
+  </details>
 
   <script nonce="${nonce}" src="${d3Uri}"></script>
   <script nonce="${nonce}">
@@ -866,6 +905,13 @@ ${getGraphLegendHtml()}
             .strength(forceConfig.axisStrength);
         }
 
+        // The graph may have been created while hidden (0x0), which pins the
+        // centring force at the origin; re-centre it on every config pass.
+        const centerForce = simulation.force('center');
+        if (centerForce && containerEl.clientWidth > 0) {
+          centerForce.x(containerEl.clientWidth / 2).y(containerEl.clientHeight / 2);
+        }
+
         if (yForce) {
           yForce
             .y(containerEl.clientHeight / 2)
@@ -881,6 +927,21 @@ ${getGraphLegendHtml()}
       const tooltipEl = document.getElementById('tooltip');
       const resetLayoutEl = document.getElementById('reset-layout');
       const toggleLayoutEl = document.getElementById('toggle-layout');
+      const followEl = document.getElementById('follow');
+
+      // Reduced motion (OS setting, or VS Code's workbench.reduceMotion body class):
+      // D3 transitions are timed in JS, so CSS media queries don't reach them.
+      const reduceMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      function motion(ms) {
+        return reduceMotionQuery.matches || document.body.classList.contains('vscode-reduce-motion') ? 0 : ms;
+      }
+
+      // Follow mode: pan to new activity until the user zooms or pans.
+      let following = true;
+      function setFollowing(on) {
+        following = on;
+        if (followEl) followEl.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
 
       // Layout mode state
       let layoutMode = 'force'; // 'force' | 'circular'
@@ -1073,7 +1134,7 @@ ${getGraphLegendHtml()}
 
         simulation.stop();
         const positions = calculateCircularPositions(currentNodes);
-        const duration = animate ? 600 : 0;
+        const duration = animate ? motion(600) : 0;
 
         // Add circular-mode class to nodes
         nodeGroup.selectAll('circle').classed('circular-mode', true);
@@ -1187,6 +1248,9 @@ ${getGraphLegendHtml()}
           .scaleExtent([0.1, 10])
           .on('zoom', (event) => {
             g.attr('transform', event.transform);
+            // A user gesture (wheel, drag, dblclick) carries a sourceEvent;
+            // our own transitions don't.
+            if (event.sourceEvent && following) setFollowing(false);
           });
 
         svg.call(zoom);
@@ -1225,7 +1289,7 @@ ${getGraphLegendHtml()}
         }
 
         options = options || {};
-        const duration = options.duration || 0;
+        const duration = motion(options.duration || 0);
         const preserveZoom = options.preserveZoom !== false;
         const width = svg.node().clientWidth;
         const height = svg.node().clientHeight;
@@ -1358,7 +1422,9 @@ ${getGraphLegendHtml()}
        * Updates the graph with new data.
        */
       function updateGraph(state) {
-        if (!state.graph || state.graph.nodes.length === 0) {
+        // With nothing attached the graph still holds a lone session root.
+        const onlyRoot = state.graph && state.graph.nodes.length <= 1 && !state.sessionActive;
+        if (!state.graph || state.graph.nodes.length === 0 || onlyRoot) {
           showEmpty(true);
           return;
         }
@@ -1492,7 +1558,8 @@ ${getGraphLegendHtml()}
                 const dels = d.deletions || 0;
                 tooltipEl.innerHTML = firstLine + '<br><span class="additions">+' + adds + '</span> / <span class="deletions">-' + dels + '</span> lines';
               } else {
-                tooltipEl.textContent = label;
+                // Read-only files keep their touch count.
+                tooltipEl.innerHTML = firstLine;
               }
             } else if (d.type === 'task') {
               // For tasks, show subject, status, and action count
@@ -1546,8 +1613,15 @@ ${getGraphLegendHtml()}
             tooltipEl.classList.add('visible');
           })
           .on('mousemove', function(event) {
-            tooltipEl.style.left = (event.pageX + 10) + 'px';
-            tooltipEl.style.top = (event.pageY - 10) + 'px';
+            // Keep the tooltip inside the view: flip left/up near the edges.
+            const tipWidth = tooltipEl.offsetWidth;
+            const tipHeight = tooltipEl.offsetHeight;
+            let left = event.pageX + 10;
+            let top = event.pageY - 10;
+            if (left + tipWidth > window.innerWidth - 4) left = Math.max(4, event.pageX - tipWidth - 10);
+            if (top + tipHeight > window.innerHeight - 4) top = Math.max(4, window.innerHeight - tipHeight - 4);
+            tooltipEl.style.left = left + 'px';
+            tooltipEl.style.top = top + 'px';
           })
           .on('mouseout', function() {
             tooltipEl.classList.remove('visible');
@@ -1624,7 +1698,7 @@ ${getGraphLegendHtml()}
        * Focuses the view on new activity (new nodes, new links, or latest link).
        */
       function focusOnNewActivity(nodes, links) {
-        if (!svg || !zoom) return;
+        if (!svg || !zoom || !following) return;
 
         // Build current IDs
         const currentNodeIds = new Set(nodes.map(function(n) { return n.id; }));
@@ -1701,7 +1775,7 @@ ${getGraphLegendHtml()}
 
         // Progressive transition with easing
         svg.transition()
-          .duration(800)
+          .duration(motion(800))
           .ease(d3.easeCubicInOut)
           .call(zoom.transform, transform);
       }
@@ -1719,19 +1793,17 @@ ${getGraphLegendHtml()}
         if (toggleLayoutEl) {
           toggleLayoutEl.disabled = show;
         }
+        if (followEl) {
+          followEl.disabled = show;
+        }
       }
 
       /**
        * Updates status indicator.
        */
-      function updateStatus(active) {
-        if (active) {
-          statusEl.textContent = 'Active';
-          statusEl.className = 'status active';
-        } else {
-          statusEl.textContent = 'No Session';
-          statusEl.className = 'status';
-        }
+      function updateStatus(active, label) {
+        statusEl.textContent = label || (active ? 'Viewing' : 'No session');
+        statusEl.className = label === 'Live' ? 'status active' : 'status';
       }
 
       // Handle messages from extension
@@ -1740,12 +1812,12 @@ ${getGraphLegendHtml()}
 
         switch (message.type) {
           case 'updateGraph':
-            updateStatus(message.state.sessionActive);
+            updateStatus(message.state.sessionActive, message.state.sessionStatus);
             updateGraph(message.state);
             break;
 
           case 'sessionStart':
-            updateStatus(true);
+            updateStatus(true, 'Live');
             break;
 
           case 'sessionEnd':
@@ -1783,7 +1855,15 @@ ${getGraphLegendHtml()}
 
       if (resetLayoutEl) {
         resetLayoutEl.addEventListener('click', function() {
+          setFollowing(true);
           resetLayout();
+        });
+      }
+
+      if (followEl) {
+        followEl.addEventListener('click', function() {
+          setFollowing(!following);
+          if (following) centerOnSession({ duration: 400 });
         });
       }
 
@@ -1870,19 +1950,35 @@ ${getGraphLegendHtml()}
           clearLegendHighlight();
         });
 
+        // Keyboard focus previews like hover does.
+        item.addEventListener('focus', function() {
+          if (lockedLegendType && lockedLegendType !== nodeType) return;
+          applyLegendHighlight(nodeType);
+        });
+
+        item.addEventListener('blur', function() {
+          if (lockedLegendType) return;
+          clearLegendHighlight();
+        });
+
         item.addEventListener('click', function() {
           if (lockedLegendType === nodeType) {
             // Unlock
             lockedLegendType = null;
             item.classList.remove('locked');
+            item.setAttribute('aria-pressed', 'false');
             clearLegendHighlight();
           } else {
             // Lock to this type
             if (lockedLegendType !== null) {
-              legendItems.forEach(function(li) { li.classList.remove('locked'); });
+              legendItems.forEach(function(li) {
+                li.classList.remove('locked');
+                li.setAttribute('aria-pressed', 'false');
+              });
             }
             lockedLegendType = nodeType;
             item.classList.add('locked');
+            item.setAttribute('aria-pressed', 'true');
             applyLegendHighlight(nodeType);
           }
         });
@@ -1907,4 +2003,10 @@ ${getGraphLegendHtml()}
     this._disposables = [];
     log('MindMapViewProvider disposed');
   }
+}
+
+/** Absolute path for a file node; relative paths resolve against the workspace. */
+export function resolveNodeFilePath(filePath: string, workspaceRoot?: string): string {
+  if (path.isAbsolute(filePath) || !workspaceRoot) return filePath;
+  return path.join(workspaceRoot, filePath);
 }

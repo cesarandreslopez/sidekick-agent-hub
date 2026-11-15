@@ -176,6 +176,9 @@ export interface MindMapState {
 
   /** Last update timestamp (ISO 8601) */
   lastUpdated: string;
+
+  /** Live / Viewing / No session label for the attached session */
+  sessionStatus?: string;
 }
 
 /**

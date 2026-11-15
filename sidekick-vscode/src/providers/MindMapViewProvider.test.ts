@@ -12,7 +12,7 @@ vi.mock('vscode', () => ({
     file: (fsPath: string) => ({ fsPath }),
     parse: (value: string) => ({ value }),
   },
-  workspace: { openTextDocument: vi.fn() },
+  workspace: { openTextDocument: vi.fn(() => Promise.resolve({})), workspaceFolders: [{ uri: { fsPath: '/repo' } }] },
   window: { showTextDocument: vi.fn() },
   env: { openExternal: vi.fn() },
 }));
@@ -25,7 +25,7 @@ vi.mock('../services/MindMapDataService', () => ({
 }));
 vi.mock('../services/Logger', () => ({ log: vi.fn() }));
 
-import { MindMapViewProvider } from './MindMapViewProvider';
+import { MindMapViewProvider, resolveNodeFilePath } from './MindMapViewProvider';
 
 function makeMonitor() {
   return {
@@ -34,6 +34,8 @@ function makeMonitor() {
     onSessionStart: vi.fn(() => ({ dispose: vi.fn() })),
     onSessionEnd: vi.fn(() => ({ dispose: vi.fn() })),
     isActive: vi.fn(() => false),
+    getSessionPath: vi.fn((): string | null => null),
+    getProvider: vi.fn(() => ({})),
     getStatsView: vi.fn(() => ({})),
     getSubagentStats: vi.fn(() => []),
   };
@@ -65,6 +67,32 @@ describe('MindMapViewProvider graph scheduling', () => {
     vi.advanceTimersByTime(1);
     expect(monitor.getStatsView).toHaveBeenCalledTimes(1);
     expect(buildGraph).toHaveBeenCalledTimes(1);
+    provider.dispose();
+  });
+});
+
+describe('resolveNodeFilePath', () => {
+  it('keeps absolute paths and resolves relative ones against the workspace', () => {
+    expect(resolveNodeFilePath('/repo/src/a.ts', '/repo')).toBe('/repo/src/a.ts');
+    expect(resolveNodeFilePath('src/a.ts', '/repo')).toBe('/repo/src/a.ts');
+    expect(resolveNodeFilePath('src/a.ts')).toBe('src/a.ts');
+  });
+});
+
+describe('MindMapViewProvider node clicks', () => {
+  it('opens files for subagent nodes, whose ids carry a prefix', async () => {
+    const vscodeMock = await import('vscode');
+    const provider = new MindMapViewProvider({ fsPath: '/ext' } as never, makeMonitor() as never);
+    const internals = provider as unknown as {
+      _state: { graph: { nodes: Array<Record<string, unknown>>; links: unknown[] } };
+      _handleNodeClick(nodeId: string): void;
+    };
+    internals._state.graph = {
+      nodes: [{ id: 'subagent-a1-file-src/a.ts', type: 'file', label: 'a.ts', fullPath: 'src/a.ts' }],
+      links: [],
+    };
+    internals._handleNodeClick('subagent-a1-file-src/a.ts');
+    expect(vscodeMock.workspace.openTextDocument).toHaveBeenCalledWith({ fsPath: '/repo/src/a.ts' });
     provider.dispose();
   });
 });

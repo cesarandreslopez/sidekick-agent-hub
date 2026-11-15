@@ -49,8 +49,9 @@ export function sessionMtimeMs(sessionPath: string, provider?: MetadataSource): 
 
 /** Classifies the monitor's attached session as live, viewing, or none. */
 export function getSessionLiveness(monitor: LivenessSource, now = Date.now()): SessionLiveness {
+  if (!monitor.isActive()) return 'none';
   const sessionPath = monitor.getSessionPath();
-  if (!monitor.isActive() || !sessionPath) return 'none';
+  if (!sessionPath) return 'none';
   const mtime = sessionMtimeMs(sessionPath, monitor.getProvider());
   return mtime !== null && now - mtime < SESSION_LIVE_WINDOW_MS ? 'live' : 'viewing';
 }
