@@ -545,8 +545,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
           // Auto-switch
           switchToSession(latest);
         } else {
-          // Store as pending
+          // Store as pending and say so: the only other sign is the status
+          // bar badge.
           pendingSessionPath = latest;
+          pushNotice('New session detected \u2014 press s to switch to it', 'info');
           scheduleRender();
         }
         lastNotifiedSessionPath = latest;
@@ -588,24 +590,50 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     }
   };
 
+  // The report reads the whole session synchronously, so it says what it is
+  // doing first, runs after that toast has painted, and reports where the
+  // file went (over SSH no browser opens) or why it failed.
+  let reportInFlight = false;
   const generateReport = () => {
-    if (!sessionPath) return;
-    // One read of the session feeds both the metrics and the transcript.
-    const { metrics, transcript, subagents, activity } = readSessionReportInputs(
-      activeProvider,
-      sessionPath,
-    );
-    const html = generateHtmlReport(metrics, transcript, {
-      subagents,
-      ...(activity ? { activity } : {}),
-      sessionFileName: path.basename(sessionPath),
-      includeThinking: true,
-      includeToolDetail: true,
-      theme: 'dark',
-    });
-    const outFile = path.join(os.tmpdir(), `sidekick-report-${Date.now()}.html`);
-    fs.writeFileSync(outFile, html, 'utf-8');
-    openInBrowser(outFile);
+    const target = sessionPath;
+    if (!target) {
+      pushNotice('No session to report on yet', 'info');
+      scheduleRender();
+      return;
+    }
+    if (reportInFlight) return;
+    reportInFlight = true;
+    pushNotice('Generating HTML report\u2026', 'info');
+    scheduleRender();
+    setTimeout(() => {
+      try {
+        // One read of the session feeds both the metrics and the transcript.
+        const { metrics, transcript, subagents, activity } = readSessionReportInputs(
+          activeProvider,
+          target,
+        );
+        const html = generateHtmlReport(metrics, transcript, {
+          subagents,
+          ...(activity ? { activity } : {}),
+          sessionFileName: path.basename(target),
+          includeThinking: true,
+          includeToolDetail: true,
+          theme: 'dark',
+        });
+        const outFile = path.join(os.tmpdir(), `sidekick-report-${Date.now()}.html`);
+        fs.writeFileSync(outFile, html, 'utf-8');
+        openInBrowser(outFile);
+        pushNotice(`Report: ${outFile}`, 'info');
+      } catch (err) {
+        pushNotice(
+          `Report failed: ${err instanceof Error ? err.message : String(err)}`,
+          'error',
+        );
+      } finally {
+        reportInFlight = false;
+        scheduleRender();
+      }
+    }, 150);
   };
 
   // The Dashboard memoises on the metrics identity, so the scoped copy is
@@ -718,6 +746,12 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     onSessionSwitch: switchToSession,
     onTogglePin: () => {
       isPinned = !isPinned;
+      pushNotice(
+        isPinned
+          ? 'Session pinned \u2014 newer sessions will not auto-switch'
+          : 'Session unpinned \u2014 newer sessions auto-switch again',
+        'info',
+      );
       scheduleRender();
     },
     onGenerateReport: generateReport,
