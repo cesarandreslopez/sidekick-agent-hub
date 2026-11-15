@@ -86,7 +86,7 @@ These decisions were checked against OpenAI Codex commit `985cf47a4eb6084b2ff6b3
 2. Run **Sidekick: Add Account…**, choose Codex, and complete `codex login` in the terminal Sidekick opens; the profile is saved as soon as the isolated home authenticates
 3. Switch with the arrows icon on an account or from the status bar quick pick; **Undo** reverts
 
-A switch refuses while Codex consumers are running and refuses accounts whose stored login is known to be dead, pointing at **Sign In Again** instead.
+A switch refuses while Codex consumers are running and refuses accounts whose stored login is known to be dead, pointing at **Sign In Again to Account…** instead.
 
 ### CLI
 

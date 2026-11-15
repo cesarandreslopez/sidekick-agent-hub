@@ -8,4 +8,4 @@ Sidekick registers the Claude Code and Codex accounts you are already signed in 
 
 **Run two accounts at once:** *Open Terminal as Account* starts a terminal where `claude` or `codex` use the chosen account without changing the live login.
 
-Saved accounts expire after a few weeks unless they are refreshed. The view shows when; select **Sign In Again** on an expired account, or turn on `sidekick.accounts.keepAlive`.
+Saved accounts expire after a few weeks unless they are refreshed. The view shows when; select **Sign In Again to Account…** on an expired account, or turn on `sidekick.accounts.keepAlive`.

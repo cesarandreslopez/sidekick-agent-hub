@@ -109,7 +109,7 @@ Claude Code refresh tokens expire about three weeks after they were last used, a
 | ---------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | `fresh`    | Access token valid; refresh token has days left                                             | none                                                 |
 | `expiring` | Access token lapsed (the CLI refreshes on next use) or refresh token ends within three days | switch to it soon, or turn on keep-alive             |
-| `expired`  | Refresh token expired (recorded, or estimated from the snapshot age)                        | **Sign In Again** / `sidekick accounts login <name>` |
+| `expired`  | Refresh token expired (recorded, or estimated from the snapshot age)                        | **Sign In Again to Account…** / `sidekick accounts login <name>` |
 | `missing`  | No stored credentials                                                                       | sign in                                              |
 | `unknown`  | The stored credential carries no expiry (API-key logins)                                    | none                                                 |
 
@@ -125,12 +125,12 @@ A switch to an `expired` or `missing` account is refused with a sign-in hint ins
 
 ## Troubleshooting
 
-- **"expired; sign in again"** — the saved refresh token is dead. Use **Sign In Again** or `sidekick accounts login <name>`; the account keeps its label and id.
+- **"expired; sign in again"** — the saved refresh token is dead. Use **Sign In Again to Account…** or `sidekick accounts login <name>`; the account keeps its label and id.
 - **Codex reports a reused refresh token** — close Codex consumers, inspect with `sidekick accounts doctor --provider codex`, and sign in again if the token is already invalid. A private backup is recovery data, not proof that an upstream token is still valid.
 - **"Codex credential storage (keyring) is not file-based"** (or `auto`, `ephemeral`, `unreadable`) — set `cli_auth_credentials_store = "file"` in `~/.codex/config.toml`, run `codex login`, then add the account again.
 - **Claude Desktop keeps signing you out** — the desktop app's embedded engine refreshes the shared CLI token. Sidekick warns when it is running; quit it before switching, or sign in again afterwards.
 - **"not verified"** — the store did not read back the written credential. The message says whether the previous login was restored; if it could not be, it is still saved, and `sidekick accounts doctor` shows what to do.
-- **Claude Code says "Not logged in · Please run /login"** — the live login's refresh token was used up by another copy of the same login, or the stored credential could not be read. Run `/login` (or **Sign In Again**), then `sidekick accounts doctor`: it lists any second copy of the live login and unreadable stored credentials, and `--fix` removes them. Claude Desktop and any other tool that runs `claude` against its own copy of your login can still cause this; quit them before switching.
+- **Claude Code says "Not logged in · Please run /login"** — the live login's refresh token was used up by another copy of the same login, or the stored credential could not be read. Run `/login` (or **Sign In Again to Account…**), then `sidekick accounts doctor`: it lists any second copy of the live login and unreadable stored credentials, and `--fix` removes them. Claude Desktop and any other tool that runs `claude` against its own copy of your login can still cause this; quit them before switching.
 - **Doctor reports an "unreadable credential"** — an older Sidekick build could store a credential cut off at about 4 KB (the limit of the `security` tool's interactive mode) once several MCP servers had OAuth tokens. That copy cannot be used. `sidekick accounts doctor --fix` deletes it; sign in again to that account if its backup has expired.
 - **Hundreds of `Claude Code-credentials-<hash>` items in Keychain Access** — Sidekick builds before 0.27.6 left one behind each time they ran against a throwaway `SIDEKICK_CONFIG_DIR` with your real home (for example inside another project's test suite). They are copies of old logins that nothing uses. Other tools also create these items for their own `CLAUDE_CONFIG_DIR`, so Sidekick never deletes them by name. List them with the one-off script in the repository and delete them yourself once the list looks right:
 

@@ -90,7 +90,7 @@ export function registerAccountCommands(
       inference === 'codex' ? 'codex' : inference === 'claude-max' ? 'claude-code' : null;
     if (result.success && !result.alreadyActive && managed !== result.provider) {
       summary.details.push(
-        `Sidekick inference uses ${inference ?? 'auto'}; change it with "Sidekick: Set Inference Provider".`,
+        `Sidekick inference uses ${inference ?? 'auto'}; change it with "Sidekick: Switch Inference Provider".`,
       );
     }
     logDetails(summary.message, summary.details);
@@ -305,7 +305,14 @@ export function registerAccountCommands(
     if (!item?.action) return;
     switch (item.action.kind) {
       case 'account':
-        if (item.action.view.isActive) {
+        // An expired or missing login gets the sign-in its row promises, even
+        // when it is the active account.
+        if (
+          item.action.view.health.state === 'expired' ||
+          item.action.view.health.state === 'missing'
+        ) {
+          await switchTo(item.action.view);
+        } else if (item.action.view.isActive) {
           vscode.window.showInformationMessage(
             `${accountDisplayName(item.action.view)} is already the active account.`,
           );

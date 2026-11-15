@@ -25,7 +25,7 @@ export interface AccountItem {
 }
 
 const HINT_MESSAGE =
-  'Select the arrows icon on an account to switch. Expired accounts need Sign In Again.';
+  'Select the arrows icon on an account to switch. Expired accounts need Sign In Again to Account….';
 
 export class AccountTreeProvider
   implements vscode.TreeDataProvider<AccountTreeElement>, vscode.Disposable
