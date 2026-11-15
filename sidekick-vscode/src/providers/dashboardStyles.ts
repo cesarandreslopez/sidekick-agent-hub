@@ -3138,6 +3138,37 @@ export const DASHBOARD_STYLES = `
     }
     .history-chart.empty { display: none; }
 
+    /* Attached to a past (not live) session: neutral pill with a hollow dot */
+    .status.viewing {
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .status.viewing::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      border: 1px solid currentColor;
+      box-sizing: border-box;
+    }
+
+    /* Visually hidden, still read by screen readers */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     /* Row toggles rendered as real buttons (keyboard + screen reader) */
     .tool-item .tool-toggle,
     .error-group-header,

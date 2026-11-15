@@ -1275,9 +1275,28 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       /**
        * Updates timeline display with search and filter support.
        */
-      function updateTimeline(events) {
+      // Events in the latest live (capped) timeline push; the badge counts these.
+      let liveTimelineCount = 0;
+      const TIMELINE_DISPLAY_CAP = 20;
+
+      function updateTimeline(events, isSearch) {
         currentTimelineEvents = events || [];
+        if (!isSearch) liveTimelineCount = currentTimelineEvents.length;
         renderFilteredTimeline();
+        updateActivityBadge();
+      }
+
+      function updateActivityBadge() {
+        const badge = document.getElementById('activity-count-badge');
+        if (!badge) return;
+        if (liveTimelineCount > 0) {
+          // The host sends the latest TIMELINE_DISPLAY_CAP events: say "20+", not "20".
+          badge.textContent = liveTimelineCount >= TIMELINE_DISPLAY_CAP ? TIMELINE_DISPLAY_CAP + '+' : String(liveTimelineCount);
+          badge.title = liveTimelineCount >= TIMELINE_DISPLAY_CAP ? 'Showing the latest ' + TIMELINE_DISPLAY_CAP + ' events' : '';
+          badge.style.display = 'inline';
+        } else {
+          badge.style.display = 'none';
+        }
       }
 
       /**
@@ -1777,8 +1796,15 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
       function updateProviderDisplay(providerId, providerName) {
         if (!providerId || !providerName) return;
-        currentQuota = null;
-        currentQuotaFailure = null;
+        const providerChanged = providerId !== currentProviderId;
+        if (providerChanged) {
+          // The last provider's limits must not show under the new one: hide
+          // the card until the new provider's first sample arrives.
+          currentQuota = null;
+          currentQuotaFailure = null;
+          const staleQuotaSection = document.getElementById('quota-section');
+          if (staleQuotaSection) staleQuotaSection.classList.remove('visible');
+        }
         currentProviderId = providerId;
         currentProviderName = providerName;
         if (currentProviderId !== 'claude-code') {
@@ -1838,7 +1864,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         // Restore for non-OpenCode providers
         if (quotaBtn) quotaBtn.textContent = currentProviderId === 'codex' ? 'Limits' : 'Quota';
 
-        if (currentQuota) {
+        // Same provider (a visibility re-send): keep showing its limits.
+        if (!providerChanged && currentQuota) {
           updateQuota(currentQuota, currentQuotaFailure);
         }
       }
@@ -1902,14 +1929,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           dashboardEl.style.display = 'none';
         }
 
-        // Update status
-        if (state.sessionActive) {
-          statusEl.textContent = 'Active';
-          statusEl.className = 'status active';
-        } else {
-          statusEl.textContent = 'No Session';
-          statusEl.className = 'status inactive';
-        }
+        // The status pill (Live / Viewing / No session) comes from the
+        // availability the host sends; see navigation.syncAvailability.
 
         // Update primary metric display
         updatePrimaryMetric();
@@ -1988,15 +2009,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           if (fileCount > 0) parts.push(fileCount + ' file' + (fileCount !== 1 ? 's' : '') + ' changed');
           actSummary.textContent = parts.length ? parts.join(', ') : '';
         }
-        // Activity count badge
-        var actBadge = document.getElementById('activity-count-badge');
-        if (actBadge) {
-          var timelineCount = document.querySelectorAll('#timeline-list .timeline-item').length;
-          if (timelineCount > 0 && !(timelineCount === 1 && document.querySelector('#timeline-list .timeline-item .description') && document.querySelector('#timeline-list .timeline-item .description').textContent === 'No activity yet')) {
-            actBadge.textContent = timelineCount;
-            actBadge.style.display = 'inline';
-          }
-        }
+        // Activity count badge (from the live timeline, hidden when empty)
+        updateActivityBadge();
 
         // Performance & Cost summary
         var perfSummary = document.getElementById('perf-cost-summary');
@@ -2010,18 +2024,20 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           perfSummary.textContent = perfParts.length ? perfParts.join(', ') : '';
         }
 
-        // Decisions count badge
+        updateDecisionsBadge();
+      }
+
+      // Logged decisions in total (not the filtered count), from updateDecisions.
+      let decisionsTotal = 0;
+      function updateDecisionsBadge() {
         var decBadge = document.getElementById('decisions-count-badge');
         var decSummary = document.getElementById('decisions-summary');
-        var decCountEl = document.getElementById('decisions-count');
-        if (decCountEl && decBadge) {
-          var decText = decCountEl.textContent || '';
-          var decMatch = decText.match(/(\d+)/);
-          if (decMatch && parseInt(decMatch[1]) > 0) {
-            decBadge.textContent = decMatch[1];
-            decBadge.style.display = 'inline';
-            if (decSummary) decSummary.textContent = decMatch[1] + ' decisions logged';
-          }
+        if (decBadge) {
+          decBadge.textContent = String(decisionsTotal);
+          decBadge.style.display = decisionsTotal > 0 ? 'inline' : 'none';
+        }
+        if (decSummary) {
+          decSummary.textContent = decisionsTotal > 0 ? plural(decisionsTotal, 'decision') + ' logged' : '';
         }
       }
 
@@ -2452,6 +2468,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       function updateContextHealthDisplay(score, compactionCount) {
         const el = document.getElementById('context-health');
         if (!el) return;
+        // Only meaningful once the session has compacted; a fresh session hides it.
+        if (!compactionCount) {
+          el.style.display = 'none';
+          el.innerHTML = '';
+          return;
+        }
         const color = score >= 70
           ? 'var(--vscode-charts-green, #4ec9b0)'
           : score >= 40
@@ -2581,8 +2603,10 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             // live (capped) push re-runs the search instead of replacing them.
             const searching = Boolean(searchInput && searchInput.value.trim());
             if (message.search) {
-              if (searching) updateTimeline(message.events);
+              if (searching) updateTimeline(message.events, true);
             } else if (searching) {
+              liveTimelineCount = (message.events || []).length;
+              updateActivityBadge();
               scheduleTimelineResearch();
             } else {
               updateTimeline(message.events);
@@ -2591,8 +2615,6 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           }
 
           case 'sessionStart': {
-            statusEl.textContent = 'Active';
-            statusEl.className = 'status active';
             // The Summary tab describes one session: clear it (and any
             // narrative), and rebuild it if it is the tab on screen.
             resetSummaryView();
@@ -2604,8 +2626,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           }
 
           case 'sessionEnd':
-            statusEl.textContent = 'Ended';
-            statusEl.className = 'status inactive';
+            // The host follows this with an availability update, which sets the pill.
             break;
 
           case 'updateBurnRate':
@@ -3334,6 +3355,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         const section = document.getElementById('decisions-section');
         const listEl = document.getElementById('decisions-list');
         const countEl = document.getElementById('decisions-count');
+        decisionsTotal = totalCount || 0;
+        updateDecisionsBadge();
         if (!section || !listEl) return;
 
         if (totalCount === 0) {

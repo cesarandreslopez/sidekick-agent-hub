@@ -194,6 +194,11 @@ export type DashboardStatsPayload = Omit<DashboardState, 'timeline'>;
 
 export interface SessionAvailability {
   status: 'active' | 'paused' | 'empty' | 'unavailable';
+  /**
+   * With `active`: whether the attached session is live (its file changed
+   * recently) or a past session being viewed. Absent means live.
+   */
+  live?: boolean;
   providerName: string;
   workspacePath: string | null;
   sessionDirectory: string | null;

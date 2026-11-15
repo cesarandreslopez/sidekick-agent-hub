@@ -52,7 +52,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
     <img src="${options.iconUri}" alt="Sidekick" />
     <h1>Session Analytics</h1>
     <span class="version-badge" id="version-badge" title="What's New">v${options.extVersion}</span>
-    <span id="status" class="status inactive" aria-live="polite">No Session</span>
+    <span id="status" class="status inactive" aria-live="polite">No session</span>
   </div>
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
 

@@ -21,8 +21,27 @@ function relativeTime(value: string): string {
   return `${Math.floor(minutes / 1440)}d ago`;
 }
 
+/** The header pill for an availability: Live / Viewing / Paused / No session / Unavailable. */
+export function availabilityPill(value: SessionAvailability): { text: string; className: string } {
+  switch (value.status) {
+    case 'active':
+      // Attached is not the same as live: a past session is being viewed.
+      return value.live === false
+        ? { text: 'Viewing', className: 'status viewing' }
+        : { text: 'Live', className: 'status active' };
+    case 'paused':
+      return { text: 'Paused', className: 'status inactive' };
+    case 'unavailable':
+      return { text: 'Unavailable', className: 'status inactive' };
+    default:
+      return { text: 'No session', className: 'status inactive' };
+  }
+}
+
 export function createNavigation(doc: Document) {
   let availability: SessionAvailability | undefined;
+  /** Session cards in the list, so the empty state never contradicts it. */
+  let sessionCount = 0;
   const text = (id: string, value: string) => {
     const element = doc.getElementById(id);
     if (element) element.textContent = value;
@@ -35,29 +54,31 @@ export function createNavigation(doc: Document) {
     const dashboard = doc.getElementById('dashboard');
     if (content) content.style.display = active ? 'none' : 'block';
     if (dashboard) dashboard.style.display = active ? 'block' : 'none';
-    text(
-      'status',
-      { active: 'Active', paused: 'Paused', empty: 'No Session', unavailable: 'Unavailable' }[
-        status
-      ],
-    );
-    doc.getElementById('status')?.setAttribute('class', `status ${active ? 'active' : 'inactive'}`);
+    const pill = availabilityPill(availability);
+    text('status', pill.text);
+    doc.getElementById('status')?.setAttribute('class', pill.className);
+    // Sessions listed above but none attached: say so, rather than "none found".
+    const listed = status === 'empty' && sessionCount > 0;
     text(
       'empty-state-title',
       status === 'paused'
         ? 'Session monitoring is paused.'
         : status === 'unavailable'
           ? `${providerName} sessions are unavailable.`
-          : `No ${providerName} sessions found.`,
+          : listed
+            ? 'No active session.'
+            : `No ${providerName} sessions found.`,
     );
     text(
       'empty-state-hint',
       message ||
         (status === 'paused'
           ? 'Resume monitoring to follow session activity.'
-          : !workspacePath && !sessionDirectory
-            ? 'Open a workspace folder, or browse for an existing session.'
-            : `Start ${providerName} in this workspace, or browse for an existing session.`),
+          : listed
+            ? `Pick a session above, or start ${providerName} in this workspace.`
+            : !workspacePath && !sessionDirectory
+              ? 'Open a workspace folder, or browse for an existing session.'
+              : `Start ${providerName} in this workspace, or browse for an existing session.`),
     );
     text(
       'empty-state-location',
@@ -187,11 +208,19 @@ export function createNavigation(doc: Document) {
               ? 'Latest'
               : relativeTime(session.modifiedTime);
           content.append(label, meta);
+          if (session.isActive) {
+            // The dot is decorative (aria-hidden); screen readers get the word.
+            const live = doc.createElement('span');
+            live.className = 'sr-only';
+            live.textContent = ' (live)';
+            content.append(live);
+          }
           card.append(status, content);
           fragment.append(card);
         }
       }
-      if (!fragment.querySelector('.session-card')) {
+      sessionCount = fragment.querySelectorAll('.session-card').length;
+      if (sessionCount === 0) {
         const empty = doc.createElement('div');
         empty.className = 'session-list-empty';
         empty.textContent = 'No sessions available. Use Browse or Run Doctor below.';
@@ -218,6 +247,7 @@ export function createNavigation(doc: Document) {
         .getElementById('custom-path-indicator')
         ?.classList.toggle('visible', Boolean(value.isUsingCustomPath && value.customPathDisplay));
       text('custom-path-text', value.customPathDisplay ? `Custom: ${value.customPathDisplay}` : '');
+      syncAvailability();
     },
   };
 }

@@ -623,7 +623,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       case 'setSessionProvider':
         log(`Dashboard: user selected session provider: ${message.providerId}`);
         this._suppressSessionListUpdates = true;
-        vscode.commands.executeCommand('sidekick.setSessionProvider', message.providerId);
+        // However the switch ends (including a rejected command or an early
+        // return), list updates resume; otherwise the list spinner never clears.
+        void Promise.resolve(
+          vscode.commands.executeCommand('sidekick.setSessionProvider', message.providerId),
+        )
+          .catch((error: unknown) => logError('Dashboard: session provider switch failed', error))
+          .finally(() => {
+            this._suppressSessionListUpdates = false;
+            this._sendSessionList();
+            this._sendProviderInfo();
+          });
         break;
 
       case 'refreshSessions':
@@ -2759,6 +2769,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     const issue = operation
       ? !operation.usable && operation.runtimeStatus
       : runtime && !runtime.available && runtime;
+    // Attached is not live: the current card's own recency says which.
+    const current = (groups ?? [])
+      .flatMap((group) => group.sessions ?? [])
+      .find((session) => session.isCurrent);
     this._postMessage({
       type: 'updateSessionAvailability',
       availability: {
@@ -2769,6 +2783,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             : issue
               ? 'unavailable'
               : 'empty',
+        live: current ? current.isActive : undefined,
         providerName: provider.displayName,
         workspacePath,
         sessionDirectory:

@@ -111,6 +111,46 @@ describe('dashboard navigation', () => {
     );
   });
 
+  it('tells a live session from one being viewed, and never contradicts the list', () => {
+    const { navigation } = mount();
+    const availability = {
+      providerName: 'Claude Code',
+      workspacePath: '/workspace',
+      sessionDirectory: '/sessions',
+    };
+    navigation.renderAvailability({ ...availability, status: 'active', live: true });
+    expect(document.getElementById('status')!.textContent).toBe('Live');
+    expect(document.getElementById('status')!.className).toBe('status active');
+    navigation.renderAvailability({ ...availability, status: 'active', live: false });
+    expect(document.getElementById('status')!.textContent).toBe('Viewing');
+    expect(document.getElementById('status')!.className).toBe('status viewing');
+
+    // Not attached, but sessions are listed: "none found" would be wrong.
+    navigation.renderSessions({ type: 'updateSessionList', groups: [group], isPinned: false });
+    navigation.renderAvailability({ ...availability, status: 'empty' });
+    expect(document.getElementById('status')!.textContent).toBe('No session');
+    expect(document.getElementById('empty-state-title')!.textContent).toBe('No active session.');
+    expect(document.getElementById('empty-state-hint')!.textContent).toContain(
+      'Pick a session above',
+    );
+    navigation.renderSessions({ type: 'updateSessionList', groups: [], isPinned: false });
+    expect(document.getElementById('empty-state-title')!.textContent).toBe(
+      'No Claude Code sessions found.',
+    );
+  });
+
+  it('names a live session card for screen readers', () => {
+    const { navigation } = mount();
+    navigation.renderSessions({ type: 'updateSessionList', groups: [group], isPinned: false });
+    expect(button('.session-card').querySelector('.sr-only')?.textContent).toBe(' (live)');
+    const idle = {
+      ...group,
+      sessions: [{ ...group.sessions[0], isActive: false }],
+    };
+    navigation.renderSessions({ type: 'updateSessionList', groups: [idle], isPinned: false });
+    expect(button('.session-card').querySelector('.sr-only')).toBeNull();
+  });
+
   it.each(['paused', 'empty', 'unavailable'] as const)(
     'explains %s sessions and provides working recovery actions',
     (status) => {

@@ -361,6 +361,60 @@ describe('DashboardViewProvider live session panels', () => {
     provider.dispose();
   });
 
+  it('resumes session list updates when the provider switch command rejects', async () => {
+    const monitor = makeSessionMonitor();
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    vi.mocked(commands.executeCommand).mockRejectedValueOnce(new Error('switch failed'));
+    (
+      provider as unknown as { _handleDashboardWebviewMessage(message: unknown): void }
+    )._handleDashboardWebviewMessage({ type: 'setSessionProvider', providerId: 'opencode' });
+    expect(
+      (provider as unknown as { _suppressSessionListUpdates: boolean })._suppressSessionListUpdates,
+    ).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      (provider as unknown as { _suppressSessionListUpdates: boolean })._suppressSessionListUpdates,
+    ).toBe(false);
+    expect(postMessage.mock.calls.map((call) => call[0].type)).toContain('updateSessionList');
+    provider.dispose();
+  });
+
+  it('tells the webview whether the attached session is live or a past one', () => {
+    const monitor = makeSessionMonitor();
+    const card = (isActive: boolean) => ({
+      projectPath: '/workspace',
+      displayPath: '/workspace',
+      proximity: 'current',
+      sessions: [
+        { path: '/s/a', filename: 'a', modifiedTime: '', isCurrent: true, isActive },
+        { path: '/s/b', filename: 'b', modifiedTime: '', isCurrent: false, isActive: true },
+      ],
+    });
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    const availability = () =>
+      postMessage.mock.calls.filter((call) => call[0].type === 'updateSessionAvailability').pop()![0]
+        .availability;
+    monitor.isActive.mockReturnValue(true);
+
+    monitor.getAllSessionsGrouped.mockReturnValue([card(false)] as never);
+    (provider as unknown as { _sendSessionList(): void })._sendSessionList();
+    expect(availability()).toMatchObject({ status: 'active', live: false });
+    monitor.getAllSessionsGrouped.mockReturnValue([card(true)] as never);
+    (provider as unknown as { _sendSessionList(): void })._sendSessionList();
+    expect(availability()).toMatchObject({ status: 'active', live: true });
+    provider.dispose();
+  });
+
   it('re-seeds tok/min from its own samples when the view re-syncs', () => {
     const { monitor, provider, postMessage } = liveProvider();
     monitor.getStats.mockReturnValue({
