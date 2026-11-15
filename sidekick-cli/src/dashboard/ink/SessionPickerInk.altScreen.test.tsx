@@ -52,7 +52,7 @@ const items: SessionPickerItem[] = Array.from({ length: 6 }, (_, i) => ({
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 60));
 
-async function scrollbackErasesAfterKeys(useAltScreen: boolean): Promise<number> {
+async function renderPicker(useAltScreen: boolean): Promise<{ erases: number; output: string }> {
   const term = fakeTerminal();
   const alt = createAltScreen(term.stdout);
   if (useAltScreen) alt.enter();
@@ -68,14 +68,24 @@ async function scrollbackErasesAfterKeys(useAltScreen: boolean): Promise<number>
   await tick();
   app.unmount();
   alt.leave();
-  return term.writes.join('').split('\x1b[3J').length - 1;
+  const output = term.writes.join('');
+  return { erases: output.split('\x1b[3J').length - 1, output };
 }
+
+// In CI, Ink renders non-interactively (only the final frame, no per-frame
+// clears), so the control has nothing to measure there.
+const inkClearsFrames = !process.env.CI;
 
 describe('session picker in the alternate screen', () => {
   it('never erases the scrollback when it re-renders a full-height frame', async () => {
-    // Control: straight to the terminal, Ink's full-screen clear erases it.
-    expect(await scrollbackErasesAfterKeys(false)).toBeGreaterThan(0);
-    // Through the dashboard's alternate-screen stream, nothing does.
-    expect(await scrollbackErasesAfterKeys(true)).toBe(0);
+    if (inkClearsFrames) {
+      // Control: straight to the terminal, Ink's full-screen clear erases it.
+      expect((await renderPicker(false)).erases).toBeGreaterThan(0);
+    }
+    // Through the dashboard's alternate-screen stream, the picker still draws
+    // but nothing erases the scrollback.
+    const viaAltScreen = await renderPicker(true);
+    expect(viaAltScreen.output).toContain('session 0');
+    expect(viaAltScreen.erases).toBe(0);
   });
 });
