@@ -1,36 +1,30 @@
-export interface TabHitTarget {
-  shortcutKey: string | number;
-  title: string;
-}
+import {
+  detailTabIndexAtColumn,
+  topTabIndexAtColumn,
+  type DetailTabLayout,
+  type TopTabLayout,
+} from './tabLayout';
 
 export function sideListItemViewportHeight(contentHeight: number, itemCount: number): number {
   const safeHeight = Math.max(1, contentHeight);
   return Math.max(1, safeHeight - (itemCount > safeHeight ? 2 : 0));
 }
 
-export function topTabIndexAt(x: number, tabs: TabHitTarget[]): number | null {
-  let column = 0;
-  for (let index = 0; index < tabs.length; index++) {
-    const width = String(tabs[index].shortcutKey).length + tabs[index].title.length + 2;
-    if (x >= column && x < column + width) return index;
-    column += width;
-  }
-  return null;
+/** Top tab under column `x`, read from the same layout the tab bar renders. */
+export function topTabIndexAt(x: number, layout: TopTabLayout): number | null {
+  return topTabIndexAtColumn(x, layout);
 }
 
+/**
+ * Detail tab under screen column `x`. The detail tab bar starts where the
+ * side list ends; its spans are relative to that origin.
+ */
 export function detailTabIndexAt(
   x: number,
   sideWidth: number,
-  labels: string[],
-  activeIndex: number,
+  layout: DetailTabLayout,
 ): number | null {
-  let column = sideWidth + 1;
-  for (let index = 0; index < labels.length; index++) {
-    const width = labels[index].length + (index === activeIndex ? 3 : 2);
-    if (x >= column && x < column + width) return index;
-    column += width;
-  }
-  return null;
+  return detailTabIndexAtColumn(x - sideWidth, layout);
 }
 
 export function sideListItemIndexAt(

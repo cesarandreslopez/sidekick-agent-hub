@@ -23,6 +23,7 @@ interface ColumnData {
 export class KanbanPanel implements SidePanel {
   readonly id = 'kanban';
   readonly title = 'Kanban';
+  readonly shortTitle = 'Kanb';
   readonly shortcutKey = 3;
   readonly emptyStateHint = 'Task board populates from active sessions.';
 

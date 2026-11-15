@@ -23,7 +23,7 @@ import { TabBar } from './TabBar';
 import { SideList } from './SideList';
 import { DetailTabBar } from './DetailTabBar';
 import { DetailPane } from './DetailPane';
-import { StatusBar } from './StatusBar';
+import { StatusBar, type StatusHint } from './StatusBar';
 import { SplashOverlay } from './SplashOverlay';
 import { HelpOverlay } from './HelpOverlay';
 import { ContextMenuOverlay } from './ContextMenuOverlay';
@@ -46,6 +46,7 @@ import { visibleToasts } from './toastStack';
 import { describeDataStatus, type DataStatus } from './dataStatus';
 import type { DashboardNotice } from './notice';
 import { stripTagged, truncateTagged, wrapTaggedLines } from '../blessedText';
+import { layoutDetailTabs, layoutTopTabs } from './tabLayout';
 
 const changelogEntries = parseChangelog(changelogMd, 5);
 
@@ -56,6 +57,12 @@ const NARROW_SIDE_WIDTH = 22;
 const MIN_SCREEN_WIDTH = 60;
 const MIN_SCREEN_HEIGHT = 15;
 const WIDE_SIDE_WIDTH = 40;
+
+const LAYOUT_MODE_LABELS: Record<string, string> = {
+  normal: 'Normal',
+  expanded: 'Expanded',
+  'wide-side': 'Wide Side',
+};
 
 // ── Props ──
 
@@ -317,6 +324,28 @@ export function Dashboard({
 
   const detailPhrase = useMemo(() => getRandomPhraseBlessedTag(), [selectedItem?.id, tabIdx]);
 
+  // Tab-bar layouts, shared by the renderers and the mouse hit-testing so a
+  // click lands on the tab drawn under it at every width.
+  const topTabLayout = useMemo(
+    () =>
+      layoutTopTabs(
+        panels,
+        state.activePanelIndex,
+        columns,
+        LAYOUT_MODE_LABELS[state.layoutMode] ?? state.layoutMode,
+      ),
+    [panels, state.activePanelIndex, columns, state.layoutMode],
+  );
+  const detailTabLayout = useMemo(
+    () =>
+      layoutDetailTabs(
+        detailTabs.map((tab) => tab.label),
+        tabIdx,
+        Math.max(1, columns - sideWidth),
+      ),
+    [detailTabs, tabIdx, columns, sideWidth],
+  );
+
   // Usable detail-pane columns for the current layout: total minus the side
   // panel minus the pane's border (2) and left padding (1). This is the real
   // width — renderers told a larger one wrap every line they size to it.
@@ -414,24 +443,24 @@ export function Dashboard({
   const contextActions = state.overlay === 'context-menu' ? getContextActions() : [];
 
   // ── Build panel hints ──
-  const buildPanelHints = useCallback((): string => {
-    const parts: string[] = [];
+  const buildPanelHints = useCallback((): StatusHint[] => {
+    const hints: StatusHint[] = [];
     const bindings = panel.getKeybindings?.() || [];
     for (const b of bindings) {
       if (!b.condition || b.condition(selectedItem)) {
-        parts.push(`${b.keys[0]} ${b.label.toLowerCase().substring(0, 12)}`);
+        hints.push({ key: b.keys[0], label: b.label.toLowerCase().substring(0, 12) });
       }
     }
     if (panel.getActions().length > 0 && state.focusTarget === 'side') {
-      parts.push('x actions');
+      hints.push({ key: 'x', label: 'actions' });
     }
     if (
       ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id) &&
       state.focusTarget === 'side'
     ) {
-      parts.push('f session');
+      hints.push({ key: 'f', label: 'session' });
     }
-    return parts.length > 0 ? parts.join('  ') + '  ' : '';
+    return hints;
   }, [panel, selectedItem, state.focusTarget]);
 
   // ── Session filter toggle ──
@@ -527,7 +556,7 @@ export function Dashboard({
 
       // Row 0: TabBar
       if (y === 0) {
-        const index = topTabIndexAt(x, panels);
+        const index = topTabIndexAt(x, topTabLayout);
         if (index !== null) {
           panels[state.activePanelIndex]?.onDeactivate?.();
           dispatch({ type: 'SWITCH_PANEL', index });
@@ -554,12 +583,7 @@ export function Dashboard({
 
         // Row 1 = DetailTabBar — check for tab click
         if (y === 1 && detailTabs.length > 1) {
-          const index = detailTabIndexAt(
-            x,
-            sideWidth,
-            detailTabs.map((tab) => tab.label),
-            tabIdx,
-          );
+          const index = detailTabIndexAt(x, sideWidth, detailTabLayout);
           if (index !== null) {
             dispatch({ type: 'SET_DETAIL_TAB', index });
             return;
@@ -580,6 +604,8 @@ export function Dashboard({
       panels,
       detailTabs,
       rows,
+      topTabLayout,
+      detailTabLayout,
     ],
   );
 
@@ -634,7 +660,11 @@ export function Dashboard({
           : active.health.state === 'expired' || active.health.state === 'missing'
             ? ('red' as const)
             : ('gray' as const);
-    return { label: active.label ?? active.email ?? active.id, color };
+    return {
+      label: active.label ?? active.email ?? active.id,
+      color,
+      state: active.health.state,
+    };
   }, [accountViews, metrics.providerName]);
 
   // ── Render ──
@@ -647,18 +677,31 @@ export function Dashboard({
     return (
       <MouseProvider onMouse={handleMouse} enabled={state.mouseEnabled}>
         <Box flexDirection="column" height={rows} width={columns}>
-          <Box flexGrow={1} justifyContent="center" alignItems="center">
-            <SplashOverlay panelCount={panels.length} />
-          </Box>
+          {state.overlay === 'help' ? (
+            // Help opened from the splash replaces it (both fill the screen).
+            <HelpOverlay
+              panels={panels}
+              activePanelIndex={state.activePanelIndex}
+              scrollOffset={state.overlayScrollOffset}
+              onClampScroll={(maxOffset) => dispatch({ type: 'CLAMP_OVERLAY_SCROLL', maxOffset })}
+            />
+          ) : (
+            <Box flexGrow={1} justifyContent="center" alignItems="center">
+              <SplashOverlay panelCount={panels.length} />
+            </Box>
+          )}
           <StatusBar
+            columns={columns}
             eventCount={0}
             focusTarget="side"
-            panelHints=""
+            panelHints={[]}
             sessionFilter={null}
             filterString=""
             mouseEnabled={state.mouseEnabled}
             dataBadge={dataStatus ? describeDataStatus(dataStatus, Date.now()) : null}
             activeAccount={activeAccountBadge}
+            isPinned={isPinned}
+            hasPendingSession={Boolean(pendingSessionPath)}
           />
           {state.overlay === 'accounts' && (
             <AccountsOverlay views={accountViews ?? []} selectedIndex={state.contextMenuIndex} />
@@ -677,11 +720,7 @@ export function Dashboard({
       <Box flexDirection="column" height={rows} width={columns}>
         {/* Tab bar (hidden when full-screen overlay is active) */}
         {state.overlay !== 'help' && state.overlay !== 'changelog' && (
-          <TabBar
-            panels={panels}
-            activeIndex={state.activePanelIndex}
-            layoutMode={state.layoutMode}
-          />
+          <TabBar layout={topTabLayout} />
         )}
 
         {/* Main content area (hidden when full-screen overlay is active) */}
@@ -708,7 +747,7 @@ export function Dashboard({
 
             {/* Detail area */}
             <Box flexDirection="column" flexGrow={1} minWidth={0} overflow="hidden">
-              <DetailTabBar tabs={detailTabs} activeIndex={tabIdx} />
+              <DetailTabBar layout={detailTabLayout} />
               <DetailPane
                 rows={detailLines}
                 scrollOffset={state.detailScrollOffset}
@@ -739,6 +778,7 @@ export function Dashboard({
 
         {/* Status bar — always visible */}
         <StatusBar
+          columns={columns}
           eventCount={metrics.eventCount}
           providerName={metrics.providerName}
           permissionMode={metrics.permissionMode}
@@ -754,6 +794,8 @@ export function Dashboard({
           dataBadge={dataStatus ? describeDataStatus(dataStatus, Date.now()) : null}
           mouseEnabled={state.mouseEnabled}
           activeAccount={activeAccountBadge}
+          isPinned={isPinned}
+          hasPendingSession={Boolean(pendingSessionPath)}
         />
 
         {/* Inline overlays (render on top of content) */}

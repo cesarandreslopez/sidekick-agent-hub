@@ -32,8 +32,10 @@ export interface KeyBinding {
   label: string;
   /** Category for help grouping ("navigation", "actions", "general"). */
   category?: string;
-  /** Handler function. */
-  handler: (item?: PanelItem) => void;
+  /** Where the key works, shown in help when it is conditional (e.g. "Mind Map tab"). */
+  context?: string;
+  /** Handler function. Return a string to show it as a toast notification. */
+  handler: (item?: PanelItem) => string | void;
   /** If provided, binding only active when this returns true. */
   condition?: (item?: PanelItem) => boolean;
 }
@@ -70,6 +72,8 @@ export interface SidePanel {
   readonly id: string;
   /** Display title shown in tab bar. */
   readonly title: string;
+  /** Abbreviated title for the tab bar on narrow terminals ("Sess", "Evt"). */
+  readonly shortTitle?: string;
   /** Number key shortcut (1-9). */
   readonly shortcutKey: number;
   /** Detail tabs for the selected item. */

@@ -30,6 +30,7 @@ const EVENT_TYPE_BADGES: Record<string, string> = {
 export class EventStreamPanel implements SidePanel {
   readonly id = 'events';
   readonly title = 'Events';
+  readonly shortTitle = 'Evt';
   readonly shortcutKey = 7;
   readonly emptyStateHint = 'Events will appear here as the session runs.';
 

@@ -43,6 +43,7 @@ const SOURCE_CYCLE: (PlanSource | 'all')[] = ['all', 'claude-code', 'opencode', 
 export class PlansPanel implements SidePanel {
   readonly id = 'plans';
   readonly title = 'Plans';
+  readonly shortTitle = 'Plan';
   readonly shortcutKey = 6;
   readonly emptyStateHint = 'Plans created by your agent appear here.';
 

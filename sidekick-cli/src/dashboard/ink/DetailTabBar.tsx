@@ -1,37 +1,41 @@
 /**
- * Detail tab bar showing sub-tabs for the selected panel item.
- * Active tab highlighted with magenta.
+ * Detail tab bar showing sub-tabs for the selected panel item. The layout
+ * comes from `layoutDetailTabs` (shared with mouse hit-testing): every tab
+ * when they fit, otherwise the active tab and its position.
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { DetailTab } from '../panels/types';
+import type { DetailTabLayout } from './tabLayout';
 
 interface DetailTabBarProps {
-  tabs: DetailTab[];
-  activeIndex: number;
+  layout: DetailTabLayout;
 }
 
-export function DetailTabBar({ tabs, activeIndex }: DetailTabBarProps): React.ReactElement {
-  if (tabs.length === 0) {
+export function DetailTabBar({ layout }: DetailTabBarProps): React.ReactElement {
+  if (layout.spans.length === 0) {
     return <Box height={1} />;
   }
 
   return (
-    <Box height={1}>
-      <Text> </Text>
-      {tabs.map((tab, i) => (
-        <Box key={tab.label} marginRight={1}>
-          {i === activeIndex ? (
-            <Text bold color="magenta">
-              ▸ {tab.label}
-            </Text>
-          ) : (
-            <Text color="gray"> {tab.label}</Text>
-          )}
-        </Box>
-      ))}
-      {tabs.length > 1 && <Text color="gray"> ← [ ] →</Text>}
+    <Box height={1} overflow="hidden">
+      <Text wrap="truncate-end">
+        {' '}
+        {layout.spans.map((span, i) => (
+          <React.Fragment key={span.index}>
+            {i > 0 ? ' ' : ''}
+            {span.active ? (
+              <Text bold color="magenta">
+                {span.text}
+              </Text>
+            ) : (
+              <Text dimColor>{span.text}</Text>
+            )}
+          </React.Fragment>
+        ))}
+        {layout.compact ? <Text dimColor>{`  ${layout.position}`}</Text> : null}
+        {layout.hint ? <Text dimColor>{`  ${layout.hint}`}</Text> : null}
+      </Text>
     </Box>
   );
 }

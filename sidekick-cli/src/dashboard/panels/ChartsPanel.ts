@@ -24,6 +24,7 @@ import {
 export class ChartsPanel implements SidePanel {
   readonly id = 'charts';
   readonly title = 'Charts';
+  readonly shortTitle = 'Chrt';
   readonly shortcutKey = 8;
   readonly emptyStateHint = 'Charts will appear as data accumulates.';
 

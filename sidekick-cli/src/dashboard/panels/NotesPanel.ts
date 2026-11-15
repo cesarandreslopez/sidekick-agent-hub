@@ -19,6 +19,7 @@ const NOTE_ICON: Record<string, string> = {
 export class NotesPanel implements SidePanel {
   readonly id = 'notes';
   readonly title = 'Notes';
+  readonly shortTitle = 'Note';
   readonly shortcutKey = 4;
   readonly emptyStateHint = 'Knowledge notes saved by your agent appear here.';
 

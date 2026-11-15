@@ -24,6 +24,7 @@ const STATUS_ICON: Record<string, string> = {
 export class TasksPanel implements SidePanel {
   readonly id = 'tasks';
   readonly title = 'Tasks';
+  readonly shortTitle = 'Task';
   readonly shortcutKey = 2;
   readonly emptyStateHint = 'Tasks appear as your agent works.';
 

@@ -12,6 +12,7 @@ import { wordWrap, detailWidth } from '../formatters';
 export class DecisionsPanel implements SidePanel {
   readonly id = 'decisions';
   readonly title = 'Decisions';
+  readonly shortTitle = 'Dec';
   readonly shortcutKey = 5;
   readonly emptyStateHint = 'Decisions logged by your agent show up here.';
 

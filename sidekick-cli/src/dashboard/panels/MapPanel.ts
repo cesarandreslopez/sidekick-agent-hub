@@ -54,6 +54,7 @@ function grey(text: string): string {
 export class MapPanel implements SidePanel {
   readonly id = 'map';
   readonly title = 'Map';
+  readonly shortTitle = 'Map';
   readonly shortcutKey = 9;
   readonly emptyStateHint = 'The activity map appears once the session is read.';
 

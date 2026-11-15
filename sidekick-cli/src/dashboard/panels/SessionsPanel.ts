@@ -102,6 +102,7 @@ const MINDMAP_FILTERS: MindMapFilter[] = [
 export class SessionsPanel implements SidePanel {
   readonly id = 'sessions';
   readonly title = 'Sessions';
+  readonly shortTitle = 'Sess';
   readonly shortcutKey = 1;
   readonly emptyStateHint = 'Start an agent session in another terminal.';
   private mindMapView: MindMapView = 'tree';
