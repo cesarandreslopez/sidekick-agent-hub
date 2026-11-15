@@ -500,7 +500,7 @@ function initializeDOM() {
       <div class="empty-state" id="empty-state">
         <div class="empty-state-icon">\u26A0</div>
         <div class="empty-state-text">Ready to diagnose</div>
-        <div class="empty-state-hint">Put the cursor on an error or warning in the editor, press <kbd>Ctrl+.</kbd> (<kbd>Cmd+.</kbd> on macOS), and choose "Explain Error" or "Fix Error".</div>
+        <div class="empty-state-hint">Put the cursor on an error or warning in the editor, then press <kbd>Ctrl+.</kbd> (<kbd>Cmd+.</kbd> on macOS) and choose "Explain Error" or "Fix Error", or right-click and choose <kbd>Sidekick › Explain Error with AI</kbd>.</div>
       </div>
     </main>
   `;
