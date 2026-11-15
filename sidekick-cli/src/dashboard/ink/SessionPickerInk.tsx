@@ -279,6 +279,8 @@ export async function showSessionPicker(
   provider: SessionProviderBase,
   workspacePath: string,
   additionalProviders?: SessionProviderBase[],
+  /** Stream to render into, e.g. the dashboard's alternate-screen stream. */
+  options: { stdout?: NodeJS.WriteStream } = {},
 ): Promise<SessionPickerResult> {
   const { render } = await import('ink');
 
@@ -303,6 +305,7 @@ export async function showSessionPicker(
           resolve({ sessionPath: selectedPath, providerId: selected?.providerId });
         }}
       />,
+      options.stdout ? { stdout: options.stdout } : undefined,
     );
 
     instance

@@ -15,6 +15,14 @@
  * screen instead of vanishing with the alternate one).
  */
 
+/** Signals after which a full-screen TUI must unmount and restore the main screen. */
+export const DASHBOARD_EXIT_SIGNALS: readonly NodeJS.Signals[] = [
+  'SIGINT',
+  'SIGTERM',
+  'SIGHUP',
+  'SIGQUIT',
+];
+
 const ENTER = '\x1b[?1049h\x1b[H';
 const LEAVE = '\x1b[?1049l';
 // eslint-disable-next-line no-control-regex

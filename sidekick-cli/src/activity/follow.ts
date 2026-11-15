@@ -18,7 +18,7 @@ import {
 } from 'sidekick-shared';
 import type { SessionEvent, SessionProviderBase } from 'sidekick-shared';
 import { createDashboardSignalHandler } from '../commands/dashboardLifecycle';
-import { createAltScreen } from '../dashboard/altScreen';
+import { DASHBOARD_EXIT_SIGNALS, createAltScreen } from '../dashboard/altScreen';
 import { buildFollowFrame } from './frame';
 import type { FollowMode, FollowPanel } from './frame';
 import { LiveActivity } from './liveActivity';
@@ -316,11 +316,9 @@ export async function runMapFollow(options: MapFollowOptions): Promise<void> {
     instance?.unmount();
     altScreen.leave();
   });
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
+  for (const signal of DASHBOARD_EXIT_SIGNALS) process.once(signal, onSignal);
   await instance.waitUntilExit();
   altScreen.leave();
-  process.removeListener('SIGINT', onSignal);
-  process.removeListener('SIGTERM', onSignal);
+  for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
   cleanup();
 }

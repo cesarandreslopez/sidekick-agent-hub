@@ -70,7 +70,11 @@ import { ChartsPanel } from '../dashboard/panels/ChartsPanel';
 import { MapPanel } from '../dashboard/panels/MapPanel';
 import type { SidePanel } from '../dashboard/panels/types';
 import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
-import { createAltScreen } from '../dashboard/altScreen';
+import {
+  DASHBOARD_EXIT_SIGNALS,
+  createAltScreen,
+  type AltScreenSession,
+} from '../dashboard/altScreen';
 import { Dashboard } from '../dashboard/ink/Dashboard';
 import { disableMouse } from '../dashboard/ink/mouse';
 import { checkInteractivePreflight, currentTerminalCapabilities } from './interactivePreflight';
@@ -218,6 +222,15 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   const workspacePath = globalOpts.project || process.cwd();
 
   // ── Session picker (multi-provider) ──
+  // The picker fills the terminal too, so it runs in the same alternate screen
+  // as the dashboard; otherwise Ink's per-frame clear erases the scrollback.
+  let altScreen: AltScreenSession | null = null;
+  // Until the dashboard installs its own handlers, a signal must still restore
+  // the main screen once the picker has entered the alternate one.
+  const leaveOnEarlySignal = () => {
+    altScreen?.leave();
+    process.exit(0);
+  };
   let sessionId: string | undefined = opts.session;
   let replay = !!opts.replay;
   let activeProvider = provider;
@@ -243,11 +256,17 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         const pickerAdditionalProviders = providerIssue
           ? healthyAdditionalProviders.slice(1)
           : healthyAdditionalProviders;
+        altScreen = createAltScreen();
+        altScreen.enter();
+        for (const signal of DASHBOARD_EXIT_SIGNALS) process.once(signal, leaveOnEarlySignal);
         const result = await showSessionPicker(
           pickerProvider,
           workspacePath,
           pickerAdditionalProviders,
+          { stdout: altScreen.stdout },
         );
+        // Clear the picker's last frame while the dashboard loads.
+        if (altScreen.active) altScreen.stdout.write('\x1b[2J\x1b[H');
         if (result.sessionPath) {
           sessionId = path.basename(result.sessionPath, path.extname(result.sessionPath));
           replay = true;
@@ -281,6 +300,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   const activeProviderIssue = getProviderRuntimeIssue(activeProvider);
   if (activeProviderIssue) {
+    // Print on the main screen, not into the alternate one that is about to go.
+    for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, leaveOnEarlySignal);
+    altScreen?.leave();
     console.error(activeProviderIssue);
     process.exitCode = 1;
     return;
@@ -767,10 +789,12 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Full-screen in the alternate screen: the user's scrollback survives (Ink
   // would otherwise erase it on every frame) and is restored on exit.
-  const altScreen = createAltScreen();
-  altScreen.enter();
+  for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, leaveOnEarlySignal);
+  const screen = altScreen ?? createAltScreen();
+  altScreen = screen;
+  screen.enter();
   const instance = render(React.createElement(Dashboard, dashboardProps()), {
-    stdout: altScreen.stdout,
+    stdout: screen.stdout,
   });
   renderReady = true;
 
@@ -963,10 +987,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   process.on('exit', () => disableMouse());
   const onSignal = createDashboardSignalHandler(cleanup, () => {
     instance.unmount();
-    altScreen.leave();
+    screen.leave();
   });
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
+  // SIGHUP (terminal closed) and SIGQUIT must restore the main screen too.
+  for (const signal of DASHBOARD_EXIT_SIGNALS) process.once(signal, onSignal);
 
   // Create watcher
   let watcher: ReturnType<typeof createWatcher>['watcher'] | null = null;
@@ -1069,8 +1093,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // Wait for exit
   await instance.waitUntilExit();
   altScreen.leave();
-  process.removeListener('SIGINT', onSignal);
-  process.removeListener('SIGTERM', onSignal);
+  for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
   cleanup();
   process.exit(0);
 }
