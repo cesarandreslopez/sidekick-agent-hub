@@ -12,6 +12,14 @@ describe('formatTokenCount', () => {
     expect(formatTokenCount(1_500_000)).toBe('1.5M');
   });
 
+  it('formats billions and rolls a rounded boundary up to the next unit', () => {
+    expect(formatTokenCount(204_395_900_000)).toBe('204.4B');
+    expect(formatTokenCount(999_950)).toBe('1.0M');
+    expect(formatTokenCount(999_999_950)).toBe('1.0B');
+    expect(formatTokenCount(-2_500_000_000)).toBe('-2.5B');
+    expect(formatTokenCount(999_949)).toBe('999.9k');
+  });
+
   it('supports uppercase thousands for terminal consumers', () => {
     expect(formatTokenCount(12_500, { suffixCase: 'upper' })).toBe('12.5K');
   });

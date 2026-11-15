@@ -59,16 +59,30 @@ export function formatCost(cost: number | null | undefined, options?: FormatCost
   return source === 'estimated' ? `${formatted} (est.)` : formatted;
 }
 
-/** Format a token count with compact `k` / `M` suffixes. */
+/** Format a token count with compact `k` / `M` / `B` suffixes. */
 export function formatTokenCount(value: number, options: FormatTokenCountOptions = {}): string {
   if (!Number.isFinite(value)) return '0';
   const n = Math.trunc(value);
   const sign = n < 0 ? '-' : '';
   const abs = Math.abs(n);
   const thousandsSuffix = options.suffixCase === 'upper' ? 'K' : 'k';
+  const units: ReadonlyArray<readonly [number, string]> = [
+    [1_000_000_000, 'B'],
+    [1_000_000, 'M'],
+    [1_000, thousandsSuffix],
+  ];
 
-  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(1)}${thousandsSuffix}`;
+  for (let i = 0; i < units.length; i++) {
+    const [size, suffix] = units[i];
+    if (abs < size) continue;
+    const scaled = (abs / size).toFixed(1);
+    // 999,950 rounds to "1000.0k"; show it as the next unit up instead.
+    if (scaled === '1000.0' && i > 0) {
+      const [nextSize, nextSuffix] = units[i - 1];
+      return `${sign}${(abs / nextSize).toFixed(1)}${nextSuffix}`;
+    }
+    return `${sign}${scaled}${suffix}`;
+  }
   return `${n}`;
 }
 
