@@ -15,6 +15,23 @@ import {
 } from '../SessionPickerHelpers';
 import { BRAND_INLINE, LOGO_ART } from '../branding';
 import { parseBlessedTags } from './parseBlessedTags';
+import { displayWidth } from '../blessedText';
+
+/** Cut to `max` terminal columns (wide characters count as two). */
+function truncateToWidth(text: string, max: number): string {
+  if (displayWidth(text) <= max) return text;
+  let out = '';
+  for (const ch of Array.from(text)) {
+    if (displayWidth(out + ch) > max - 3) break;
+    out += ch;
+  }
+  return out + '...';
+}
+
+/** Pad to `width` terminal columns. */
+function padToWidth(text: string, width: number): string {
+  return text + ' '.repeat(Math.max(0, width - displayWidth(text)));
+}
 
 /** Provider display names for section headers. */
 const PROVIDER_NAMES: Record<string, string> = {
@@ -126,13 +143,13 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
     const dot = item.isActive ? '\u25CF' : '\u25CB';
     const dotColor = item.isActive ? 'green' : undefined;
     const badge = item.providerId ? PROVIDER_BADGES[item.providerId] : null;
-    const truncLabel = item.label.length > 40 ? item.label.substring(0, 37) + '...' : item.label;
+    const truncLabel = padToWidth(truncateToWidth(item.label, 40), 40);
 
     return (
       <Box key={item.sessionPath}>
         <Text inverse={isSelected}>
           {badge && <Text color={badge.color}>[{badge.badge}]</Text>}{' '}
-          <Text color={dotColor}>{dot}</Text> {truncLabel.padEnd(40)}{' '}
+          <Text color={dotColor}>{dot}</Text> {truncLabel}{' '}
           <Text dimColor>{item.age.padEnd(9)}</Text> <Text dimColor>{item.sessionId}</Text>
           {item.isActive ? <Text color="green"> LIVE</Text> : ''}
         </Text>

@@ -114,6 +114,7 @@ export function mapLabelsOption(): Option {
 export function tasksStatusOption(): Option {
   return new Option('--status <status>', 'Filter by status (default: all)').choices([
     'pending',
+    'in_progress',
     'completed',
     'all',
   ]);

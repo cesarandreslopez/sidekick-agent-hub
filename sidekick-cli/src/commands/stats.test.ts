@@ -79,5 +79,7 @@ describe('statsAction model usage', () => {
     expect(out).not.toContain('claude-opus-5-5-20261001');
     expect(out).not.toContain('<synthetic>');
     expect(out).not.toContain('unpriced');
+    // The total inherits the partially priced row.
+    expect(out).toMatch(/Total cost:\s+\$1\.00 \(partial\)/);
   });
 });

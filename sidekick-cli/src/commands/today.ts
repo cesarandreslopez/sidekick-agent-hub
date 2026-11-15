@@ -10,6 +10,7 @@ import {
   readQuotaSnapshot,
   resolveProjectIdentity,
   summarizeTokens,
+  formatTokenCount,
 } from 'sidekick-shared';
 import type { DailyData } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
@@ -96,8 +97,9 @@ export async function todayAction(_opts: Record<string, unknown>, cmd: Command):
     const lines = [`Sidekick Today — ${brief.date}`, brief.quota, brief.peakHours, ''];
     if (brief.yesterday) {
       const tokens = summarizeTokens(brief.yesterday.tokens).total;
+      const sessions = brief.yesterday.sessionCount;
       lines.push(
-        `Yesterday: ${brief.yesterday.sessionCount} sessions · ${tokens.toLocaleString()} tokens · ${formatCost(brief.yesterday.totalCost)}`,
+        `Yesterday: ${sessions} session${sessions === 1 ? '' : 's'} · ${formatTokenCount(tokens)} tokens · ${formatCost(brief.yesterday.totalCost)}`,
       );
     } else {
       lines.push('Yesterday: no recorded activity');

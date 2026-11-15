@@ -7,7 +7,14 @@ import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext 
 import type { DashboardMetrics } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import type { KnowledgeNote } from 'sidekick-shared';
-import { shortenPath, wordWrap, detailWidth } from '../formatters';
+import { escapeBlessed, shortenPath, wordWrap, detailWidth } from '../formatters';
+
+/** Notes that should not be trusted as-is read differently from active ones. */
+const STATUS_BADGE: Record<string, string> = {
+  needs_review: '{yellow-fg}[review]{/yellow-fg}',
+  stale: '{yellow-fg}[stale]{/yellow-fg}',
+  obsolete: '{grey-fg}[obsolete]{/grey-fg}',
+};
 
 const NOTE_ICON: Record<string, string> = {
   gotcha: '{red-fg}!{/red-fg}',
@@ -31,10 +38,12 @@ export class NotesPanel implements SidePanel {
   getItems(_metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
     return staticData.notes.map((n, i) => {
       const icon = NOTE_ICON[n.noteType] || ' ';
-      const preview = n.content.length > 40 ? n.content.substring(0, 37) + '...' : n.content;
+      const text = n.title?.trim() || n.content;
+      const preview = text.length > 40 ? text.substring(0, 37) + '...' : text;
+      const badge = STATUS_BADGE[n.status] ? `${STATUS_BADGE[n.status]} ` : '';
       return {
         id: `note-${i}`,
-        label: `${icon} ${preview}`,
+        label: `${icon} ${badge}${escapeBlessed(preview)}`,
         sortKey: i,
         data: n,
       };
@@ -47,7 +56,7 @@ export class NotesPanel implements SidePanel {
 
   getSearchableText(item: PanelItem): string {
     const n = item.data as KnowledgeNote;
-    return [n.content, n.noteType, n.filePath, ...(n.tags || [])].join(' ');
+    return [n.title ?? '', n.content, n.noteType, n.status, n.filePath, ...(n.tags || [])].join(' ');
   }
 
   // ── Detail renderers ──
@@ -56,9 +65,10 @@ export class NotesPanel implements SidePanel {
     const n = item.data as KnowledgeNote;
     const icon = NOTE_ICON[n.noteType] || '';
     const lines = [
-      `{bold}[${n.noteType}]{/bold} ${icon}`,
+      `{bold}[${n.noteType}]{/bold} ${icon}${n.title ? ` {bold}${escapeBlessed(n.title)}{/bold}` : ''}`,
       '',
       `{bold}File:{/bold}       ${n.filePath || '(global)'}`,
+      `{bold}Status:{/bold}     ${STATUS_BADGE[n.status] ?? 'active'}`,
       `{bold}Importance:{/bold} ${n.importance || 'normal'}`,
       '',
       '{bold}Content{/bold}',

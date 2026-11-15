@@ -13,16 +13,21 @@ import {
   FAILING_TOOL_TREND_ARROWS,
   summarizeTokens,
   TOKEN_TOTAL_LABEL,
+  formatTokenCount,
 } from 'sidekick-shared';
 import type { FailingToolTrendRow } from 'sidekick-shared';
 import type { DailyData, HistoricalDataStore, TopFailingTool } from 'sidekick-shared';
 import { toCsv, type CsvColumn } from '../csv';
 import { mergeModelUsage } from '../modelUsage';
 
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return n.toLocaleString();
+/** Token counts use the shared compact format (12.3k, 4.5M), as everywhere else. */
+function formatTokens(n: number): string {
+  return formatTokenCount(n);
+}
+
+/** Counts of things (sessions, messages, calls, lines) stay exact. */
+function formatCount(n: number): string {
+  return n.toLocaleString('en-US');
 }
 
 function printStatsSummary(
@@ -36,29 +41,44 @@ function printStatsSummary(
   process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
 
   const totalTokens = summarizeTokens(at.tokens).total;
+  // The total inherits the models' pricing gaps: rows marked "—" or
+  // "partial" below mean it under-counts.
+  const pricedModels = mergeModelUsage(
+    (at.modelUsage ?? []).filter((usage) => usage.model !== SYNTHETIC_MODEL),
+  );
+  const unpricedCount = pricedModels.filter((m) => m.priced === false).length;
+  const costIsPartial = unpricedCount > 0 || pricedModels.some((m) => m.partiallyPriced);
   process.stdout.write(
-    `  ${chalk.dim('Sessions:')}       ${chalk.bold(formatNumber(at.sessionCount))}\n`,
+    `  ${chalk.dim('Sessions:')}       ${chalk.bold(formatCount(at.sessionCount))}\n`,
   );
   process.stdout.write(
-    `  ${chalk.dim('Messages:')}       ${chalk.bold(formatNumber(at.messageCount))}\n`,
+    `  ${chalk.dim('Messages:')}       ${chalk.bold(formatCount(at.messageCount))}\n`,
   );
   process.stdout.write(
-    `  ${chalk.dim(`${TOKEN_TOTAL_LABEL}:`)} ${chalk.bold(formatNumber(totalTokens))}\n`,
+    `  ${chalk.dim(`${TOKEN_TOTAL_LABEL}:`)} ${chalk.bold(formatTokens(totalTokens))}\n`,
   );
   process.stdout.write(
-    `  ${chalk.dim('  Input:')}         ${formatNumber(at.tokens.inputTokens)}\n`,
+    `  ${chalk.dim('  Input:')}         ${formatTokens(at.tokens.inputTokens)}\n`,
   );
   process.stdout.write(
-    `  ${chalk.dim('  Output:')}        ${formatNumber(at.tokens.outputTokens)}\n`,
+    `  ${chalk.dim('  Output:')}        ${formatTokens(at.tokens.outputTokens)}\n`,
   );
   process.stdout.write(
-    `  ${chalk.dim('  Cache write:')}   ${formatNumber(at.tokens.cacheWriteTokens)}\n`,
+    `  ${chalk.dim('  Cache write:')}   ${formatTokens(at.tokens.cacheWriteTokens)}\n`,
   );
   process.stdout.write(
-    `  ${chalk.dim('  Cache read:')}    ${formatNumber(at.tokens.cacheReadTokens)}\n`,
+    `  ${chalk.dim('  Cache read:')}    ${formatTokens(at.tokens.cacheReadTokens)}\n`,
   );
   process.stdout.write(
-    `  ${chalk.dim('Total cost:')}     ${chalk.green(formatCost(at.totalCost))}\n`,
+    `  ${chalk.dim('Total cost:')}     ${chalk.green(formatCost(at.totalCost))}${
+      costIsPartial
+        ? chalk.yellow(
+            unpricedCount > 0
+              ? ` (partial — ${unpricedCount} model${unpricedCount === 1 ? '' : 's'} unpriced)`
+              : ' (partial)',
+          )
+        : ''
+    }\n`,
   );
   process.stdout.write(`  ${chalk.dim('Period:')}         ${at.firstDate} — ${at.lastDate}\n`);
   const recordedSessions = history.sessions ?? [];
@@ -69,7 +89,7 @@ function printStatsSummary(
   const changedLineCost = recordedSessions.reduce((sum, session) => sum + session.totalCost, 0);
   if (changedLines > 0) {
     process.stdout.write(
-      `  ${chalk.dim('Code impact:')}    ${formatCost(changedLineCost / changedLines)} per changed line (${formatNumber(changedLines)} lines)\n`,
+      `  ${chalk.dim('Code impact:')}    ${formatCost(changedLineCost / changedLines)} per changed line (${formatCount(changedLines)} lines)\n`,
     );
   }
   process.stdout.write('\n');
@@ -99,7 +119,7 @@ function printStatsSummary(
         costStr = chalk.dim(` (${formatCost(m.cost)})`);
       }
       process.stdout.write(
-        `  ${chalk.cyan(m.model.padEnd(30))} ${formatNumber(m.calls).padStart(8)} calls${costStr}\n`,
+        `  ${chalk.cyan(m.model.padEnd(30))} ${formatCount(m.calls).padStart(8)} calls${costStr}\n`,
       );
     }
     if (unpricedModels.length > 0) {
@@ -123,7 +143,7 @@ function printStatsSummary(
     for (const t of sorted) {
       const failStr = t.failureCount > 0 ? chalk.red(` (${t.failureCount} failed)`) : '';
       process.stdout.write(
-        `  ${chalk.yellow(t.tool.padEnd(30))} ${formatNumber(t.calls).padStart(8)} calls${failStr}\n`,
+        `  ${chalk.yellow(t.tool.padEnd(30))} ${formatCount(t.calls).padStart(8)} calls${failStr}\n`,
       );
     }
     process.stdout.write('\n');
@@ -158,7 +178,7 @@ function printStatsSummary(
         `  ${day.date.padEnd(14)}` +
           `${String(day.sessionCount).padStart(10)}` +
           `${String(day.messageCount).padStart(10)}` +
-          `${formatNumber(tokens).padStart(12)}` +
+          `${formatTokens(tokens).padStart(12)}` +
           `${formatCost(day.totalCost).padStart(10)}\n`,
       );
     }
@@ -241,7 +261,10 @@ export async function statsAction(_opts: Record<string, unknown>, cmd: Command):
         process.stdout.write(toCsv([], DAILY_CSV_COLUMNS));
       } else {
         process.stdout.write(chalk.dim('No historical data found.\n'));
-        process.stdout.write(chalk.dim('Run some sessions with Sidekick to accumulate stats.\n'));
+        process.stdout.write(chalk.dim('Run some sessions with Sidekick to accumulate stats,\n'));
+        process.stdout.write(
+          chalk.dim('or run "sidekick import" to build history from existing session logs.\n'),
+        );
         process.stdout.write(
           chalk.dim('Run "sidekick daily" for usage computed straight from session logs.\n'),
         );

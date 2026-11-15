@@ -47,7 +47,7 @@ export class KanbanPanel implements SidePanel {
       },
       {
         id: 'col-active',
-        label: `{green-fg}\u2192{/green-fg} Active (${active.length})`,
+        label: `{green-fg}\u2192{/green-fg} In Progress (${active.length})`,
         sortKey: 1,
         data: { status: 'in_progress', tasks: active } as ColumnData,
       },
@@ -82,7 +82,7 @@ export class KanbanPanel implements SidePanel {
 
     const statusLabel =
       col.status === 'in_progress'
-        ? 'Active'
+        ? 'In Progress'
         : col.status.charAt(0).toUpperCase() + col.status.slice(1);
     lines.push(`{bold}${statusLabel}{/bold} (${col.tasks.length} tasks)`);
     lines.push('');
@@ -102,6 +102,7 @@ export class KanbanPanel implements SidePanel {
       if (t.toolCallCount > 0) details.push(`${t.toolCallCount} tool calls`);
       if (t.activeForm && t.status === 'in_progress')
         details.push(`{green-fg}${t.activeForm}{/green-fg}`);
+      if (t.agentState) details.push(`{yellow-fg}${t.agentState}{/yellow-fg}`);
 
       if (details.length > 0) {
         lines.push(`    ${details.join('  ')}`);

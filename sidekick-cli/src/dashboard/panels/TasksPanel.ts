@@ -15,6 +15,12 @@ const STATUS_SORT: Record<string, number> = {
   completed: 2,
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  in_progress: 'In Progress',
+  pending: 'Pending',
+  completed: 'Completed',
+};
+
 const STATUS_ICON: Record<string, string> = {
   in_progress: '{green-fg}\u2192{/green-fg}',
   pending: '{yellow-fg}\u25CB{/yellow-fg}',
@@ -62,8 +68,11 @@ export class TasksPanel implements SidePanel {
     const lines = [
       `{bold}${wordWrap(`#${t.taskId}: ${t.subject}`, w)}{/bold}`,
       '',
-      `{bold}Status:{/bold}      ${STATUS_ICON[t.status] || ''} ${t.status}`,
+      `{bold}Status:{/bold}      ${STATUS_ICON[t.status] || ''} ${STATUS_LABEL[t.status] ?? t.status}`,
     ];
+    // Subagent tasks: how the agent reads now, when that is more than
+    // running or completed (finished without a report, stopped, failed...).
+    if (t.agentState) lines.push(`{bold}Agent:{/bold}       {yellow-fg}${t.agentState}{/yellow-fg}`);
 
     if (t.subagentType) lines.push(`{bold}Subagent:{/bold}    ${t.subagentType}`);
     if (t.isGoalGate) lines.push(`{bold}Goal Gate:{/bold}   {red-fg}\u2691 yes{/red-fg}`);

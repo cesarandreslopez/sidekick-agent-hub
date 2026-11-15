@@ -6,6 +6,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { useTerminalSize } from './useTerminalSize';
+import { displayWidth } from '../blessedText';
 
 const SEVERITY_COLOR: Record<string, string> = {
   error: 'red',
@@ -36,13 +37,20 @@ export function ToastNotification({ toast, row = 0 }: ToastNotificationProps): R
   const color = SEVERITY_COLOR[toast.severity] || 'cyan';
   const icon = SEVERITY_ICON[toast.severity] || '\u25CF';
   const maxMsg = Math.max(16, Math.min(56, columns - 10));
-  const truncMsg =
-    toast.message.length > maxMsg ? toast.message.substring(0, maxMsg - 3) + '...' : toast.message;
+  let truncMsg = toast.message;
+  if (displayWidth(truncMsg) > maxMsg) {
+    let cut = '';
+    for (const ch of Array.from(truncMsg)) {
+      if (displayWidth(cut + ch) > maxMsg - 3) break;
+      cut += ch;
+    }
+    truncMsg = cut + '...';
+  }
 
   return (
     <Box
       position="absolute"
-      marginLeft={Math.max(0, columns - truncMsg.length - 8)}
+      marginLeft={Math.max(0, columns - displayWidth(truncMsg) - 8)}
       marginTop={row * 3}
       borderStyle="single"
       borderColor={color}

@@ -14,6 +14,13 @@ const STATUS_COLORS: Record<string, (s: string) => string> = {
   deleted: chalk.gray,
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Pending',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  deleted: 'Deleted',
+};
+
 const STATUS_ICONS: Record<string, string> = {
   pending: '○',
   in_progress: '◑',
@@ -42,7 +49,7 @@ function printTasksTable(tasks: PersistedTask[]): void {
     process.stdout.write(`${colorFn(icon)} ${chalk.bold(task.subject)}\n`);
 
     const meta: string[] = [];
-    meta.push(colorFn(task.status));
+    meta.push(colorFn(STATUS_LABELS[task.status] ?? task.status));
     meta.push(chalk.dim(`updated ${formatDate(task.updatedAt)}`));
     if (task.toolCallCount > 0) {
       meta.push(chalk.dim(`${task.toolCallCount} tool calls`));
@@ -76,9 +83,14 @@ export async function tasksAction(_opts: Record<string, unknown>, cmd: Command):
   const statusFilter: string = (opts.status as string) || 'all';
 
   try {
-    const tasks = await readTasks(resolveProjectIdentity(workspacePath), {
-      status: statusFilter as 'pending' | 'completed' | 'all',
-    });
+    // in_progress is filtered here: the shared reader's option names the
+    // statuses it was written for.
+    const tasks = (
+      await readTasks(resolveProjectIdentity(workspacePath), {
+        status:
+          statusFilter === 'in_progress' ? 'all' : (statusFilter as 'pending' | 'completed' | 'all'),
+      })
+    ).filter((task) => statusFilter !== 'in_progress' || task.status === 'in_progress');
 
     if (jsonOutput) {
       process.stdout.write(JSON.stringify(tasks, null, 2) + '\n');
