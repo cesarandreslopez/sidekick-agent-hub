@@ -266,8 +266,9 @@ export class TempFilesTreeProvider
       filePaths.push(...files);
     }
 
-    // Output redirection: ... > file or ... >> file
-    const redirectMatch = command.match(/>{1,2}\s*([^\s|&;]+)/g);
+    // Output redirection: ... > file or ... >> file. The lookbehind skips
+    // arrows such as `=>` and `->` inside inline code.
+    const redirectMatch = command.match(/(?<![=\-<>])>{1,2}\s*([^\s|&;'"`)]+)/g);
     if (redirectMatch) {
       for (const match of redirectMatch) {
         const file = match.replace(/^>{1,2}\s*/, '').trim();
@@ -297,19 +298,8 @@ export class TempFilesTreeProvider
       }
     }
 
-    // mkdir command: mkdir [-p] dir1 dir2 ...
-    const mkdirMatch = command.match(/^\s*mkdir\s+(.+)$/);
-    if (mkdirMatch) {
-      const args = this.parseBashArgs(mkdirMatch[1]).filter((arg) => !arg.startsWith('-'));
-      filePaths.push(...args);
-    }
-
-    // rm command: rm [-rf] file1 file2 ...
-    const rmMatch = command.match(/^\s*rm\s+(.+)$/);
-    if (rmMatch) {
-      const args = this.parseBashArgs(rmMatch[1]).filter((arg) => !arg.startsWith('-'));
-      filePaths.push(...args);
-    }
+    // mkdir creates folders and rm deletes paths: neither leaves a file to
+    // open, so they are not listed.
 
     return filePaths;
   }
@@ -486,6 +476,13 @@ export class TempFilesTreeProvider
     }
   }
 
+  /** Resolves a relative path against the first workspace folder. */
+  private resolvePath(filePath: string): string {
+    if (path.isAbsolute(filePath)) return filePath;
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    return root ? path.join(root, filePath) : filePath;
+  }
+
   /**
    * Gets a TreeItem representation for a TempFileItem.
    *
@@ -494,12 +491,14 @@ export class TempFilesTreeProvider
    */
   getTreeItem(element: TempFileItem): vscode.TreeItem {
     const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
+    // Bash commands report relative paths; Uri.file would root them at `/`.
+    const fileUri = vscode.Uri.file(this.resolvePath(element.path));
 
     // Set command to open file on click
     item.command = {
       command: 'vscode.open',
       title: 'Open',
-      arguments: [vscode.Uri.file(element.path)],
+      arguments: [fileUri],
     };
 
     // Set icon based on operation
@@ -523,7 +522,7 @@ export class TempFilesTreeProvider
     }
 
     // Set resourceUri to enable file icon theme
-    item.resourceUri = vscode.Uri.file(element.path);
+    item.resourceUri = fileUri;
 
     // Set context value for potential context menu actions
     item.contextValue = 'tempFile';

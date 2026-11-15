@@ -128,9 +128,11 @@ export class EventStreamTreeProvider
     const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
     item.description = element.time;
     item.iconPath = EVENT_ICONS[element.type] || new vscode.ThemeIcon('circle-outline');
-    item.tooltip = new vscode.MarkdownString(
-      `**${element.type}** at ${element.time}\n\n${element.description}`,
-    );
+    // Agent text is appended as plain text: as markdown, `__init__.py` turned
+    // bold and backticks or `#` reformatted the tooltip.
+    item.tooltip = new vscode.MarkdownString()
+      .appendMarkdown(`**${element.type}** at ${element.time}\n\n`)
+      .appendText(element.description);
     return item;
   }
 
