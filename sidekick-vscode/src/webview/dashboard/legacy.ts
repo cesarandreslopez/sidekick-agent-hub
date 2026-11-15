@@ -73,7 +73,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       const inlineApiCalls = document.getElementById('inline-api-calls');
 
       // History tab elements
-      const rangeBtns = document.querySelectorAll('.range-btn');
+      // Only the History range toolbar: other buttons share the .range-btn look.
+      const rangeBtns = document.querySelectorAll('.range-selector .range-btn[data-range]');
       const historyMetricSelect = document.getElementById('history-metric-select');
       const drillBreadcrumb = document.getElementById('drill-breadcrumb');
       const drillUpBtn = document.getElementById('drill-up');
@@ -86,6 +87,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       let currentMetric = 'quota';
       let currentRange = 'week';
       let currentHistoryData = null;
+      // The value the History chart actually plots (tool series plot calls),
+      // read by its axis and tooltip callbacks.
+      let currentHistoryValueMetric = 'tokens';
 
       helpers.history.mount({
         getRange: function() { return currentRange; },
@@ -325,7 +329,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       // History range buttons
       rangeBtns.forEach(function(btn) {
         btn.addEventListener('click', function() {
-          currentRange = btn.getAttribute('data-range');
+          const range = btn.getAttribute('data-range');
+          if (!helpers.history.isRange(range)) return;
+          currentRange = range;
           rangeBtns.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
           btn.classList.add('active');
           btn.setAttribute('aria-pressed', 'true');
@@ -428,16 +434,24 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             responsive: true,
             maintainAspectRatio: false,
             onClick: function(event, elements) {
-              if (elements.length > 0 && currentHistoryData) {
+              if (elements.length > 0 && historyCanDrill()) {
                 const index = elements[0].index;
                 const dataPoint = currentHistoryData.dataPoints[index];
-                if (dataPoint && (currentRange === 'all' || currentRange === 'month' || currentRange === 'week')) {
+                if (dataPoint) {
+                  // The range of the view being shown (a drilled month is 'month'),
+                  // so a second drill resolves against what was clicked.
                   vscode.postMessage({
                     type: 'drillDown',
                     timestamp: dataPoint.timestamp,
-                    currentRange: currentRange
+                    currentRange: currentHistoryData.range
                   });
                 }
+              }
+            },
+            onHover: function(event, elements) {
+              const target = event && event.native && event.native.target;
+              if (target && target.style) {
+                target.style.cursor = elements.length > 0 && historyCanDrill() ? 'pointer' : 'default';
               }
             },
             plugins: {
@@ -445,11 +459,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               tooltip: {
                 callbacks: {
                   label: function(context) {
-                    const metric = historyMetricSelect ? historyMetricSelect.value : 'tokens';
-                    if (metric === 'cost') {
-                      return formatCost(context.raw);
-                    }
-                    return formatNumber(context.raw);
+                    return helpers.history.tooltipLabel(context.dataset && context.dataset.label, currentHistoryValueMetric, Number(context.raw) || 0);
                   }
                 }
               }
@@ -459,11 +469,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
                 beginAtZero: true,
                 ticks: {
                   callback: function(value) {
-                    const metric = historyMetricSelect ? historyMetricSelect.value : 'tokens';
-                    if (metric === 'cost') {
-                      return formatCost(value);
-                    }
-                    return formatNumber(value);
+                    return helpers.history.axisLabel(currentHistoryValueMetric, Number(value) || 0);
                   }
                 }
               }
@@ -475,6 +481,11 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       /**
        * Updates the history chart with new data.
        */
+      // Day and month bars drill down; an hourly view is the deepest level.
+      function historyCanDrill() {
+        return Boolean(currentHistoryData && currentHistoryData.granularity !== 'hourly');
+      }
+
       function updateHistoryChart(data) {
         currentHistoryData = data;
 
@@ -484,8 +495,16 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         if (!historyChart) return;
 
         const metric = helpers.history.effectiveMetric(data, historyMetricSelect ? historyMetricSelect.value : 'tokens');
+        currentHistoryValueMetric = metric;
         helpers.history.applyToChart(historyChart, data, metric);
         helpers.history.applyTiles(data, metric);
+
+        // Drill-down breadcrumb: shown below the top level, with a way back.
+        if (drillBreadcrumb) {
+          const drill = data.drill;
+          drillBreadcrumb.hidden = !drill;
+          if (drillLabel) drillLabel.textContent = drill ? drill.label : '';
+        }
 
         const qualitySection = document.getElementById('quality-trend-section');
         const qualitySummary = document.getElementById('quality-trend-summary');
@@ -502,13 +521,22 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           qualitySection.style.display = 'none';
         }
 
-        // Show/hide empty state
+        // Empty state: "nothing in this range" vs "no history at all" (only
+        // the latter offers the import). Zero-filled slots mean the point count
+        // no longer says anything, so this reads the totals.
+        const emptyState = helpers.history.emptyState(data);
         if (historyEmpty) {
-          historyEmpty.style.display = data.dataPoints.length === 0 ? 'block' : 'none';
+          historyEmpty.style.display = emptyState.empty ? 'block' : 'none';
+          const emptyMessage = document.getElementById('history-empty-message');
+          if (emptyMessage) emptyMessage.textContent = emptyState.message;
+          const importBlock = document.getElementById('history-import');
+          if (importBlock) importBlock.hidden = !emptyState.showImport;
         }
         if (historySummary) {
-          historySummary.style.display = data.dataPoints.length === 0 ? 'none' : 'grid';
+          historySummary.style.display = emptyState.empty ? 'none' : 'grid';
         }
+        const historyChartContainer = document.querySelector('.history-chart');
+        if (historyChartContainer) historyChartContainer.classList.toggle('empty', emptyState.empty);
       }
 
       // Context gauge chart

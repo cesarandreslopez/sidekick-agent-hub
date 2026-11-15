@@ -704,10 +704,11 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
       <canvas id="historyChart"></canvas>
     </div>
 
-    <div class="breadcrumb" id="drill-breadcrumb" style="display: none;">
-      <span class="breadcrumb-back" id="drill-up">← Back</span>
+    <div class="breadcrumb" id="drill-breadcrumb" hidden>
+      <button type="button" class="breadcrumb-back" id="drill-up" aria-label="Back to the previous range">← Back</button>
       <span class="breadcrumb-current" id="drill-label"></span>
     </div>
+    <div class="history-series-note" id="history-series-note" hidden></div>
 
     <div class="history-summary" id="history-summary">
       <div class="history-stat">
@@ -740,9 +741,11 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
     </div>
 
     <div class="history-empty" id="history-empty" style="display: none;">
-      <p>No historical data available.</p>
-      <button class="import-btn" id="import-historical-btn">Import Historical Data</button>
-      <p class="hint">Imports finished Claude Code, Codex, and OpenCode sessions</p>
+      <p id="history-empty-message">No historical data available.</p>
+      <div id="history-import" class="history-import">
+        <button class="import-btn" id="import-historical-btn">Import Historical Data</button>
+        <p class="hint">Imports finished Claude Code, Codex, and OpenCode sessions</p>
+      </div>
     </div>
 
     <div class="history-loading" id="history-loading" style="display: none;">
@@ -759,7 +762,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
   <div id="health-tab" class="tab-content" role="tabpanel" aria-label="Health">
     <div class="health-header">
       <div class="section-title">Health</div>
-      <button class="range-btn" id="health-refresh" title="Run the checks again">Refresh</button>
+      <button type="button" class="health-refresh-btn" id="health-refresh" title="Run the checks again">Refresh</button>
     </div>
     <div id="health-loading" class="history-loading" style="display: none;">
       <div class="sk-skeleton sk-skeleton-card" style="width: 100%; height: 48px; margin: 8px 0;"></div>

@@ -561,6 +561,16 @@ export interface HistoricalSummary {
    * covers only the priced part. Absent when every model was priced.
    */
   unpricedModelIds?: string[];
+  /**
+   * Whether any history exists at all (outside this range too), so an empty
+   * range says "no activity" instead of offering an import.
+   */
+  hasAnyHistory?: boolean;
+  /**
+   * Set when this summary is a drill-down (a month's days or a day's hours):
+   * how deep the drill stack is and the breadcrumb label. Absent at the top level.
+   */
+  drill?: { depth: number; label: string } | null;
   qualityTrend?: import('sidekick-shared').QualityTrend;
   latestQuality?: {
     score: number;

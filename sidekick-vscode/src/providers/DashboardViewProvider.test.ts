@@ -506,8 +506,106 @@ describe('DashboardViewProvider quota UI', () => {
       seriesKeys: ['gpt-5.4'],
       project: null,
     });
-    expect(update![0].data.dataPoints[0].breakdown['gpt-5.4']).toMatchObject({ calls: 1 });
+    // Seven zero-filled day slots; today (the last) carries the breakdown.
+    expect(update![0].data.dataPoints).toHaveLength(7);
+    expect(update![0].data.dataPoints[6].breakdown['gpt-5.4']).toMatchObject({ calls: 1 });
+    // No activity in the previous week: no overlay.
     expect(update![0].data.previousPeriod).toEqual([]);
+    expect(update![0].data.hasAnyHistory).toBe(true);
+    provider.dispose();
+  });
+
+  it('ignores a History request without a valid range instead of storing it', () => {
+    const today = formatLocalDateKey(new Date());
+    const historical = {
+      getDailyData: () => [],
+      getHourlyData: () => [],
+      getMonthlyData: () => [],
+      getAllTimeStats: () => ({ firstDate: today, lastDate: today }),
+      getSessionRecords: () => [],
+      getQualityTrend: () => ({ delta: null }),
+      getLatestSessionRecord: () => null,
+    };
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+      undefined,
+      historical as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    const handle = (
+      provider as unknown as { _handleDashboardWebviewMessage(message: unknown): void }
+    )._handleDashboardWebviewMessage.bind(provider);
+
+    handle({ type: 'requestHistoricalData', range: 'month', metric: 'tokens' });
+    // The Health tab's Refresh used to post this (it matched the range buttons).
+    handle({ type: 'requestHistoricalData', range: null, metric: 'tokens' });
+    expect(
+      (provider as unknown as { _currentHistoricalRange: string })._currentHistoricalRange,
+    ).toBe('month');
+
+    postMessage.mockClear();
+    provider.refresh();
+    const update = postMessage.mock.calls.find((call) => call[0].type === 'updateHistoricalData');
+    expect(update![0].data.range).toBe('month');
+    provider.dispose();
+  });
+
+  it('records only drills that resolve, and labels the breadcrumb', () => {
+    const historical = {
+      getDailyData: () => [],
+      getHourlyData: () => [],
+      getMonthlyData: () => [],
+      getAllTimeStats: () => ({ firstDate: '2026-09-01', lastDate: '2026-11-04' }),
+      getSessionRecords: () => [],
+      getQualityTrend: () => ({ delta: null }),
+      getLatestSessionRecord: () => null,
+    };
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+      undefined,
+      historical as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    const handle = (
+      provider as unknown as { _handleDashboardWebviewMessage(message: unknown): void }
+    )._handleDashboardWebviewMessage.bind(provider);
+    const stack = () =>
+      (provider as unknown as { _drillDownStack: unknown[] })._drillDownStack.length;
+    const lastUpdate = () =>
+      postMessage.mock.calls.filter((call) => call[0].type === 'updateHistoricalData').pop()?.[0]
+        .data;
+
+    handle({ type: 'requestHistoricalData', range: 'all', metric: 'tokens' });
+    handle({ type: 'drillDown', timestamp: '2026-10', currentRange: 'all' });
+    expect(stack()).toBe(1);
+    expect(lastUpdate()).toMatchObject({
+      range: 'month',
+      drill: { depth: 1, label: 'Oct 2026 · daily' },
+    });
+
+    // A day of the drilled month drills to its hours.
+    handle({ type: 'drillDown', timestamp: '2026-10-06', currentRange: 'month' });
+    expect(stack()).toBe(2);
+    expect(lastUpdate()).toMatchObject({ range: 'today', granularity: 'hourly' });
+
+    // An hour, or a day key sent with the wrong range, is ignored outright.
+    const posted = postMessage.mock.calls.length;
+    handle({ type: 'drillDown', timestamp: '2026-10-06T09:00:00', currentRange: 'today' });
+    handle({ type: 'drillDown', timestamp: '2026-10-06', currentRange: 'all' });
+    expect(stack()).toBe(2);
+    expect(postMessage.mock.calls.length).toBe(posted);
+
+    handle({ type: 'drillUp' });
+    expect(stack()).toBe(1);
+    expect(lastUpdate().drill).toMatchObject({ depth: 1 });
+    handle({ type: 'drillUp' });
+    expect(stack()).toBe(0);
+    expect(lastUpdate()).toMatchObject({ range: 'all' });
+    expect(lastUpdate().drill).toBeUndefined();
     provider.dispose();
   });
 
@@ -586,10 +684,12 @@ describe('DashboardViewProvider quota UI', () => {
       project: '/work/alpha',
       projects: ['/work/alpha', '/work/beta'],
     });
-    // One session from the filtered workspace, not the store's aggregate.
+    // One session from the filtered workspace, not the store's aggregate,
+    // in the 9AM slot of a zero-filled 24-hour axis.
     expect(drilled.totals).toMatchObject({ inputTokens: 100, sessionCount: 1 });
-    expect(drilled.dataPoints).toHaveLength(1);
-    expect(drilled.dataPoints[0].breakdown['claude-sonnet-5']).toMatchObject({ tokens: 110 });
+    expect(drilled.dataPoints).toHaveLength(24);
+    expect(drilled.dataPoints[9].breakdown['claude-sonnet-5']).toMatchObject({ tokens: 110 });
+    expect(drilled.drill).toMatchObject({ depth: 1 });
     provider.dispose();
   });
 

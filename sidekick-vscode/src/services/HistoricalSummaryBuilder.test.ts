@@ -3,7 +3,9 @@ import { formatLocalDateKey, addLocalDays } from 'sidekick-shared';
 import {
   buildHistoricalSummary,
   buildHourlyPoints,
+  drillDownLabel,
   drillDownTarget,
+  pointHasActivity,
 } from './HistoricalSummaryBuilder';
 import type { HistoricalSummarySource } from './HistoricalSummaryBuilder';
 import type { DailyData, HourlyData, SessionHistoryRecord } from '../types/historicalData';
@@ -51,6 +53,11 @@ function session(project: string, startTime: Date, n: number): SessionHistoryRec
   };
 }
 
+function daysBefore(dateKey: string): number {
+  for (let back = 0; back < 60; back += 1) if (addLocalDays(TODAY, -back) === dateKey) return back;
+  return -1;
+}
+
 function source(): HistoricalSummarySource {
   const daily = new Map<string, DailyData>();
   for (let back = 0; back < 20; back += 1) {
@@ -92,13 +99,99 @@ function source(): HistoricalSummarySource {
 }
 
 describe('buildHistoricalSummary', () => {
-  it('returns one point per hourly bucket for today, with yesterday as the previous period', () => {
+  it('returns all 24 hours for today, zero-filled, with yesterday as the previous period', () => {
     const summary = buildHistoricalSummary(source(), 'today', { now: NOW });
     expect(summary.granularity).toBe('hourly');
-    expect(summary.dataPoints.map((p) => p.label)).toEqual(['9AM', '10AM', '2PM']);
+    expect(summary.dataPoints).toHaveLength(24);
+    expect(summary.dataPoints[0].label).toBe('12AM');
+    expect(summary.dataPoints.filter(pointHasActivity).map((p) => p.label)).toEqual([
+      '9AM',
+      '10AM',
+      '2PM',
+    ]);
     expect(summary.totals.inputTokens).toBe(300);
-    expect(summary.previousPeriod?.map((p) => p.label)).toEqual(['11AM']);
+    // Aligned slot by slot: yesterday's 11AM sits under today's 11AM.
+    expect(summary.previousPeriod).toHaveLength(24);
+    expect(summary.previousPeriod?.[11]).toMatchObject({ label: '11AM', inputTokens: 50 });
+    expect(summary.previousPeriod?.filter(pointHasActivity)).toHaveLength(1);
     expect(buildHourlyPoints(source(), TODAY)).toHaveLength(3);
+  });
+
+  it('zero-fills days without activity so a week always has seven slots', () => {
+    const base = source();
+    const sparse: HistoricalSummarySource = {
+      ...base,
+      // Active three days this week (Mon/Wed/Fri-like) and one day last week.
+      getDailyData: (start, end) =>
+        base
+          .getDailyData(start, end)
+          .filter((d) => [0, 2, 4, 9].includes(daysBefore(d.date))),
+    };
+    const summary = buildHistoricalSummary(sparse, 'week', { now: NOW });
+    expect(summary.dataPoints).toHaveLength(7);
+    expect(summary.dataPoints.map((p) => p.timestamp)).toEqual(
+      [6, 5, 4, 3, 2, 1, 0].map((back) => addLocalDays(TODAY, -back)),
+    );
+    expect(summary.dataPoints.filter(pointHasActivity)).toHaveLength(3);
+    expect(summary.previousPeriod).toHaveLength(7);
+    // Day -9 is slot 4 of the previous week (-13..-7), the same weekday as day -2.
+    expect(pointHasActivity(summary.previousPeriod![4])).toBe(true);
+    expect(summary.hasAnyHistory).toBe(true);
+  });
+
+  it('drops a previous period with no activity and reports when no history exists', () => {
+    const base = source();
+    const thisWeekOnly: HistoricalSummarySource = {
+      ...base,
+      getDailyData: (start, end) =>
+        base.getDailyData(start, end).filter((d) => daysBefore(d.date) < 7),
+    };
+    expect(buildHistoricalSummary(thisWeekOnly, 'week', { now: NOW }).previousPeriod).toEqual([]);
+
+    const nothing: HistoricalSummarySource = {
+      getDailyData: () => [],
+      getHourlyData: () => [],
+      getMonthlyData: () => [],
+      getAllTimeStats: () => ({ firstDate: '', lastDate: '' }),
+      getSessionRecords: () => [],
+    };
+    const empty = buildHistoricalSummary(nothing, 'week', { now: NOW });
+    expect(empty.hasAnyHistory).toBe(false);
+    expect(empty.dataPoints).toHaveLength(7);
+    expect(empty.dataPoints.some(pointHasActivity)).toBe(false);
+    expect(buildHistoricalSummary(nothing, 'all', { now: NOW }).dataPoints).toEqual([]);
+  });
+
+  it('fills every month of the all-time view', () => {
+    const base = source();
+    const months: HistoricalSummarySource = {
+      ...base,
+      getMonthlyData: () => [
+        {
+          month: '2026-07',
+          tokens: tokens(10),
+          totalCost: 0.01,
+          messageCount: 1,
+          sessionCount: 1,
+          modelUsage: [],
+          toolUsage: [],
+          updatedAt: '',
+        } as never,
+        {
+          month: '2026-09',
+          tokens: tokens(10),
+          totalCost: 0.01,
+          messageCount: 1,
+          sessionCount: 1,
+          modelUsage: [],
+          toolUsage: [],
+          updatedAt: '',
+        } as never,
+      ],
+    };
+    const summary = buildHistoricalSummary(months, 'all', { now: NOW });
+    expect(summary.dataPoints.map((p) => p.timestamp)).toEqual(['2026-07', '2026-08', '2026-09']);
+    expect(pointHasActivity(summary.dataPoints[1])).toBe(false);
   });
 
   it('attaches model breakdowns and series keys ordered by weight', () => {
@@ -136,16 +229,20 @@ describe('buildHistoricalSummary', () => {
 
     expect(all.projects).toEqual(['/work/alpha', '/work/beta']);
     expect(alpha.project).toBe('/work/alpha');
-    expect(alpha.dataPoints).toHaveLength(2);
+    expect(alpha.dataPoints).toHaveLength(7);
+    expect(alpha.dataPoints.filter(pointHasActivity)).toHaveLength(2);
     expect(alpha.totals.inputTokens).toBe(1200);
     expect(alpha.totals.sessionCount).toBe(2);
     expect(alpha.totals.inputTokens).toBeLessThan(all.totals.inputTokens);
     expect(alpha.seriesKeys).toEqual(['Bash']);
 
     const beta = buildHistoricalSummary(source(), 'month', { project: '/work/beta', now: NOW });
-    // The August session falls in the previous month, not this one.
-    expect(beta.dataPoints).toHaveLength(1);
-    expect(beta.previousPeriod).toHaveLength(1);
+    // The August session falls in the previous month, not this one: September
+    // so far is four slots with one active, August is all 31 with one active.
+    expect(beta.dataPoints).toHaveLength(4);
+    expect(beta.dataPoints.filter(pointHasActivity)).toHaveLength(1);
+    expect(beta.previousPeriod).toHaveLength(31);
+    expect(beta.previousPeriod?.filter(pointHasActivity)).toHaveLength(1);
   });
 
   it('lists the models recorded without pricing in the range only', () => {
@@ -196,5 +293,16 @@ describe('drillDownTarget', () => {
   it('returns null for a timestamp that is not a day or month key', () => {
     expect(drillDownTarget('nope', 'week')).toBeNull();
     expect(drillDownTarget('2026-09-03', 'all')).toBeNull();
+    // A drilled month's day drills to its hours; an hour drills nowhere.
+    expect(drillDownTarget('2026-11-03', 'month')?.range).toBe('today');
+    expect(drillDownTarget('2026-11-03T09:00:00', 'today')).toBeNull();
+    expect(drillDownTarget('2026-11-03', 'today')).toBeNull();
+  });
+
+  it('labels the breadcrumb for a month and a day', () => {
+    expect(drillDownLabel('2026-02', drillDownTarget('2026-02', 'all')!)).toBe('Feb 2026 · daily');
+    expect(drillDownLabel('2026-11-03', drillDownTarget('2026-11-03', 'week')!)).toBe(
+      'Tue, Nov 3 · hourly',
+    );
   });
 });

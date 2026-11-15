@@ -251,6 +251,89 @@ function previousWindow(range: HistoricalRange, window: Window): Window | null {
   }
 }
 
+/** A slot with no recorded activity. */
+function emptyPoint(timestamp: string, label: string): HistoricalDataPoint {
+  return {
+    timestamp,
+    label,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    totalCost: 0,
+    messageCount: 0,
+    sessionCount: 0,
+  };
+}
+
+/** Whether a point recorded any activity. */
+export function pointHasActivity(point: HistoricalDataPoint): boolean {
+  return (
+    point.inputTokens > 0 ||
+    point.outputTokens > 0 ||
+    point.cacheWriteTokens > 0 ||
+    point.cacheReadTokens > 0 ||
+    point.totalCost > 0 ||
+    point.messageCount > 0 ||
+    point.sessionCount > 0
+  );
+}
+
+/**
+ * Every slot of a window, in order: the 24 hours of a day, each day of a
+ * week or month, each month of the all-time view. The store only keeps slots
+ * that saw activity, so without this a week with three active days drew three
+ * adjacent bars and the previous-period overlay compared mismatched days.
+ */
+function windowSlots(
+  range: HistoricalRange,
+  window: Window,
+): Array<{ timestamp: string; label: string }> {
+  const slots: Array<{ timestamp: string; label: string }> = [];
+  if (range === 'today') {
+    for (let hour = 0; hour < 24; hour += 1) {
+      slots.push({
+        timestamp: `${window.start}T${String(hour).padStart(2, '0')}:00:00`,
+        label: hourLabel(hour),
+      });
+    }
+    return slots;
+  }
+  if (range === 'all') {
+    // Month keys; capped so a corrupt first date cannot build an unbounded axis.
+    for (let month = window.start, n = 0; month <= window.end && n < 600; n += 1) {
+      slots.push({ timestamp: month, label: monthLabel(month) });
+      month = addMonths(month, 1);
+    }
+    return slots;
+  }
+  for (let day = window.start, n = 0; day <= window.end && n < 400; n += 1) {
+    slots.push({ timestamp: day, label: dayLabel(day, range) });
+    day = addLocalDays(day, 1);
+  }
+  return slots;
+}
+
+/** Points for every slot of the window: recorded points kept, gaps zero-filled. */
+function fillWindow(
+  points: HistoricalDataPoint[],
+  range: HistoricalRange,
+  window: Window,
+): HistoricalDataPoint[] {
+  const byTimestamp = new Map(points.map((p) => [p.timestamp, p]));
+  const slots = windowSlots(range, window);
+  const filled = slots.map(
+    (slot) => byTimestamp.get(slot.timestamp) ?? emptyPoint(slot.timestamp, slot.label),
+  );
+  // A recorded point outside the generated slots (an unexpected key) is kept
+  // rather than dropped, so totals never silently shrink.
+  const slotKeys = new Set(slots.map((slot) => slot.timestamp));
+  const strays = points.filter((p) => !slotKeys.has(p.timestamp));
+  return strays.length === 0
+    ? filled
+    : [...filled, ...strays].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
 /** Points for a window from the store's aggregates (daily/monthly/hourly records). */
 function storePoints(
   source: HistoricalSummarySource,
@@ -384,8 +467,31 @@ export function drillDownTarget(timestamp: string, currentRange: string): DrillD
     const now = parseLocalDateKey(lastDayOfMonth(timestamp));
     return now ? { range: 'month', now } : null;
   }
+  if (currentRange !== 'week' && currentRange !== 'month') return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) return null;
   const now = parseLocalDateKey(timestamp);
   return now ? { range: 'today', now } : null;
+}
+
+/**
+ * Breadcrumb label for a drill-down: `Feb 2026 · daily` for a month,
+ * `Tue, Nov 3 · hourly` for a day.
+ */
+export function drillDownLabel(timestamp: string, target: DrillDownTarget): string {
+  if (target.range === 'month') {
+    const [year, mon] = timestamp.split('-').map(Number);
+    const month = new Date(year, mon - 1, 1).toLocaleDateString('en-US', {
+      month: 'short',
+      year: 'numeric',
+    });
+    return `${month} · daily`;
+  }
+  const day = target.now.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  return `${day} · hourly`;
 }
 
 export function buildHistoricalSummary(
@@ -399,6 +505,8 @@ export function buildHistoricalSummary(
   const granularity = range === 'today' ? 'hourly' : range === 'all' ? 'monthly' : 'daily';
   const records = source.getSessionRecords();
   const projects = listHistoricalProjects(records);
+  // Lets the webview tell "nothing in this range" from "no history at all".
+  const hasAnyHistory = Boolean(source.getAllTimeStats().firstDate) || records.length > 0;
 
   const window = rangeWindow(range, today, source);
   if (!window) {
@@ -412,18 +520,25 @@ export function buildHistoricalSummary(
       projects,
       project,
       previousPeriod: [],
+      hasAnyHistory,
     };
   }
 
   const projectRecords = project ? records.filter((r) => r.project === project) : null;
   const pointsFor = (w: Window): HistoricalDataPoint[] =>
-    projectRecords
-      ? sessionPoints(projectRecords, range, w, series)
-      : storePoints(source, range, w, series);
+    fillWindow(
+      projectRecords
+        ? sessionPoints(projectRecords, range, w, series)
+        : storePoints(source, range, w, series),
+      range,
+      w,
+    );
 
   const dataPoints = pointsFor(window);
   const previous = previousWindow(range, window);
-  const previousPeriod = previous ? pointsFor(previous) : [];
+  const previousPoints = previous ? pointsFor(previous) : [];
+  // A previous period with no activity draws no overlay and no deltas.
+  const previousPeriod = previousPoints.some(pointHasActivity) ? previousPoints : [];
   const unpricedModelIds = unpricedModelsIn(source, range, window, projectRecords);
 
   return {
@@ -437,5 +552,6 @@ export function buildHistoricalSummary(
     projects,
     project,
     previousPeriod,
+    hasAnyHistory,
   };
 }

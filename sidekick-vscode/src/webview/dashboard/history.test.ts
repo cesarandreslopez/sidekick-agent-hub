@@ -4,8 +4,14 @@ import {
   computeHistoryTiles,
   costTile,
   effectiveMetric,
+  formatAxisValue,
   formatDelta,
+  formatTooltipLabel,
+  historyEmptyState,
   historyRequest,
+  isStackable,
+  pointValue,
+  seriesFallbackNote,
 } from './history';
 import type { HistoricalDataPoint, HistoricalSummary } from '../../types/dashboard';
 
@@ -109,7 +115,19 @@ describe('tiles and requests', () => {
     expect(formatDelta(-0.05)).toBe('−5%');
     expect(formatDelta(0)).toBe('0%');
     expect(formatDelta(null)).toBe('new');
-    expect(effectiveMetric({ ...base, series: 'tool' }, 'cost')).toBe('calls');
+    // A tool series plots calls only when it can stack; otherwise the selected metric.
+    expect(
+      effectiveMetric(
+        {
+          ...base,
+          series: 'tool',
+          seriesKeys: ['Read'],
+          dataPoints: [point('Mon', 100, { Read: { tokens: 0, cost: 0, calls: 3 } })],
+        },
+        'cost',
+      ),
+    ).toBe('calls');
+    expect(effectiveMetric({ ...base, series: 'tool' }, 'cost')).toBe('cost');
     expect(effectiveMetric(base, 'cost')).toBe('cost');
     expect(effectiveMetric(base, 'bogus')).toBe('tokens');
     expect(historyRequest('month', 'cost', 'model', '/work/alpha')).toEqual({
@@ -140,5 +158,131 @@ describe('costTile', () => {
       title: 'a\nb',
     });
     expect(costTile({}, 0, fmt)).toEqual({ value: '$0.00', note: '', title: '' });
+  });
+});
+
+function empty(label: string): HistoricalDataPoint {
+  return {
+    timestamp: label,
+    label,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    totalCost: 0,
+    messageCount: 0,
+    sessionCount: 0,
+  };
+}
+
+describe('series breakdowns', () => {
+  const tool = (calls: number): HistoricalDataPoint['breakdown'] => ({
+    Read: { tokens: 0, cost: 0, calls },
+  });
+
+  it('stacks when only empty (zero-filled) slots lack a breakdown', () => {
+    const summary: HistoricalSummary = {
+      ...base,
+      series: 'tool',
+      seriesKeys: ['Read'],
+      dataPoints: [point('Mon', 100, tool(4)), empty('Tue'), point('Wed', 50, tool(1))],
+    };
+    expect(isStackable(summary)).toBe(true);
+    expect(seriesFallbackNote(summary)).toBeNull();
+    const data = buildHistoryChartData(summary, 'calls');
+    expect(data.stacked).toBe(true);
+    expect(data.datasets[0].data).toEqual([4, 0, 1]);
+  });
+
+  it('plots tool calls, never message counts, for bars and the previous line', () => {
+    const summary: HistoricalSummary = {
+      ...base,
+      series: 'tool',
+      seriesKeys: ['Read'],
+      dataPoints: [point('Mon', 100, tool(4)), point('Tue', 100, tool(6))],
+      previousPeriod: [point('Mon-1', 100, tool(9)), point('Tue-1', 0)],
+    };
+    // point() records messageCount 2: the calls value must not be that.
+    expect(pointValue(summary.dataPoints[0], 'calls')).toBe(4);
+    expect(pointValue(point('x', 1), 'calls')).toBe(0);
+    const line = buildHistoryChartData(summary, 'calls').datasets.find((d) => d.type === 'line');
+    expect(line?.data).toEqual([9, 0]);
+  });
+
+  it('falls back to totals with a note when active slots lack a breakdown (hourly store buckets)', () => {
+    const hourly: HistoricalSummary = {
+      ...base,
+      granularity: 'hourly',
+      series: 'model',
+      seriesKeys: ['claude-sonnet-4-5'],
+      dataPoints: [point('9AM', 100), empty('10AM')],
+    };
+    expect(isStackable(hourly)).toBe(false);
+    expect(seriesFallbackNote(hourly)).toBe(
+      "Per-model breakdown isn't recorded hourly; showing totals.",
+    );
+    expect(buildHistoryChartData(hourly, 'tokens').datasets[0].label).toBe('Tokens');
+  });
+
+  it('names model series and folds the tail into Other', () => {
+    const keys = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'];
+    const breakdown = Object.fromEntries(
+      ['claude-sonnet-4-5', ...keys].map((k) => [k, { tokens: 10, cost: 1, calls: 1 }]),
+    );
+    const summary: HistoricalSummary = {
+      ...base,
+      series: 'model',
+      seriesKeys: ['claude-sonnet-4-5', ...keys],
+      dataPoints: [point('Mon', 80, breakdown)],
+    };
+    const data = buildHistoryChartData(summary, 'tokens');
+    expect(data.datasets.filter((d) => d.type === 'bar').map((d) => d.label)).toEqual([
+      'Sonnet 4.5',
+      'm1',
+      'm2',
+      'm3',
+      'm4',
+      'm5',
+      'Other',
+    ]);
+    // m6 and m7 fold into Other.
+    expect(data.datasets.find((d) => d.label === 'Other')?.data).toEqual([20]);
+  });
+});
+
+describe('labels and empty states', () => {
+  it('formats axis ticks compactly and tooltips with the series name', () => {
+    expect(formatAxisValue('tokens', 120_000_000)).toBe('120.0M');
+    expect(formatAxisValue('calls', 12)).toBe('12');
+    expect(formatAxisValue('cost', 0)).toBe('$0');
+    expect(formatAxisValue('cost', 0.25)).toBe('$0.25');
+    expect(formatAxisValue('cost', 12.4)).toBe('$12');
+    const fmt = (v: number) => `$${v.toFixed(2)}`;
+    expect(formatTooltipLabel('Sonnet 4.5', 'tokens', 1234567, fmt)).toBe('Sonnet 4.5: 1,234,567');
+    expect(formatTooltipLabel('Previous period', 'cost', 1.5, fmt)).toBe('Previous period: $1.50');
+    // Calls are counts, never dollars.
+    expect(formatTooltipLabel('Read', 'calls', 12, fmt)).toBe('Read: 12');
+  });
+
+  it('tells an empty range from no history at all', () => {
+    const zero: HistoricalSummary = {
+      ...base,
+      dataPoints: [empty('Mon'), empty('Tue')],
+      totals: { inputTokens: 0, outputTokens: 0, totalCost: 0, messageCount: 0, sessionCount: 0 },
+    };
+    expect(historyEmptyState(base).empty).toBe(false);
+    expect(historyEmptyState({ ...zero, hasAnyHistory: false })).toEqual({
+      empty: true,
+      message: 'No historical data available.',
+      showImport: true,
+    });
+    expect(historyEmptyState({ ...zero, hasAnyHistory: true })).toEqual({
+      empty: true,
+      message: 'No activity this week.',
+      showImport: false,
+    });
+    expect(
+      historyEmptyState({ ...zero, hasAnyHistory: true, project: '/work/alpha' }).message,
+    ).toBe('No activity for this project in this range.');
   });
 });

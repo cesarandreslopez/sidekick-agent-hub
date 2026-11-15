@@ -15,7 +15,8 @@ import type {
   HistoricalSeries,
   HistoricalSummary,
 } from '../../types/dashboard';
-import { unpricedNote } from './cost';
+import { modelLabel, unpricedNote } from './cost';
+import { axisCost, compactNumber, exactNumber } from './format';
 
 export type HistoryMetric = 'tokens' | 'cost' | 'messages';
 /** The value actually plotted: tool series always plot calls. */
@@ -23,6 +24,54 @@ export type HistoryValueMetric = HistoryMetric | 'calls';
 
 export const SERIES_SELECT_ID = 'history-series-select';
 export const PROJECT_SELECT_ID = 'history-project-select';
+export const SERIES_NOTE_ID = 'history-series-note';
+export const HISTORY_RANGES: readonly HistoricalRange[] = ['today', 'week', 'month', 'all'];
+
+/** Stacked charts show this many series; the rest are summed into "Other". */
+export const MAX_STACKED_SERIES = 6;
+export const OTHER_SERIES_LABEL = 'Other';
+
+export function isHistoricalRange(value: unknown): value is HistoricalRange {
+  return typeof value === 'string' && (HISTORY_RANGES as readonly string[]).includes(value);
+}
+
+function pointIsEmpty(point: HistoricalDataPoint): boolean {
+  return (
+    point.inputTokens <= 0 &&
+    point.outputTokens <= 0 &&
+    (point.cacheWriteTokens || 0) <= 0 &&
+    (point.cacheReadTokens || 0) <= 0 &&
+    point.totalCost <= 0 &&
+    point.messageCount <= 0 &&
+    point.sessionCount <= 0
+  );
+}
+
+/**
+ * Whether a summary can draw stacked per-model / per-tool bars: every point
+ * with activity carries a breakdown. Empty (zero-filled) slots don't count
+ * against it; the store's hourly buckets carry no breakdown, so a store-backed
+ * hourly view falls back to totals.
+ */
+export function isStackable(summary: HistoricalSummary): boolean {
+  const points = summary.dataPoints;
+  return (
+    (summary.series ?? 'total') !== 'total' &&
+    (summary.seriesKeys ?? []).length > 0 &&
+    points.some((p) => p.breakdown !== undefined) &&
+    points.every((p) => p.breakdown !== undefined || pointIsEmpty(p))
+  );
+}
+
+/** Why a per-model / per-tool request fell back to totals, or null when it didn't. */
+export function seriesFallbackNote(summary: HistoricalSummary): string | null {
+  const series = summary.series ?? 'total';
+  if (series === 'total' || isStackable(summary)) return null;
+  const what = series === 'tool' ? 'Per-tool' : 'Per-model';
+  return summary.granularity === 'hourly'
+    ? `${what} breakdown isn't recorded hourly; showing totals.`
+    : `${what} breakdown isn't recorded for this range; showing totals.`;
+}
 
 export interface HistoryDataset {
   type?: 'bar' | 'line';
@@ -59,9 +108,29 @@ export interface HistoryTiles {
   } | null;
 }
 
+/**
+ * The value a summary plots: a stackable tool series plots tool calls (the
+ * only thing tool records carry); everything else plots the selected metric.
+ */
 export function effectiveMetric(summary: HistoricalSummary, metric: string): HistoryValueMetric {
-  if (summary.series === 'tool') return 'calls';
+  if (summary.series === 'tool' && isStackable(summary)) return 'calls';
   return metric === 'cost' || metric === 'messages' ? metric : 'tokens';
+}
+
+/** Axis tick text for a plotted value: compact numbers, short dollars for cost. */
+export function formatAxisValue(metric: HistoryValueMetric, value: number): string {
+  return metric === 'cost' ? axisCost(value) : compactNumber(value);
+}
+
+/** Tooltip line: `Sonnet 4.5: 1,234,567` / `Previous period: $1.23`. */
+export function formatTooltipLabel(
+  datasetLabel: string | undefined,
+  metric: HistoryValueMetric,
+  value: number,
+  formatCost: (value: number) => string,
+): string {
+  const text = metric === 'cost' ? formatCost(value) : exactNumber(value);
+  return datasetLabel ? `${datasetLabel}: ${text}` : text;
 }
 
 export function pointValue(point: HistoricalDataPoint, metric: HistoryValueMetric): number {
@@ -69,8 +138,10 @@ export function pointValue(point: HistoricalDataPoint, metric: HistoryValueMetri
     case 'cost':
       return point.totalCost;
     case 'messages':
-    case 'calls':
       return point.messageCount;
+    case 'calls':
+      // Tool calls, not messages: the sum of the per-tool breakdown (none recorded = 0).
+      return Object.values(point.breakdown ?? {}).reduce((sum, entry) => sum + entry.calls, 0);
     default:
       // Shared vocabulary (summarizeTokens().total): every billed bucket, cache included.
       return (
@@ -153,10 +224,16 @@ const METRIC_LABELS: Record<HistoryValueMetric, string> = {
   calls: 'Tool calls',
 };
 
+/** Legend / tooltip name for a series key: model ids read as `Sonnet 4.5`. */
+export function seriesLabel(series: HistoricalSeries | undefined, key: string): string {
+  return series === 'model' ? modelLabel(key) : key;
+}
+
 /**
- * Chart.js data for a summary: stacked bars per series key when every point
- * carries a breakdown, otherwise one total bar series; plus a dashed
- * previous-period line aligned by index when the summary carries one.
+ * Chart.js data for a summary: stacked bars per series key (the largest
+ * {@link MAX_STACKED_SERIES}, the rest summed as "Other") when the summary is
+ * stackable, otherwise one total bar series; plus a dashed previous-period
+ * line aligned by slot when the summary carries one.
  */
 export function buildHistoryChartData(
   summary: HistoricalSummary,
@@ -167,26 +244,38 @@ export function buildHistoryChartData(
   const points = summary.dataPoints;
   const labels = points.map((p) => p.label);
   const keys = summary.seriesKeys ?? [];
-  const stacked =
-    (summary.series ?? 'total') !== 'total' &&
-    keys.length > 0 &&
-    points.length > 0 &&
-    points.every((p) => p.breakdown !== undefined);
+  const stacked = isStackable(summary);
+  const shown = keys.slice(0, MAX_STACKED_SERIES);
+  const rest = keys.slice(MAX_STACKED_SERIES);
+
+  const stackedDatasets = (): HistoryDataset[] => {
+    const series: Array<{ label: string; data: number[] }> = shown.map((key) => ({
+      label: seriesLabel(summary.series, key),
+      data: points.map((p) => breakdownValue(p, key, metric)),
+    }));
+    if (rest.length > 0) {
+      series.push({
+        label: OTHER_SERIES_LABEL,
+        data: points.map((p) => rest.reduce((sum, key) => sum + breakdownValue(p, key, metric), 0)),
+      });
+    }
+    return series.map((entry, index) => {
+      const color = s.palette[index % s.palette.length];
+      return {
+        type: 'bar',
+        label: entry.label,
+        data: entry.data,
+        backgroundColor: withAlpha(color, 0.7),
+        borderColor: color,
+        borderWidth: 1,
+        stack: 'current',
+        order: 2,
+      };
+    });
+  };
 
   const datasets: HistoryDataset[] = stacked
-    ? keys.map((key, index) => {
-        const color = s.palette[index % s.palette.length];
-        return {
-          type: 'bar',
-          label: key,
-          data: points.map((p) => breakdownValue(p, key, metric)),
-          backgroundColor: withAlpha(color, 0.7),
-          borderColor: color,
-          borderWidth: 1,
-          stack: 'current',
-          order: 2,
-        };
-      })
+    ? stackedDatasets()
     : [
         {
           type: 'bar',
@@ -270,6 +359,48 @@ export function costTile(
   };
 }
 
+export interface HistoryEmptyState {
+  /** Nothing recorded in this range. */
+  empty: boolean;
+  /** What the empty state says. */
+  message: string;
+  /** Offer the import button (only when no history exists anywhere). */
+  showImport: boolean;
+}
+
+const EMPTY_RANGE_TEXT: Record<HistoricalRange, string> = {
+  today: 'No activity today yet.',
+  week: 'No activity this week.',
+  month: 'No activity this month.',
+  all: 'No activity recorded.',
+};
+
+/**
+ * Empty state for a summary. Zero-filled slots mean "no points" no longer
+ * signals emptiness; the totals do. A range with nothing in it is only
+ * offered the import when there is no history at all.
+ */
+export function historyEmptyState(summary: HistoricalSummary): HistoryEmptyState {
+  const t = summary.totals;
+  const empty =
+    !(t.inputTokens > 0) &&
+    !(t.outputTokens > 0) &&
+    !(t.totalCost > 0) &&
+    !(t.messageCount > 0) &&
+    !(t.sessionCount > 0) &&
+    summary.dataPoints.every(pointIsEmpty);
+  if (!empty) return { empty: false, message: '', showImport: false };
+  if (summary.hasAnyHistory !== true) {
+    return { empty: true, message: 'No historical data available.', showImport: true };
+  }
+  const message = summary.project
+    ? `No activity for this project in this range.`
+    : summary.drill
+      ? 'No activity in this period.'
+      : EMPTY_RANGE_TEXT[summary.range];
+  return { empty: true, message, showImport: false };
+}
+
 /** `+12%`, `−5%`, `0%`, or `new` when the previous period had nothing. */
 export function formatDelta(value: number | null): string {
   if (value === null) return 'new';
@@ -293,7 +424,17 @@ export interface HistoryMountOptions {
 /** Structural view of the Chart.js instance the legacy script owns. */
 export interface HistoryChartLike {
   data: { labels: unknown[]; datasets: unknown[] };
-  options: { scales?: Record<string, { stacked?: boolean } | undefined> };
+  options: {
+    scales?: Record<string, { stacked?: boolean } | undefined>;
+    plugins?: {
+      legend?: {
+        display?: boolean;
+        position?: string;
+        labels?: Record<string, unknown>;
+      };
+      [key: string]: unknown;
+    };
+  };
   update(): void;
 }
 
@@ -308,6 +449,10 @@ export interface HistoryView {
     metric: HistoryValueMetric,
   ): void;
   applyTiles(summary: HistoricalSummary, metric: HistoryValueMetric): void;
+  emptyState(summary: HistoricalSummary): HistoryEmptyState;
+  axisLabel(metric: HistoryValueMetric, value: number): string;
+  tooltipLabel(datasetLabel: string | undefined, metric: HistoryValueMetric, value: number): string;
+  isRange(value: unknown): value is HistoricalRange;
 }
 
 const TILE_IDS: Record<keyof Omit<HistoryTiles, 'deltas'>, string> = {
@@ -382,7 +527,8 @@ export function createHistoryView(doc: Document): HistoryView {
       mounted = options;
       const repost = (): void => options.post(request(options.getRange(), options.getMetric()));
       seriesSelect?.addEventListener('change', () => {
-        // Tool series plot calls: the metric select does not apply.
+        // Tool series plot calls: the metric select does not apply (re-enabled
+        // when the reply falls back to totals).
         if (metricSelect) metricSelect.disabled = currentSeries() === 'tool';
         repost();
       });
@@ -390,30 +536,57 @@ export function createHistoryView(doc: Document): HistoryView {
     },
     request,
     effectiveMetric,
+    emptyState: historyEmptyState,
+    axisLabel: formatAxisValue,
+    tooltipLabel(datasetLabel, metric, value) {
+      const fmtCost = mounted?.formatCost ?? ((v: number) => `$${v.toFixed(2)}`);
+      return formatTooltipLabel(datasetLabel, metric, value, fmtCost);
+    },
+    isRange: isHistoricalRange,
     applyToChart(chart, summary, metric) {
       syncProjects(summary);
       if (seriesSelect && summary.series && seriesSelect.value !== summary.series) {
         seriesSelect.value = summary.series;
       }
-      if (metricSelect) metricSelect.disabled = summary.series === 'tool';
+      if (metricSelect) metricSelect.disabled = metric === 'calls';
+      const note = doc.getElementById(SERIES_NOTE_ID);
+      if (note) {
+        const text = seriesFallbackNote(summary);
+        note.textContent = text ?? '';
+        note.hidden = !text;
+      }
       const data = buildHistoryChartData(summary, metric, style(metric));
       chart.data.labels = data.labels;
       chart.data.datasets = data.datasets;
       chart.options.scales ??= {};
       chart.options.scales.x = { ...(chart.options.scales.x ?? {}), stacked: data.stacked };
       chart.options.scales.y = { ...(chart.options.scales.y ?? {}), stacked: data.stacked };
+      // Stacked bars are unreadable without naming the series.
+      chart.options.plugins ??= {};
+      chart.options.plugins.legend = {
+        ...(chart.options.plugins.legend ?? {}),
+        display: data.stacked,
+        position: 'bottom',
+        labels: { ...(chart.options.plugins.legend?.labels ?? {}), boxWidth: 10, font: { size: 10 } },
+      };
       chart.update();
     },
     applyTiles(summary) {
       const tiles = computeHistoryTiles(summary);
-      const fmtNumber = mounted?.formatNumber ?? String;
       const fmtCost = mounted?.formatCost ?? ((v: number) => `$${v.toFixed(2)}`);
       const cost = costTile(summary, tiles.cost, fmtCost);
+      // Compact headline values (a month of tokens overflowed the tile); exact in the tooltip.
       const values: Record<keyof typeof TILE_IDS, string> = {
-        tokens: fmtNumber(tiles.tokens),
+        tokens: compactNumber(tiles.tokens),
         cost: cost.value,
-        sessions: fmtNumber(tiles.sessions),
-        messages: fmtNumber(tiles.messages),
+        sessions: compactNumber(tiles.sessions),
+        messages: compactNumber(tiles.messages),
+      };
+      const titles: Record<keyof typeof TILE_IDS, string> = {
+        tokens: `${exactNumber(tiles.tokens)} tokens`,
+        cost: cost.title,
+        sessions: `${exactNumber(tiles.sessions)} sessions`,
+        messages: `${exactNumber(tiles.messages)} messages`,
       };
       const costNote = doc.getElementById(`${TILE_IDS.cost}-note`);
       if (costNote) {
@@ -422,7 +595,10 @@ export function createHistoryView(doc: Document): HistoryView {
       }
       for (const key of Object.keys(TILE_IDS) as Array<keyof typeof TILE_IDS>) {
         const valueEl = doc.getElementById(TILE_IDS[key]);
-        if (valueEl) valueEl.textContent = values[key];
+        if (valueEl) {
+          valueEl.textContent = values[key];
+          valueEl.title = titles[key];
+        }
         const deltaEl = doc.getElementById(`${TILE_IDS[key]}-delta`);
         if (!deltaEl) continue;
         const d = tiles.deltas?.[key];

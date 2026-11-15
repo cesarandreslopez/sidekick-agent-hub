@@ -112,7 +112,11 @@ import type {
   HistoricalRange,
   HistoricalSeries,
 } from '../types/dashboard';
-import { buildHistoricalSummary, drillDownTarget } from '../services/HistoricalSummaryBuilder';
+import {
+  buildHistoricalSummary,
+  drillDownLabel,
+  drillDownTarget,
+} from '../services/HistoricalSummaryBuilder';
 import { renderDashboardHtml } from './dashboardTemplate';
 import { getWorkspaceId } from '../utils/workspaceId';
 import type { QuotaHistoryPayload, QuotaHistoryDailyCell } from '../types/dashboard';
@@ -141,6 +145,17 @@ type DashboardFlushKind = 'stats' | 'timeline' | 'toolAnalytics' | 'plan' | 'bur
 /** The stats message without the timeline (sent separately as `updateTimeline`). */
 /** Minimum gap between subagent transcript rescans for the session total. */
 const SUBAGENT_TOKEN_REFRESH_MS = 15_000;
+
+const HISTORICAL_RANGES: readonly HistoricalRange[] = ['today', 'week', 'month', 'all'];
+const HISTORICAL_SERIES: readonly HistoricalSeries[] = ['total', 'model', 'tool'];
+
+function isHistoricalRange(value: unknown): value is HistoricalRange {
+  return typeof value === 'string' && (HISTORICAL_RANGES as readonly string[]).includes(value);
+}
+
+function isHistoricalSeries(value: unknown): value is HistoricalSeries {
+  return typeof value === 'string' && (HISTORICAL_SERIES as readonly string[]).includes(value);
+}
 
 function statsPayload(state: DashboardState): DashboardStatsPayload {
   const payload: Partial<DashboardState> = { ...state };
@@ -617,20 +632,32 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         break;
 
       case 'requestHistoricalData':
+        // A malformed request (a stray button without a range) must not
+        // replace the stored range, or every later refresh comes back empty.
+        if (!isHistoricalRange(message.range)) {
+          log(`Dashboard: ignoring History request for range ${String(message.range)}`);
+          break;
+        }
         this._currentHistoricalRange = message.range;
-        this._currentHistoricalSeries = message.series ?? 'total';
+        this._currentHistoricalSeries = isHistoricalSeries(message.series)
+          ? message.series
+          : 'total';
         this._currentHistoricalProject = message.project ?? null;
         this._drillDownStack = [];
         this._sendHistoricalData(message.range);
         break;
 
-      case 'drillDown':
+      case 'drillDown': {
+        // Only a drill that resolves to a month's days or a day's hours is
+        // recorded; an unresolvable click leaves the view and stack alone.
+        if (!drillDownTarget(message.timestamp, message.currentRange)) break;
         this._drillDownStack.push({
           range: message.currentRange,
           timestamp: message.timestamp,
         });
         this._sendDrillDownData(message.timestamp, message.currentRange);
         break;
+      }
 
       case 'drillUp':
         if (this._drillDownStack.length > 0) {
@@ -641,6 +668,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             const prev = this._drillDownStack[this._drillDownStack.length - 1];
             this._sendDrillDownData(prev.timestamp, prev.range);
           }
+        } else {
+          this._sendHistoricalData(this._currentHistoricalRange);
         }
         break;
 
@@ -1375,11 +1404,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     try {
       const target = drillDownTarget(timestamp, currentRange);
       const summary = target
-        ? buildHistoricalSummary(this._historicalDataService, target.range, {
-            series: this._currentHistoricalSeries,
-            project: this._currentHistoricalProject,
-            now: target.now,
-          })
+        ? {
+            ...buildHistoricalSummary(this._historicalDataService, target.range, {
+              series: this._currentHistoricalSeries,
+              project: this._currentHistoricalProject,
+              now: target.now,
+            }),
+            drill: { depth: this._drillDownStack.length, label: drillDownLabel(timestamp, target) },
+          }
         : this._buildHistoricalSummary(this._currentHistoricalRange);
       this._postMessage({ type: 'updateHistoricalData', data: summary });
     } finally {
@@ -2496,7 +2528,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Called after retroactive import completes to update the History tab.
    */
   refresh(): void {
-    // Re-send historical data to the webview
+    // Re-send historical data to the webview, back at the top level
+    this._drillDownStack = [];
     this._sendHistoricalData(this._currentHistoricalRange);
   }
 

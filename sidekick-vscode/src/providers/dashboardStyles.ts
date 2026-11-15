@@ -3122,4 +3122,33 @@ export const DASHBOARD_STYLES = `
       white-space: nowrap;
       max-width: 100%;
     }
+
+    /* History: drill-down breadcrumb, series fallback note, empty state */
+    .breadcrumb-back {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      font: inherit;
+      font-size: 11px;
+    }
+    .history-series-note {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      margin: -8px 0 12px;
+    }
+    .history-chart.empty { display: none; }
+
+    /* Health refresh: a standalone button (not one of the History range buttons) */
+    .health-refresh-btn {
+      padding: 4px 10px;
+      font-size: 11px;
+      background: var(--vscode-button-secondaryBackground, var(--vscode-input-background));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .health-refresh-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+    }
 `;
