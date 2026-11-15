@@ -870,6 +870,7 @@ export async function activate(context: vscode.ExtensionContext) {
       sessionMonitor,
       notificationPersistenceService,
       quotaService,
+      context.globalState,
     );
     context.subscriptions.push(notificationTriggerService);
     log('NotificationTriggerService initialized');

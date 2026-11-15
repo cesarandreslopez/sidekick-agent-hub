@@ -745,6 +745,64 @@ describe('notification action handling', () => {
     service.dispose();
   });
 
+  it('keeps a separate alert memory per provider', () => {
+    // Claude polls and Codex session samples arrive interleaved with different
+    // reset times; one shared memory re-fired the Codex warning after each poll.
+    const { monitor, handlers } = createFakeSessionMonitor();
+    const service = new NotificationTriggerService(monitor);
+    const codex: QuotaState = {
+      fiveHour: { utilization: 85, resetsAt: '2026-07-18T16:00:00.000Z' },
+      sevenDay: { utilization: 10, resetsAt: '2026-07-21T00:00:00.000Z' },
+      available: true,
+      providerId: 'codex',
+    };
+    const claude: QuotaState = {
+      fiveHour: { utilization: 20, resetsAt: '2026-07-18T18:00:00.000Z' },
+      sevenDay: { utilization: 10, resetsAt: '2026-07-22T00:00:00.000Z' },
+      available: true,
+      providerId: 'claude-code',
+    };
+
+    handlers.quotaUpdate!(codex);
+    handlers.quotaUpdate!(claude);
+    handlers.quotaUpdate!(codex);
+    handlers.quotaUpdate!(claude);
+    handlers.quotaUpdate!(codex);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+    service.dispose();
+  });
+
+  it('remembers announced thresholds across a reload', () => {
+    const values = new Map<string, unknown>();
+    const store = {
+      get: (key: string) => values.get(key),
+      update: (key: string, value: unknown) => {
+        values.set(key, value);
+        return Promise.resolve();
+      },
+      keys: () => [...values.keys()],
+    } as unknown as import('vscode').Memento;
+    const sample: QuotaState = {
+      fiveHour: { utilization: 85, resetsAt: '2026-07-18T16:00:00.000Z' },
+      sevenDay: { utilization: 10, resetsAt: '2026-07-21T00:00:00.000Z' },
+      available: true,
+      providerId: 'claude-code',
+    };
+
+    const first = createFakeSessionMonitor();
+    const before = new NotificationTriggerService(first.monitor, undefined, undefined, store);
+    first.handlers.quotaUpdate!(sample);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+    before.dispose();
+
+    // A reloaded window with the same stored memory does not warn again.
+    const second = createFakeSessionMonitor();
+    const after = new NotificationTriggerService(second.monitor, undefined, undefined, store);
+    second.handlers.quotaUpdate!(sample);
+    expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
+    after.dispose();
+  });
+
   it('honors the master notification toggle for cycle and token events', () => {
     mocks.settings.notificationsEnabled = false;
     const { monitor, handlers } = createFakeSessionMonitor(600_000);

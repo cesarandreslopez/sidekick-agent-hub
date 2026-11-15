@@ -144,6 +144,9 @@ export interface QuotaUpdateSource {
   onQuotaUpdate: vscode.Event<QuotaState>;
 }
 
+/** globalState key for the per-provider quota alert memory. */
+const QUOTA_ALERT_MEMORY_KEY = 'sidekick.quotaAlertMemory';
+
 /**
  * Service that monitors session events and fires VS Code notifications
  * based on configurable triggers.
@@ -176,15 +179,35 @@ export class NotificationTriggerService implements vscode.Disposable {
   /** Optional persistence service for notification history */
   private notificationPersistence?: NotificationPersistenceService;
 
-  /** Which quota thresholds have already been announced, per reset window. */
-  private quotaAlertMemory: QuotaAlertMemory = {};
+  /**
+   * Which quota thresholds have already been announced, per provider and reset
+   * window. Keyed by provider because Claude samples (polled while the
+   * dashboard is visible) and Codex or z.ai samples (from the session) have
+   * different reset times: one shared memory let each provider's sample reset
+   * the other's, so the same warning re-fired after every poll.
+   */
+  private quotaAlertMemory = new Map<string, QuotaAlertMemory>();
+
+  /**
+   * Where the alert memory survives a reload (VS Code `globalState`). The
+   * stored windows carry their reset time, so a new window starts clean.
+   */
+  private readonly quotaAlertStore?: vscode.Memento;
 
   constructor(
     private readonly sessionMonitor: SessionMonitor,
     notificationPersistence?: NotificationPersistenceService,
     quotaSource?: QuotaUpdateSource,
+    quotaAlertStore?: vscode.Memento,
   ) {
     this.notificationPersistence = notificationPersistence;
+    this.quotaAlertStore = quotaAlertStore;
+    const stored = quotaAlertStore?.get<Record<string, QuotaAlertMemory>>(QUOTA_ALERT_MEMORY_KEY);
+    if (stored && typeof stored === 'object') {
+      for (const [provider, memory] of Object.entries(stored)) {
+        if (memory && typeof memory === 'object') this.quotaAlertMemory.set(provider, memory);
+      }
+    }
     // Load triggers from settings, falling back to built-in defaults
     this.triggers = this.loadTriggers();
     this.tokenThreshold = this.getTokenThreshold();
@@ -574,8 +597,16 @@ export class NotificationTriggerService implements vscode.Disposable {
         ...DEFAULT_QUOTA_THRESHOLDS.sevenDay,
       ]),
     };
-    const { alerts, memory } = evaluateQuotaThresholds(quota, thresholds, this.quotaAlertMemory);
-    this.quotaAlertMemory = memory;
+    const providerKey = quota.providerId ?? 'claude-code';
+    const previous = this.quotaAlertMemory.get(providerKey) ?? {};
+    const { alerts, memory } = evaluateQuotaThresholds(quota, thresholds, previous);
+    this.quotaAlertMemory.set(providerKey, memory);
+    if (this.quotaAlertStore && JSON.stringify(memory) !== JSON.stringify(previous)) {
+      void this.quotaAlertStore.update(
+        QUOTA_ALERT_MEMORY_KEY,
+        Object.fromEntries(this.quotaAlertMemory),
+      );
+    }
 
     const providerLabel =
       quota.providerId === 'codex' ? 'Codex' : quota.providerId === 'zai' ? 'z.ai' : 'Claude';
