@@ -36,28 +36,28 @@ export function SplashOverlay({ panelCount }: SplashOverlayProps): React.ReactEl
         <Text key={i}>{parseBlessedTags(line)}</Text>
       ))}
       <Text> </Text>
-      <Text color="gray"> {phrase}</Text>
+      <Text dimColor> {phrase}</Text>
       <Text> </Text>
       <Text>
         {' '}
         <Text color="magenta">{spinner}</Text>{' '}
-        <Text color="gray">Waiting for session events...</Text>
+        <Text dimColor>Waiting for session events...</Text>
       </Text>
       <Text> </Text>
       <Text>
         {' '}
-        <Text color="gray">Navigate:</Text> <Text bold>{jumpHint}</Text> jump <Text bold>?</Text>{' '}
+        <Text dimColor>Navigate:</Text> <Text bold>{jumpHint}</Text> jump <Text bold>?</Text>{' '}
         help <Text bold>q</Text> quit
       </Text>
       <Text> </Text>
-      <Text color="gray"> Start a Claude Code, OpenCode, or Codex session</Text>
-      <Text color="gray"> in another terminal and events will appear here.</Text>
+      <Text dimColor> Start a Claude Code, OpenCode, or Codex session</Text>
+      <Text dimColor> in another terminal and events will appear here.</Text>
       <Text> </Text>
       <Text>
         {' '}
-        <Text color="gray">Or use </Text>
+        <Text dimColor>Or use </Text>
         <Text bold>--replay</Text>
-        <Text color="gray"> to replay an existing session.</Text>
+        <Text dimColor> to replay an existing session.</Text>
       </Text>
     </Box>
   );

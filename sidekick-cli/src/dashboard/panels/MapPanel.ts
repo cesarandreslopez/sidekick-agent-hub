@@ -43,7 +43,9 @@ function blessedColor(color: string): string {
 }
 
 function stationDot(station: ActivityStationId): string {
-  const color = blessedColor(STATION_TERMINAL_COLORS[station]);
+  const raw = STATION_TERMINAL_COLORS[station];
+  if (!raw) return '●';
+  const color = blessedColor(raw);
   return `{${color}-fg}●{/${color}-fg}`;
 }
 

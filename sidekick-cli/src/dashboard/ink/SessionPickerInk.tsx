@@ -124,7 +124,7 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
 
     const item = items[i];
     const dot = item.isActive ? '\u25CF' : '\u25CB';
-    const dotColor = item.isActive ? 'green' : 'gray';
+    const dotColor = item.isActive ? 'green' : undefined;
     const badge = item.providerId ? PROVIDER_BADGES[item.providerId] : null;
     const truncLabel = item.label.length > 40 ? item.label.substring(0, 37) + '...' : item.label;
 
@@ -133,7 +133,7 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
         <Text inverse={isSelected}>
           {badge && <Text color={badge.color}>[{badge.badge}]</Text>}{' '}
           <Text color={dotColor}>{dot}</Text> {truncLabel.padEnd(40)}{' '}
-          <Text color="gray">{item.age.padEnd(9)}</Text> <Text color="gray">{item.sessionId}</Text>
+          <Text dimColor>{item.age.padEnd(9)}</Text> <Text dimColor>{item.sessionId}</Text>
           {item.isActive ? <Text color="green"> LIVE</Text> : ''}
         </Text>
       </Box>
@@ -237,7 +237,7 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
       <Box height={1}>
         <Text>
           {' '}
-          {parseBlessedTags(BRAND_INLINE)} <Text color="gray">Session Picker</Text>{' '}
+          {parseBlessedTags(BRAND_INLINE)} <Text dimColor>Session Picker</Text>{' '}
           <Text bold>
             {'\u2191'}/{'\u2193'}
           </Text>{' '}

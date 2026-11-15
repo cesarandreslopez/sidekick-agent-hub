@@ -25,7 +25,8 @@ export const STATION_TERMINAL_COLORS: Record<ActivityStationId, string> = {
   browser: 'yellow',
   agents: 'magenta',
   skills: 'yellowBright',
-  hooks: 'white',
+  // '' = the terminal's default foreground: white disappears on light themes.
+  hooks: '',
   plan: 'redBright',
 };
 
@@ -37,8 +38,10 @@ export interface ToneStyle {
 
 const TONE_STYLES: Record<ActivityTone, ToneStyle> = {
   default: {},
-  muted: { color: 'gray' },
-  dim: { color: 'gray', dim: true },
+  // Dim default-colour text rather than ANSI bright-black ("gray"), which is
+  // invisible on Solarized-style themes and faint on light backgrounds.
+  muted: { dim: true },
+  dim: { dim: true },
   accent: { color: 'magentaBright' },
   hot: { color: 'yellow', bold: true },
   fault: { color: 'red', bold: true },
@@ -78,6 +81,9 @@ export function segmentsToBlessed(row: readonly ActivityTextSegment[]): string {
     if (style.color) {
       const tag = `${blessedColor(style.color)}-fg`;
       text = `{${tag}}${text}{/${tag}}`;
+    } else if (style.dim) {
+      // The dashboard's tag parser renders grey as dim default-colour text.
+      text = `{grey-fg}${text}{/grey-fg}`;
     }
     out += text;
   }

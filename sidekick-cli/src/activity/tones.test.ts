@@ -9,7 +9,8 @@ describe('toneStyle', () => {
     expect(toneStyle({ tone: 'accent', station: 'shell' })).toEqual({ color: 'green' });
     expect(toneStyle({ tone: 'accent' })).toEqual({ color: 'magentaBright' });
     expect(toneStyle({ tone: 'fault' })).toEqual({ color: 'red', bold: true });
-    expect(toneStyle({ tone: 'dim' })).toEqual({ color: 'gray', dim: true });
+    // Dim default colour, not ANSI bright-black (invisible on some themes).
+    expect(toneStyle({ tone: 'dim' })).toEqual({ dim: true });
     expect(toneStyle({ tone: 'default', bold: true })).toEqual({ bold: true });
     expect(toneStyle({ tone: 'unheard-of' as never })).toEqual({});
   });

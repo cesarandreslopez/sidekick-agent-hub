@@ -21,7 +21,7 @@ export function TooSmallOverlay({ columns, rows }: TooSmallOverlayProps): React.
     >
       <Box flexDirection="column" borderStyle="single" borderColor="red" paddingX={2} paddingY={1}>
         <Text color="red">Terminal too small</Text>
-        <Text color="gray">
+        <Text dimColor>
           Need at least 60x15 (current: {columns}x{rows})
         </Text>
       </Box>

@@ -1,6 +1,7 @@
 declare const __CLI_VERSION__: string;
 
 import { Command } from 'commander';
+import chalk from 'chalk';
 import {
   BLOCKS_EXAMPLES,
   DUMP_EXAMPLES,
@@ -34,6 +35,12 @@ import { formatCliError } from './cliError';
 import { leaveActiveAltScreen } from './dashboard/altScreen';
 import { registerAccountsCommand } from './commands/accounts';
 
+// chalk 5 reads --no-color and FORCE_COLOR but not NO_COLOR (no-color.org).
+// Set the level here, the main bundle's entry (the SEA build starts here
+// too), so one-shot output and the Ink dashboard, which share this chalk,
+// both honour it. FORCE_COLOR still wins, and nothing leaks to child processes.
+if (process.env.NO_COLOR && !process.env.FORCE_COLOR) chalk.level = 0;
+
 const commandToken = firstCommandToken(process.argv.slice(2));
 
 const program = new Command();
@@ -44,8 +51,8 @@ program
   .version(__CLI_VERSION__)
   .option('--json', 'Output as JSON')
   .option('--project <path>', 'Override project path (default: cwd)')
-  // Chalk already honors --no-color, NO_COLOR, and a non-TTY stdout on its own;
-  // declaring it here only stops Commander rejecting the flag as unknown.
+  // Chalk honors --no-color and a non-TTY stdout on its own (NO_COLOR is
+  // applied above); declaring it here only stops Commander rejecting the flag.
   .option('--no-color', 'Disable colored output (also honors NO_COLOR)')
   .option(
     '--offline',
