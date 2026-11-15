@@ -51,7 +51,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
   <div class="header">
     <img src="${options.iconUri}" alt="Sidekick" />
     <h1>Session Analytics</h1>
-    <span class="version-badge" id="version-badge" title="What's New">v${options.extVersion}</span>
+    <button type="button" class="version-badge" id="version-badge" title="What's New" aria-haspopup="dialog">v${options.extVersion}</button>
     <span id="status" class="status inactive" aria-live="polite">No session</span>
   </div>
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
@@ -121,7 +121,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
         <button class="metric-btn" data-metric="cache" aria-pressed="false">Cache</button>
       </div>
 
-      <div class="provider-status-stack" aria-live="polite">
+      <div class="provider-status-stack">
         <div class="provider-status-section" id="provider-status-section" title="Public Claude service information from status.claude.com">
           <div class="provider-status-content" id="provider-status-content">
             <div class="provider-status-summary-row">
@@ -160,7 +160,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
           <div class="section-title">Context Window</div>
           <div class="context-gauge" title="Green: &lt;50% | Orange: 50-79% | Red: ≥80%. When full, older context is summarized.">
             <canvas id="contextChart"></canvas>
-            <span class="context-percent" id="context-percent" aria-live="polite">0%</span>
+            <span class="context-percent" id="context-percent">0%</span>
           </div>
           <div id="context-health" style="display: none; align-items: center; gap: 4px; font-size: 0.85em; margin-top: 4px;"></div>
           <div id="truncation-info" style="display: none; align-items: center; gap: 4px; font-size: 0.85em; margin-top: 2px;"></div>
@@ -233,12 +233,12 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
         </div>
       </div>
 
-      <div class="primary-metric-display" data-metric="cost" id="primary-metric-display" style="display: none;" aria-live="polite">
+      <div class="primary-metric-display" data-metric="cost" id="primary-metric-display" style="display: none;">
         <div class="metric-value" id="primary-metric-value">$0.00</div>
         <div class="metric-subtitle" id="primary-metric-subtitle">Estimated session cost</div>
       </div>
 
-      <div class="inline-stats" aria-live="polite">
+      <div class="inline-stats">
         <div class="inline-stat">
           <div class="stat-value" id="inline-duration">0m</div>
           <div class="stat-label">Duration</div>
@@ -278,7 +278,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 
       <!-- Plan Analytics Section -->
       <div class="plan-section" id="plan-section" style="display: none;">
-        <div class="section-title">Plan Progress <span class="plan-view-toggle" id="plan-view-toggle" style="display: none;">Show Details</span></div>
+        <div class="section-title">Plan Progress <button type="button" class="plan-view-toggle" id="plan-view-toggle" style="display: none;" aria-pressed="false">Show Details</button></div>
         <div id="plan-title" style="font-size: 12px; font-weight: 500; margin-bottom: 4px;"></div>
         <div class="plan-progress-bar-bg">
           <div class="plan-progress-fill" id="plan-progress-fill" style="width: 0%;"></div>
@@ -425,7 +425,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
             </div>
             <!-- Timeline Search & Filters -->
             <div class="timeline-controls">
-              <input type="text" id="timeline-search" class="timeline-search" placeholder="Search timeline..." />
+              <input type="text" id="timeline-search" class="timeline-search" placeholder="Search timeline..." aria-label="Search the activity timeline" />
               <div class="timeline-filters" id="timeline-filters">
                 <label class="filter-toggle" title="User messages">
                   <input type="checkbox" data-filter="user" checked /> User
@@ -574,7 +574,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
         <div class="details-content" id="decisions-section-group-body">
           <div class="section" id="decisions-section" style="display: none;">
             <div style="margin-bottom:8px;">
-              <input type="text" id="decisions-search" placeholder="Search decisions..."
+              <input type="text" id="decisions-search" placeholder="Search decisions..." aria-label="Search decisions"
                 style="width:100%;padding:4px 8px;background:var(--vscode-input-background);
                 color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);
                 border-radius:3px;font-size:11px;box-sizing:border-box;" />
@@ -624,7 +624,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
       </div>
 
       <div class="last-updated">
-        Last updated: <span id="last-updated" aria-live="polite">-</span>
+        Last updated: <span id="last-updated">-</span>
       </div>
     </div>
   </div>
@@ -788,10 +788,10 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 
   <!-- Changelog Modal -->
   <div id="changelog-backdrop" class="changelog-backdrop" style="display: none;">
-    <div class="changelog-modal">
+    <div class="changelog-modal" role="dialog" aria-modal="true" aria-labelledby="changelog-title">
       <div class="changelog-header">
-        <span class="changelog-title">What's New</span>
-        <span class="changelog-close" id="changelog-close" role="button" aria-label="Close changelog">&times;</span>
+        <span class="changelog-title" id="changelog-title">What's New</span>
+        <button type="button" class="changelog-close" id="changelog-close" aria-label="Close What's New">&times;</button>
       </div>
       <div class="changelog-version-info">
         <span class="changelog-current-version">v${options.extVersion}</span>

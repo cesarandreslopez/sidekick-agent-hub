@@ -39,4 +39,32 @@ describe('renderDashboardHtml', () => {
     const inlineScripts = html.match(/<script(?![^>]*\bsrc=)(?![^>]*application\/json)[^>]*>/g);
     expect(inlineScripts).toBeNull();
   });
+
+  it('uses real buttons and dialog semantics, and keeps live regions to the status pill', () => {
+    const html = renderDashboardHtml({
+      nonce: 'n',
+      cspSource: 'vscode-webview:',
+      chartjsUri: '',
+      scriptUri: '',
+      iconUri: '',
+      extVersion: '0.33.2',
+      extDate: '',
+      initJson: '{}',
+    });
+    for (const id of ['version-badge', 'changelog-close', 'plan-view-toggle', 'drill-up']) {
+      expect(html).toMatch(new RegExp(`<button type="button"[^>]*id="${id}"`));
+    }
+    expect(html).not.toMatch(/<span[^>]*role="button"/);
+    expect(html).toContain('role="dialog" aria-modal="true" aria-labelledby="changelog-title"');
+    // Numbers that update every flush must not be re-announced each time.
+    expect(html.match(/aria-live=/g)).toHaveLength(1);
+    expect(html).toContain('<span id="status" class="status inactive" aria-live="polite">');
+    expect(html).toContain('aria-label="Search the activity timeline"');
+    expect(html).toContain('aria-label="Search decisions"');
+    // Health's Refresh is not one of the History range buttons.
+    expect(html).not.toMatch(/class="range-btn"[^>]*id="health-refresh"/);
+    expect(html.match(/class="range-btn[^"]*"[^>]*>/g)!.every((tag) => /data-range=/.test(tag))).toBe(
+      true,
+    );
+  });
 });

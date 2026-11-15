@@ -162,22 +162,46 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       const changelogClose = document.getElementById('changelog-close');
       const changelogFullLink = document.getElementById('changelog-full-link');
 
+      // A dialog: focus moves in on open, Escape closes it, focus returns to the badge.
+      function openChangelog() {
+        renderChangelog(changelogData);
+        if (!changelogBackdrop) return;
+        changelogBackdrop.style.display = 'flex';
+        if (changelogClose) changelogClose.focus();
+      }
+
+      function closeChangelog() {
+        if (!changelogBackdrop || changelogBackdrop.style.display === 'none') return;
+        changelogBackdrop.style.display = 'none';
+        if (versionBadge) versionBadge.focus();
+      }
+
       if (versionBadge) {
-        versionBadge.addEventListener('click', function() {
-          renderChangelog(changelogData);
-          if (changelogBackdrop) changelogBackdrop.style.display = 'flex';
-        });
+        versionBadge.addEventListener('click', openChangelog);
       }
 
       if (changelogClose) {
-        changelogClose.addEventListener('click', function() {
-          if (changelogBackdrop) changelogBackdrop.style.display = 'none';
-        });
+        changelogClose.addEventListener('click', closeChangelog);
       }
 
       if (changelogBackdrop) {
         changelogBackdrop.addEventListener('click', function(e) {
-          if (e.target === changelogBackdrop) changelogBackdrop.style.display = 'none';
+          if (e.target === changelogBackdrop) closeChangelog();
+        });
+        changelogBackdrop.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            closeChangelog();
+            return;
+          }
+          if (e.key !== 'Tab') return;
+          // Keep Tab inside the dialog.
+          const focusable = Array.from(changelogBackdrop.querySelectorAll('button, a[href]'));
+          if (focusable.length === 0) return;
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
         });
       }
 
@@ -1716,7 +1740,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         listEl.innerHTML = notifications.map(function(n) {
           const icon = severityIcons[n.severity] || 'ℹ';
           const readClass = n.isRead ? 'notification-read' : 'notification-unread';
-          return '<div class="notification-item ' + readClass + ' notification-' + n.severity + '" data-id="' + n.id + '">' +
+          // Unread items can be marked read from the keyboard too.
+          const unreadAttrs = n.isRead ? '' : ' role="button" tabindex="0" aria-label="' + escapeHtml('Mark as read: ' + n.title) + '"';
+          return '<div class="notification-item ' + readClass + ' notification-' + escapeHtml(n.severity) + '" data-id="' + escapeHtml(n.id) + '"' + unreadAttrs + '>' +
             '<span class="notification-icon">' + icon + '</span>' +
             '<div class="notification-content">' +
               '<div class="notification-header">' +
@@ -1728,14 +1754,25 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           '</div>';
         }).join('');
 
-        // Click to mark read
+        // Click (or Enter / Space) to mark read
         listEl.querySelectorAll('.notification-item').forEach(function(item) {
-          item.addEventListener('click', function() {
+          function markRead() {
             const id = item.getAttribute('data-id');
             if (id) {
               vscode.postMessage({ type: 'markNotificationRead', id: id });
               item.classList.remove('notification-unread');
               item.classList.add('notification-read');
+              item.removeAttribute('role');
+              item.removeAttribute('tabindex');
+              item.removeAttribute('aria-label');
+            }
+          }
+          item.addEventListener('click', markRead);
+          item.addEventListener('keydown', function(e) {
+            if (item.getAttribute('role') !== 'button') return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              markRead();
             }
           });
         });
@@ -2455,11 +2492,13 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             stepsList.style.display = 'none';
             mdView.style.display = 'block';
             pvToggle.textContent = 'Show Steps';
+            pvToggle.setAttribute('aria-pressed', 'true');
             planViewShowing = 'details';
           } else {
             stepsList.style.display = '';
             mdView.style.display = 'none';
             pvToggle.textContent = 'Show Details';
+            pvToggle.setAttribute('aria-pressed', 'false');
             planViewShowing = 'steps';
           }
         });

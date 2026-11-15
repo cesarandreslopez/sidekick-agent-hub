@@ -3169,6 +3169,33 @@ export const DASHBOARD_STYLES = `
       border: 0;
     }
 
+    /* Buttons that used to be spans keep their look */
+    .version-badge,
+    .changelog-close,
+    .plan-view-toggle {
+      background: transparent;
+      border: 0;
+      font-family: inherit;
+    }
+    .version-badge { font-size: 11px; }
+    .plan-view-toggle { padding: 0; font-size: 10px; }
+    .changelog-close { font-size: 18px; line-height: 1; }
+    .notification-item[role="button"] { cursor: pointer; }
+
+    /* Info tooltips placed by tooltips.ts: fixed to the viewport, so neither
+       the sidebar edge nor a collapsed group's overflow clips them */
+    .info-icon:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; }
+    .tooltip.tooltip--placed {
+      display: block;
+      position: fixed;
+      transform: none;
+      margin: 0;
+      z-index: 2000;
+      max-width: calc(100vw - 16px);
+    }
+    .tooltip.tooltip--placed::before,
+    .tooltip.tooltip--placed::after { display: none; }
+
     /* Row toggles rendered as real buttons (keyboard + screen reader) */
     .tool-item .tool-toggle,
     .error-group-header,
