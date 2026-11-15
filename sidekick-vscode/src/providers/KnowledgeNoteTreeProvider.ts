@@ -44,7 +44,27 @@ const EMPTY_MESSAGE =
   'Capture reusable knowledge — gotchas, patterns, guidelines, tips — attached to files.\n\n' +
   'Notes persist across sessions and can be injected into your instruction file ' +
   "(CLAUDE.md or AGENTS.md) so your AI agent benefits from what you've learned.\n\n" +
-  'Select code, then right-click → Add Knowledge Note.';
+  'Select code, then right-click → Sidekick → Add Knowledge Note.';
+
+/**
+ * Resolves a stored note path to a file URI.
+ *
+ * Notes are stored with `vscode.workspace.asRelativePath`, which prefixes the
+ * workspace folder name when more than one folder is open, so a multi-root
+ * path is matched to its folder by that first segment.
+ */
+export function resolveNoteFileUri(filePath: string): vscode.Uri | undefined {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (folders.length === 0) return undefined;
+  if (folders.length > 1) {
+    const slash = filePath.indexOf('/');
+    if (slash > 0) {
+      const folder = folders.find((f) => f.name === filePath.slice(0, slash));
+      if (folder) return vscode.Uri.joinPath(folder.uri, filePath.slice(slash + 1));
+    }
+  }
+  return vscode.Uri.joinPath(folders[0].uri, filePath);
+}
 
 const POPULATED_MESSAGE =
   'Right-click a note to edit, confirm, or delete. ' +
@@ -92,9 +112,8 @@ export class KnowledgeNoteTreeProvider
     item.id = note.id;
 
     // Click to navigate to file at line
-    const wsFolder = vscode.workspace.workspaceFolders?.[0];
-    if (wsFolder) {
-      const fileUri = vscode.Uri.joinPath(wsFolder.uri, note.filePath);
+    const fileUri = resolveNoteFileUri(note.filePath);
+    if (fileUri) {
       const line = note.lineRange ? note.lineRange.start - 1 : 0;
       item.command = {
         command: 'vscode.open',

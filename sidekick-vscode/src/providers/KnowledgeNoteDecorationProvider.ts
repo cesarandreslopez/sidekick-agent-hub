@@ -9,7 +9,6 @@
  */
 
 import * as vscode from 'vscode';
-import * as path from 'path';
 import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import type { KnowledgeNote, KnowledgeNoteType } from '../types/knowledgeNote';
 import { log } from '../services/Logger';
@@ -134,10 +133,15 @@ export class KnowledgeNoteDecorationProvider implements vscode.Disposable {
     return md;
   }
 
+  /**
+   * The key notes are stored under. Notes are saved with
+   * `vscode.workspace.asRelativePath(uri)` (forward slashes, plus the folder
+   * name in a multi-root workspace), so lookups must use the same function;
+   * `path.relative` used backslashes on Windows and never had the folder name.
+   */
   private getRelativePath(uri: vscode.Uri): string | undefined {
-    const wsFolder = vscode.workspace.getWorkspaceFolder(uri);
-    if (!wsFolder) return undefined;
-    return path.relative(wsFolder.uri.fsPath, uri.fsPath);
+    if (!vscode.workspace.getWorkspaceFolder(uri)) return undefined;
+    return vscode.workspace.asRelativePath(uri);
   }
 
   dispose(): void {
