@@ -376,14 +376,14 @@ describe('splash screen (hasReceivedEvents=false)', () => {
     const first = makeCtx({ hasReceivedEvents: false }, { panels, panel: panels[0] });
     handleDashboardInput('1', makeKey(), first.ctx);
     expect(first.dispatched).toEqual([
-      { type: 'FIRST_EVENT', sessionPrefix: '' },
+      { type: 'FIRST_EVENT', activeFilter: true },
       { type: 'SWITCH_PANEL', index: 0 },
     ]);
 
     const third = makeCtx({ hasReceivedEvents: false }, { panels, panel: panels[0] });
     handleDashboardInput('3', makeKey(), third.ctx);
     expect(third.dispatched).toEqual([
-      { type: 'FIRST_EVENT', sessionPrefix: '' },
+      { type: 'FIRST_EVENT', activeFilter: true },
       { type: 'SWITCH_PANEL', index: 2 },
     ]);
   });
@@ -646,5 +646,21 @@ describe('navigation', () => {
     handleDashboardInput('R', makeKey(), ctx);
     expect(dispatched).toEqual([]);
     expect(addToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('mouse reports', () => {
+  it('never types an SGR mouse report into the filter', () => {
+    const { ctx, dispatched } = makeCtx({ overlay: 'filter', filterString: 'ab' });
+    handleDashboardInput('[<64;15;5M', makeKey(), ctx);
+    handleDashboardInput('[<0;10;3m', makeKey(), ctx);
+    handleDashboardInput('\x1b[<65;15;5M[<65;15;5M', makeKey(), ctx);
+    expect(dispatched).toEqual([]);
+  });
+
+  it('still types ordinary brackets into the filter', () => {
+    const { ctx, dispatched } = makeCtx({ overlay: 'filter', filterString: 'a' });
+    handleDashboardInput('[', makeKey(), ctx);
+    expect(dispatched).toEqual([{ type: 'SET_FILTER', value: 'a[' }]);
   });
 });

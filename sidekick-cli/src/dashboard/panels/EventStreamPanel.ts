@@ -43,6 +43,9 @@ export class EventStreamPanel implements SidePanel {
     const events = metrics.timeline;
     if (events.length === 0) return [];
 
+    // Ids follow the event, not its slot: once the 200-event ring is full every
+    // new event shifts the list, and an index id would move the selection.
+    const firstAbsolute = Math.max(0, metrics.timelineAppendCount - events.length);
     return events.map((ev, i) => {
       const time = formatTime(ev.timestamp);
       const badge = EVENT_TYPE_BADGES[ev.type] || '{grey-fg}[???]{/grey-fg}';
@@ -50,7 +53,7 @@ export class EventStreamPanel implements SidePanel {
       const label = `{grey-fg}${time}{/grey-fg} ${badge} ${summary}`;
 
       return {
-        id: `ev-${i}`,
+        id: `ev-${firstAbsolute + i}`,
         label,
         sortKey: i, // chronological order
         data: { index: i, event: ev },
@@ -105,7 +108,9 @@ export class EventStreamPanel implements SidePanel {
         lines.push(`{bold}Tokens:{/bold}   ${fmtNum(total)} total incl. cache (${breakdown})`);
       } else {
         lines.push(`{bold}Tokens:{/bold}   ${fmtNum(total)} total incl. cache`);
-        lines.push(`          {grey-fg}${breakdown}{/grey-fg}`);
+        for (const part of wordWrap(breakdown, Math.max(10, w - 2)).split('\n')) {
+          lines.push(`  {grey-fg}${part}{/grey-fg}`);
+        }
       }
       if (ev.usageKind === 'correction') {
         lines.push(

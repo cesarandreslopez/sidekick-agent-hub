@@ -32,7 +32,7 @@ export class KanbanPanel implements SidePanel {
   ];
 
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
-    const tasks = mergeTasks(metrics.tasks, staticData.tasks);
+    const tasks = mergeTasks(metrics.tasks, staticData.tasks, metrics.sessionId);
 
     const pending = tasks.filter((t) => t.status === 'pending');
     const active = tasks.filter((t) => t.status === 'in_progress');

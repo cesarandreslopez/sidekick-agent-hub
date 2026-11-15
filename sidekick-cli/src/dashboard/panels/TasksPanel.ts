@@ -7,7 +7,7 @@ import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext 
 import type { DashboardMetrics, TaskItem } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import { wordWrap, detailWidth } from '../formatters';
-import { mergeTasks } from '../utils/taskMerger';
+import { mergeTasks, taskItemId } from '../utils/taskMerger';
 
 const STATUS_SORT: Record<string, number> = {
   in_progress: 0,
@@ -33,11 +33,11 @@ export class TasksPanel implements SidePanel {
   ];
 
   getItems(metrics: DashboardMetrics, staticData: StaticData): PanelItem[] {
-    const tasks = mergeTasks(metrics.tasks, staticData.tasks);
+    const tasks = mergeTasks(metrics.tasks, staticData.tasks, metrics.sessionId);
     return tasks.map((t, index) => {
       const numericId = parseInt(t.taskId, 10);
       return {
-        id: t.taskId,
+        id: taskItemId(t),
         label: `${STATUS_ICON[t.status] || ' '} ${t.subject}`,
         sortKey:
           (STATUS_SORT[t.status] ?? 3) * 1000 + (Number.isNaN(numericId) ? index : numericId),

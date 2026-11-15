@@ -94,6 +94,12 @@ export interface InputDispatchContext {
   onAccountUndo?: () => void;
 }
 
+/** An SGR mouse report (one or more), with or without its leading ESC. */
+export function isMouseReport(input: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return /^(?:\x1b?\[<\d+;\d+;\d+[Mm])+$/.test(input);
+}
+
 export function handleDashboardInput(input: string, key: Key, ctx: InputDispatchContext): void {
   const {
     state,
@@ -128,6 +134,11 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     exit();
     return;
   }
+
+  // With mouse capture on, Ink hands SGR mouse reports (`[<64;15;5M`) to
+  // useInput as text; the mouse layer handles them, so they must never reach
+  // the filter or the key bindings.
+  if (isMouseReport(input)) return;
 
   // ── Tier 1: active overlay owns the key namespace ──
 
@@ -336,7 +347,9 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
   const num = parseInt(input, 10);
   if (num >= 1 && num <= panels.length) {
     if (!state.hasReceivedEvents) {
-      dispatch({ type: 'FIRST_EVENT', sessionPrefix: '' });
+      // Leaving the splash by keyboard installs the same default filter as
+      // the first event does.
+      dispatch({ type: 'FIRST_EVENT', activeFilter: true });
     }
     panels[state.activePanelIndex]?.onDeactivate?.();
     dispatch({ type: 'SWITCH_PANEL', index: num - 1 });

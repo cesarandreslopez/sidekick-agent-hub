@@ -86,11 +86,30 @@ describe('Phase 3 panel regressions', () => {
           sessionOrigin: 'session-1',
         },
       ],
+      'session-1',
     );
     expect(merged).toMatchObject({
       subject: 'Live subject',
       createdAt: '2026-07-21T12:00:00Z',
       sessionOrigin: 'session-1',
     });
+  });
+
+  it("keeps another session's task with the same id instead of overwriting it", () => {
+    const live = {
+      taskId: '1',
+      subject: 'Today',
+      status: 'in_progress' as const,
+      blockedBy: [],
+      blocks: [],
+      toolCallCount: 0,
+    };
+    const merged = mergeTasks(
+      [live],
+      [{ taskId: '1', subject: 'Yesterday', status: 'pending', sessionOrigin: 'old-session' }],
+      'new-session',
+    );
+    expect(merged.map((t) => t.subject).sort()).toEqual(['Today', 'Yesterday']);
+    expect(merged.find((t) => t.subject === 'Today')?.sessionOrigin).toBe('new-session');
   });
 });

@@ -37,7 +37,8 @@ import type { TerminalMouseEvent } from './mouse';
 import changelogMd from '../../../CHANGELOG.md';
 import { describeQuotaFailure, parseChangelog } from 'sidekick-shared';
 import type { AccountView } from 'sidekick-shared';
-import { initialState, reducer, type SessionFilter } from './dashboardReducer';
+import { ACTIVE_SESSION_FILTER, initialState, reducer } from './dashboardReducer';
+import { matchesSessionFilter, type SessionFilter } from '../sessionScope';
 import { handleDashboardInput } from './inputDispatch';
 import { itemTimestampMs, parseDateExpression } from '../dateFilterExpression';
 import { newTimelineEntries } from './timelineAlerts';
@@ -124,14 +125,18 @@ export function Dashboard({
   const alertsInitRef = useRef(false);
   const prevDetailLineCountRef = useRef(0);
   const prevDetailContentKeyRef = useRef<string | null>(null);
+  const selectionRef = useRef<{ panelId: string; index: number; itemId: string | undefined }>({
+    panelId: '',
+    index: 0,
+    itemId: undefined,
+  });
 
   // ── First event detection ──
   useEffect(() => {
     if (!state.hasReceivedEvents && metrics.eventCount > 0) {
-      const prefix = (metrics.sessionStartTime || '').substring(0, 8);
-      dispatch({ type: 'FIRST_EVENT', sessionPrefix: prefix });
+      dispatch({ type: 'FIRST_EVENT', activeFilter: true });
     }
-  }, [metrics.eventCount, state.hasReceivedEvents, metrics.sessionStartTime]);
+  }, [metrics.eventCount, state.hasReceivedEvents]);
 
   // ── Alert detection ──
   useEffect(() => {
@@ -228,9 +233,13 @@ export function Dashboard({
         ['tasks', 'kanban', 'notes', 'decisions', 'plans'].includes(panel.id)
       ) {
         if (panel.id === 'kanban') {
-          items = items.map((it) => filterKanbanColumn(it, state.sessionFilter!));
+          items = items.map((it) =>
+            filterKanbanColumn(it, state.sessionFilter!, metrics.sessionId),
+          );
         } else {
-          items = items.filter((it) => matchesSessionFilter(it, state.sessionFilter!));
+          items = items.filter((it) =>
+            matchesSessionFilter(it, state.sessionFilter!, metrics.sessionId),
+          );
         }
       }
 
@@ -284,7 +293,7 @@ export function Dashboard({
       items.sort((a, b) => a.sortKey - b.sortKey);
       return items;
     },
-    [panel, state.sessionFilter, state.filterString, state.filterMode],
+    [panel, state.sessionFilter, state.filterString, state.filterMode, metrics.sessionId],
   );
 
   // Items are rebuilt only when the metrics identity, the static data, the
@@ -296,11 +305,32 @@ export function Dashboard({
     [panel, panelViewVersion, metrics, staticData, filterItems],
   );
 
+  // Keep the selection on the same item when the list changes under it (new
+  // events shift the Events ring, a status change re-sorts Tasks, typing
+  // narrows the filter): if the index did not move but the item at it did,
+  // follow the item. A moved index means the user moved it.
+  let followedIndex = state.selectedItemIndex;
+  const previousSelection = selectionRef.current;
+  if (
+    previousSelection.panelId === panel.id &&
+    previousSelection.itemId !== undefined &&
+    previousSelection.index === state.selectedItemIndex &&
+    currentItems[state.selectedItemIndex]?.id !== previousSelection.itemId
+  ) {
+    const found = currentItems.findIndex((it) => it.id === previousSelection.itemId);
+    if (found >= 0) followedIndex = found;
+  }
+
   // Clamp selection
-  const clampedSelection = Math.min(state.selectedItemIndex, Math.max(0, currentItems.length - 1));
+  const clampedSelection = Math.min(followedIndex, Math.max(0, currentItems.length - 1));
   if (clampedSelection !== state.selectedItemIndex && currentItems.length > 0) {
     dispatch({ type: 'CLAMP_SELECTION', index: clampedSelection });
   }
+  selectionRef.current = {
+    panelId: panel.id,
+    index: clampedSelection,
+    itemId: currentItems[clampedSelection]?.id,
+  };
 
   // Side list scrolling
   const sideContentHeight = Math.max(1, rows - 5); // tab bar + borders + title + status bar
@@ -493,14 +523,8 @@ export function Dashboard({
       session?: { date: string };
     };
     if (d.type === 'active') {
-      const prefix = (d.metrics?.sessionStartTime || '').substring(0, 8);
-      if (!prefix) {
-        addToast('No session start time available', 'info');
-        return;
-      }
-      const filter = { sessionPrefix: prefix, label: '● active session' };
-      dispatch({ type: 'SET_SESSION_FILTER', filter });
-      addToast(`Session filter: ${filter.label}`, 'info');
+      dispatch({ type: 'SET_SESSION_FILTER', filter: ACTIVE_SESSION_FILTER });
+      addToast(`Session filter: ${ACTIVE_SESSION_FILTER.label}`, 'info');
     } else if (d.type === 'historical' && d.session) {
       const filter = { date: d.session.date, label: `⊛ ${d.session.date}` };
       dispatch({ type: 'SET_SESSION_FILTER', filter });
@@ -827,38 +851,14 @@ export function Dashboard({
 
 // ── Session filter helpers ──
 
-function matchesSessionFilter(item: PanelItem, filter: SessionFilter): boolean {
-  const data = item.data as Record<string, unknown> | undefined;
-  if (!data) return false;
-
-  if (filter.sessionPrefix) {
-    const sessionOrigin = data.sessionOrigin as string | undefined;
-    const sessionId = data.sessionId as string | undefined;
-    if (sessionOrigin?.substring(0, 8) === filter.sessionPrefix) return true;
-    if (sessionId?.substring(0, 8) === filter.sessionPrefix) return true;
-    if (!sessionOrigin && !sessionId) return true;
-    return false;
-  }
-
-  if (filter.date) {
-    const createdAt = data.createdAt as string | undefined;
-    const timestamp = data.timestamp as string | undefined;
-    const sessionOrigin = data.sessionOrigin as string | undefined;
-    const sessionId = data.sessionId as string | undefined;
-    if (createdAt?.startsWith(filter.date)) return true;
-    if (timestamp?.startsWith(filter.date)) return true;
-    if (sessionOrigin?.startsWith(filter.date)) return true;
-    if (sessionId?.startsWith(filter.date)) return true;
-    return false;
-  }
-
-  return true;
-}
-
-function filterKanbanColumn(item: PanelItem, filter: SessionFilter): PanelItem {
+function filterKanbanColumn(
+  item: PanelItem,
+  filter: SessionFilter,
+  liveSessionId: string | undefined,
+): PanelItem {
   const colData = item.data as { status: string; tasks: Array<Record<string, unknown>> };
   const filtered = colData.tasks.filter((t) =>
-    matchesSessionFilter({ id: '', label: '', sortKey: 0, data: t }, filter),
+    matchesSessionFilter({ id: '', label: '', sortKey: 0, data: t }, filter, liveSessionId),
   );
   const statusIcons: Record<string, string> = {
     pending: '{yellow-fg}○{/yellow-fg}',
@@ -867,7 +867,7 @@ function filterKanbanColumn(item: PanelItem, filter: SessionFilter): PanelItem {
   };
   const statusLabels: Record<string, string> = {
     pending: 'Pending',
-    in_progress: 'Active',
+    in_progress: 'In Progress',
     completed: 'Completed',
   };
   const icon = statusIcons[colData.status] || '';

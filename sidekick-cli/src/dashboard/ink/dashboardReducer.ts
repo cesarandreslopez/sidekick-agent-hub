@@ -6,16 +6,13 @@
 
 import { parseDateExpression } from '../dateFilterExpression';
 import { maxDetailScroll } from './detailScroll';
+import type { SessionFilter } from '../sessionScope';
+
+export type { SessionFilter } from '../sessionScope';
 
 export type LayoutMode = 'normal' | 'expanded' | 'wide-side';
 export type OverlayKind = null | 'help' | 'context-menu' | 'filter' | 'changelog' | 'accounts';
 export type FocusTarget = 'side' | 'detail';
-
-export interface SessionFilter {
-  sessionPrefix?: string;
-  date?: string;
-  label: string;
-}
 
 export interface ToastEntry {
   id: number;
@@ -68,7 +65,12 @@ export type Action =
   | { type: 'SCROLL_DETAIL_DELTA'; delta: number; totalLines: number; viewportHeight: number }
   | { type: 'ADD_TOAST'; toast: ToastEntry }
   | { type: 'REMOVE_TOAST'; id: number }
-  | { type: 'FIRST_EVENT'; sessionPrefix: string }
+  /**
+   * Leave the splash screen. `activeFilter` installs the "active session"
+   * filter, which is resolved against the live session id at filter time (so
+   * it follows an auto-switch).
+   */
+  | { type: 'FIRST_EVENT'; activeFilter: boolean }
   | { type: 'CONTEXT_MENU_NAV'; delta: number; itemCount: number }
   | { type: 'CONTEXT_MENU_SELECT' }
   | { type: 'SCROLL_SIDE'; delta: number; itemCount: number }
@@ -76,6 +78,9 @@ export type Action =
   | { type: 'CLAMP_OVERLAY_SCROLL'; maxOffset: number }
   | { type: 'TOGGLE_MOUSE' }
   | { type: 'TICK' };
+
+/** The default filter: records of the live session (plus unscoped ones). */
+export const ACTIVE_SESSION_FILTER: SessionFilter = { active: true, label: '\u25CF active session' };
 
 /** Validate a filter string for the given mode; null when valid. */
 function validateFilter(mode: DashboardUIState['filterMode'], value: string): string | null {
@@ -111,11 +116,13 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
         detailScrollOffset: 0,
       };
 
+    // Moving to another item keeps the detail tab (comparing Raw or Context
+    // across items should not need `]` after every step); the dashboard
+    // clamps it when the new item has fewer tabs. Only the scroll resets.
     case 'SELECT_ITEM':
       return {
         ...state,
         selectedItemIndex: action.index,
-        detailTabIndex: 0,
         detailScrollOffset: 0,
       };
 
@@ -202,9 +209,7 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
       return {
         ...state,
         hasReceivedEvents: true,
-        sessionFilter: action.sessionPrefix
-          ? { sessionPrefix: action.sessionPrefix, label: '● active session' }
-          : null,
+        sessionFilter: action.activeFilter ? ACTIVE_SESSION_FILTER : null,
       };
 
     case 'CONTEXT_MENU_NAV': {
@@ -222,7 +227,7 @@ export function reducer(state: DashboardUIState, action: Action): DashboardUISta
         0,
         Math.min(state.selectedItemIndex + action.delta, action.itemCount - 1),
       );
-      return { ...state, selectedItemIndex: next, detailTabIndex: 0, detailScrollOffset: 0 };
+      return { ...state, selectedItemIndex: next, detailScrollOffset: 0 };
     }
 
     case 'OVERLAY_SCROLL':

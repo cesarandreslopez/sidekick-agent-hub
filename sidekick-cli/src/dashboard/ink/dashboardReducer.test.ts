@@ -127,32 +127,39 @@ describe('scrolling', () => {
     expect(after.contextMenuIndex).toBe(0);
   });
 
-  it('SCROLL_SIDE clamps within item bounds and resets detail state', () => {
+  it('SCROLL_SIDE clamps within item bounds, keeps the detail tab and resets scroll', () => {
     const s = state({ selectedItemIndex: 1, detailTabIndex: 2, detailScrollOffset: 9 });
     const after = reducer(s, { type: 'SCROLL_SIDE', delta: 10, itemCount: 5 });
     expect(after.selectedItemIndex).toBe(4);
-    expect(after.detailTabIndex).toBe(0);
+    expect(after.detailTabIndex).toBe(2);
+    expect(after.detailScrollOffset).toBe(0);
+  });
+
+  it('SELECT_ITEM keeps the detail tab so tabs can be compared across items', () => {
+    const s = state({ selectedItemIndex: 1, detailTabIndex: 2, detailScrollOffset: 9 });
+    const after = reducer(s, { type: 'SELECT_ITEM', index: 3 });
+    expect(after.selectedItemIndex).toBe(3);
+    expect(after.detailTabIndex).toBe(2);
     expect(after.detailScrollOffset).toBe(0);
   });
 });
 
 describe('misc transitions', () => {
-  it('FIRST_EVENT with a prefix installs the active-session filter', () => {
+  it('FIRST_EVENT installs the active-session filter as a mode, not a snapshot', () => {
     const after = reducer(state({ hasReceivedEvents: false }), {
       type: 'FIRST_EVENT',
-      sessionPrefix: '2026-07-',
+      activeFilter: true,
     });
     expect(after.hasReceivedEvents).toBe(true);
-    expect(after.sessionFilter).toEqual({
-      sessionPrefix: '2026-07-',
-      label: '● active session',
-    });
+    // Resolved against the live session id at filter time, so it follows an
+    // auto-switch to a newer session.
+    expect(after.sessionFilter).toEqual({ active: true, label: '● active session' });
   });
 
-  it('FIRST_EVENT without a prefix clears the session filter', () => {
+  it('FIRST_EVENT without the filter clears the session filter', () => {
     const after = reducer(
       state({ hasReceivedEvents: false, sessionFilter: { label: 'x', date: '2026-01-01' } }),
-      { type: 'FIRST_EVENT', sessionPrefix: '' },
+      { type: 'FIRST_EVENT', activeFilter: false },
     );
     expect(after.sessionFilter).toBeNull();
   });
