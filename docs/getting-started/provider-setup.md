@@ -16,7 +16,7 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 
 !!! tip "Why Claude Max is recommended"
 
-    Inline completions fire frequently as you type. With an API key, per-token costs add up quickly. With Max, completions are covered by your existing plan.
+    Sidekick's AI features (completions on request, explanations, commit messages, reviews) all send requests. With an API key, per-token costs add up quickly. With Max, they are covered by your existing plan.
 
 ## Claude API
 

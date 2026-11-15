@@ -871,7 +871,7 @@
           "sidekick.enableEventLog": {
             "type": "boolean",
             "default": false,
-            "description": "Record all session events to event-logs/ in the Sidekick config folder (~/.config/sidekick, %APPDATA%\\sidekick on Windows, or $SIDEKICK_CONFIG_DIR) as a JSONL audit trail for debugging. Takes effect after a window reload."
+            "description": "Record all session events to event-logs/ in the Sidekick config folder (~/.config/sidekick, %APPDATA%\\sidekick on Windows, or $SIDEKICK_CONFIG_DIR) as a JSONL audit trail for debugging."
           },
           "sidekick.eventLogMaxSizeMB": {
             "type": "number",
@@ -1772,7 +1772,7 @@
       },
       {
         "view": "sidekick.subagents",
-        "contents": "No subagents in this session yet.\nWhen your agent delegates work to subagents (Task, Explore, Plan), they appear here with status and token usage.\n[Open Session Dashboard](command:sidekick.openDashboard)"
+        "contents": "No subagents in this session yet.\nWhen your agent delegates work to subagents (the Agent tool), they appear here with status and token usage.\n[Open Session Dashboard](command:sidekick.openDashboard)"
       },
       {
         "view": "sidekick.tempFiles",

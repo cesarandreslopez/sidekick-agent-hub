@@ -1,9 +1,10 @@
 /**
  * @fileoverview VS Code extension providing Sidekick Agent Hub inline completions.
  *
- * This extension uses Claude via the Agent SDK (Max subscription) or API key
- * to provide intelligent code suggestions as you type. It registers an inline
- * completion provider that sends code context to Claude and displays suggestions.
+ * This extension uses Claude via the Agent SDK (Max subscription), an API key,
+ * OpenCode or Codex to provide code suggestions on request. It registers an
+ * inline completion provider that sends code context to the model and displays
+ * suggestions.
  *
  * Features:
  * - On-demand inline completions
@@ -19,7 +20,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { AuthService } from './services/AuthService';
 import { CompletionService } from './services/CompletionService';
 import { warmupSdk } from './services/MaxSubscriptionClient';
@@ -59,7 +59,7 @@ import { InlineChatProvider } from './providers/InlineChatProvider';
 import { ExplainViewProvider } from './providers/ExplainViewProvider';
 import { ErrorExplanationProvider } from './providers/ErrorExplanationProvider';
 import { ErrorViewProvider } from './providers/ErrorViewProvider';
-import { DashboardViewProvider } from './providers/DashboardViewProvider';
+import { DashboardViewProvider, displayConfigPath } from './providers/DashboardViewProvider';
 import { MonitoringDisabledViewProvider } from './providers/MonitoringDisabledViewProvider';
 import { registerLazyWebviewView } from './providers/lazyWebviewViewProvider';
 import { collectDeprecatedSettings } from './services/deprecatedSettings';
@@ -126,7 +126,6 @@ import {
   AutoSwitchController,
   MultiProviderQuotaService,
   ensureDefaultAccounts,
-  getConfigDir,
 } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
@@ -617,6 +616,18 @@ export async function activate(context: vscode.ExtensionContext) {
     if (config.get<boolean>('enableEventLog')) {
       sessionMonitor.setEventLogger(eventLogger);
     }
+    // Apply Settings edits live, as the dashboard's Event Log checkbox does
+    // (setEventLogger is idempotent, so the checkbox's own call is harmless).
+    const monitorForEventLog = sessionMonitor;
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (!event.affectsConfiguration('sidekick.enableEventLog')) return;
+        const enabled = vscode.workspace
+          .getConfiguration('sidekick')
+          .get<boolean>('enableEventLog', false);
+        monitorForEventLog.setEventLogger(enabled ? eventLogger : null);
+      }),
+    );
 
     // Create SessionAnalyzer and GuidanceAdvisor for instruction file suggestions
     const sessionAnalyzer = new SessionAnalyzer(sessionMonitor);
@@ -763,15 +774,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const filePath = path.join(wsFolder.uri.fsPath, target.primaryFile);
         const handoffSlug = getProjectSlug(wsFolder.uri.fsPath);
-        // The real handoff location (getConfigDir honours SIDEKICK_CONFIG_DIR and
+        // The real handoff location (the config dir honours SIDEKICK_CONFIG_DIR and
         // %APPDATA% on Windows), shown as ~/… under the home directory so the
         // committed instruction file never carries the username.
-        const full = path.join(getConfigDir(), 'handoffs', `${handoffSlug}-latest.md`);
-        const home = os.homedir();
-        const shown =
-          full === home || full.startsWith(home + path.sep)
-            ? '~' + full.slice(home.length).split(path.sep).join('/')
-            : full;
+        const shown = displayConfigPath('handoffs', `${handoffSlug}-latest.md`);
         const oneLiner = `\nIf resuming prior work or need context on previous sessions, read ${shown}\n`;
 
         // Check if file exists and if one-liner is already present
@@ -1097,7 +1103,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // From the walkthrough page the active editor is the walkthrough, not a
         // text editor, so fall back to a visible one.
-        const editor = vscode.window.activeTextEditor ?? vscode.window.visibleTextEditors[0];
+        const editor =
+          vscode.window.activeTextEditor ??
+          vscode.window.visibleTextEditors.find(
+            (e) => e.document.uri.scheme === 'file' || e.document.uri.scheme === 'untitled',
+          );
         if (!editor) {
           vscode.window.showWarningMessage(
             'Open a file and put the cursor on the line, then run Sidekick: Add Knowledge Note.',
@@ -1392,18 +1402,16 @@ export async function activate(context: vscode.ExtensionContext) {
   // The setting is read once at activation, so a change needs a reload to take
   // effect. Previously it appeared to do nothing until the user happened to
   // reload for another reason.
-  // sessionProvider and enableEventLog are also read once at activation. A
-  // change made in Settings (rather than through the dashboard's provider
-  // picker, which switches live) needs a reload too.
+  // sessionProvider is also read once at activation. A change made in Settings
+  // (rather than through the dashboard's provider picker, which switches live)
+  // needs a reload too. enableEventLog applies live (see the monitoring branch).
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       const providerChanged =
         event.affectsConfiguration('sidekick.sessionProvider') && !sessionProviderSwitchInFlight;
-      const eventLogChanged = event.affectsConfiguration('sidekick.enableEventLog');
-      if (!enableMonitoring || (!providerChanged && !eventLogChanged)) return;
-      const what = providerChanged ? 'Session provider' : 'Event logging';
+      if (!enableMonitoring || !providerChanged) return;
       const action = await vscode.window.showInformationMessage(
-        `${what} setting changed. Reload to apply.`,
+        'Session provider setting changed. Reload to apply.',
         'Reload Window',
       );
       if (action === 'Reload Window') {
