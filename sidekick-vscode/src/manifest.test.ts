@@ -108,16 +108,18 @@ describe('command contributions', () => {
 });
 
 describe('monitoring-disabled command fallbacks', () => {
-  // Nine commands are registered only inside the monitoring branch, but stay in
-  // the Command Palette either way — plus addKnowledgeNote in the editor context
-  // menu and a walkthrough link. Invoking one with monitoring off used to raise a
-  // raw "command not found", so the disabled branch registers a fallback for each.
+  // Eleven commands are registered only inside the monitoring branch, but stay in
+  // the Command Palette (and the status-bar command hub) either way — plus
+  // addKnowledgeNote in the editor context menu and a walkthrough link. Invoking
+  // one with monitoring off used to raise a raw "command not found", so the
+  // disabled branch registers a fallback for each. The two Activity Map commands
+  // joined the list because the command hub offered them with monitoring off.
   const source = fs.readFileSync(path.join(__dirname, 'extension.ts'), 'utf-8');
   const loop = source.match(/for \(const id of \[([\s\S]*?)\]\) \{/);
   const fallbackIds = loop ? [...loop[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : [];
 
   it('registers a fallback for each command the monitoring branch owns', () => {
-    expect(fallbackIds.length).toBe(9);
+    expect(fallbackIds.length).toBe(11);
   });
 
   it('names only commands the manifest actually contributes', () => {

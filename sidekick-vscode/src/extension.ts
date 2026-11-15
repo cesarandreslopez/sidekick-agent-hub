@@ -714,6 +714,13 @@ export async function activate(context: vscode.ExtensionContext) {
     // Notify on session start if a handoff exists
     sessionMonitor.onSessionStart(() => {
       vscode.commands.executeCommand('sidekick.walkthrough.sessionDetected');
+      // onCommand completion may not fire for a command the extension runs
+      // itself; the context key completes the walkthrough step either way.
+      void vscode.commands.executeCommand(
+        'setContext',
+        'sidekick.walkthrough.sessionDetected',
+        true,
+      );
       const autoHandoff = vscode.workspace
         .getConfiguration('sidekick')
         .get<string>('autoHandoff', 'off');
@@ -1055,13 +1062,19 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       vscode.commands.registerCommand('sidekick.addKnowledgeNote', async () => {
         if (!knowledgeNoteService) {
-          vscode.window.showWarningMessage('Knowledge notes service not initialized.');
+          vscode.window.showWarningMessage(
+            'Knowledge notes are saved per project. Open a folder, then try again.',
+          );
           return;
         }
 
-        const editor = vscode.window.activeTextEditor;
+        // From the walkthrough page the active editor is the walkthrough, not a
+        // text editor, so fall back to a visible one.
+        const editor = vscode.window.activeTextEditor ?? vscode.window.visibleTextEditors[0];
         if (!editor) {
-          vscode.window.showWarningMessage('No active editor.');
+          vscode.window.showWarningMessage(
+            'Open a file and put the cursor on the line, then run Sidekick: Add Knowledge Note.',
+          );
           return;
         }
 
@@ -1099,8 +1112,10 @@ export async function activate(context: vscode.ExtensionContext) {
           prompt: 'Enter note content',
           placeHolder: 'e.g., This file requires manual cache invalidation after editing',
           ignoreFocusOut: true,
+          validateInput: (value) =>
+            value.trim().length === 0 ? 'A note needs some content' : undefined,
         });
-        if (!content) return;
+        if (!content?.trim()) return;
 
         const relativePath = vscode.workspace.asRelativePath(editor.document.uri);
         const selection = editor.selection;
@@ -1120,6 +1135,7 @@ export async function activate(context: vscode.ExtensionContext) {
         });
 
         vscode.commands.executeCommand('sidekick.walkthrough.noteCaptured');
+        void vscode.commands.executeCommand('setContext', 'sidekick.walkthrough.noteCaptured', true);
 
         vscode.window.showInformationMessage(`Knowledge note added to ${relativePath}`);
       }),
@@ -1129,7 +1145,9 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       vscode.commands.registerCommand('sidekick.injectKnowledgeNotes', async () => {
         if (!knowledgeNoteService) {
-          vscode.window.showWarningMessage('Knowledge notes service not initialized.');
+          vscode.window.showWarningMessage(
+            'Knowledge notes are saved per project. Open a folder, then try again.',
+          );
           return;
         }
 
@@ -1234,6 +1252,8 @@ export async function activate(context: vscode.ExtensionContext) {
             prompt: 'Edit note content',
             value: item.note.content,
             placeHolder: 'Enter updated note content',
+            validateInput: (value) =>
+              value.trim().length === 0 ? 'A note needs some content' : undefined,
           });
           if (content === undefined) return;
 
@@ -1331,14 +1351,10 @@ export async function activate(context: vscode.ExtensionContext) {
       'sidekick.injectKnowledgeNotes',
       'sidekick.setupHandoff',
       'sidekick.openExternalHandoff',
+      'sidekick.openActivityMap',
+      'sidekick.exportActivityMap',
     ]) {
-      context.subscriptions.push(
-        vscode.commands.registerCommand(id, () => {
-          vscode.window.showInformationMessage(
-            'This command needs session monitoring. Enable sidekick.enableSessionMonitoring and reload the window.',
-          );
-        }),
-      );
+      context.subscriptions.push(vscode.commands.registerCommand(id, showMonitoringRequired));
     }
   }
 
@@ -1583,7 +1599,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.startMonitoring', async () => {
       if (!sessionMonitor) {
-        vscode.window.showErrorMessage('Session monitor not initialized');
+        showMonitoringRequired();
         return;
       }
 
@@ -1618,7 +1634,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.stopMonitoring', () => {
       if (!sessionMonitor) {
-        vscode.window.showErrorMessage('Session monitor not initialized');
+        showMonitoringRequired();
         return;
       }
 
@@ -1638,7 +1654,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.refreshSession', async () => {
       if (!sessionMonitor) {
-        vscode.window.showErrorMessage('Session monitor not initialized');
+        showMonitoringRequired();
         return;
       }
 
@@ -1656,7 +1672,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.setSessionProvider', async (providerId: string) => {
       if (!sessionMonitor) {
-        vscode.window.showErrorMessage('Session monitor not initialized');
+        showMonitoringRequired();
         return;
       }
 
@@ -1780,7 +1796,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.selectSessionFolder', async () => {
       if (!sessionFolderPicker) {
-        vscode.window.showErrorMessage('Session folder picker not initialized');
+        showMonitoringRequired();
         return;
       }
 
@@ -1792,7 +1808,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.clearCustomSessionPath', async () => {
       if (!sessionMonitor) {
-        vscode.window.showErrorMessage('Session monitor not initialized');
+        showMonitoringRequired();
         return;
       }
 
@@ -1828,7 +1844,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.dumpSession', async () => {
       if (!sessionMonitor) {
-        vscode.window.showErrorMessage('Session monitor not initialized');
+        showMonitoringRequired();
         return;
       }
 
@@ -1896,7 +1912,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.generateReport', async () => {
       if (!sessionMonitor) {
-        vscode.window.showErrorMessage('Session monitor not initialized');
+        showMonitoringRequired();
         return;
       }
 
@@ -2727,6 +2743,25 @@ export async function activate(context: vscode.ExtensionContext) {
       },
     ),
   );
+}
+
+/**
+ * Explains that a command needs session monitoring and offers to turn it on.
+ * Enabling it triggers the existing reload prompt for that setting.
+ */
+function showMonitoringRequired(): void {
+  void vscode.window
+    .showInformationMessage(
+      'This command needs session monitoring, which is turned off (sidekick.enableSessionMonitoring).',
+      'Enable Monitoring',
+    )
+    .then(async (choice) => {
+      if (choice === 'Enable Monitoring') {
+        await vscode.workspace
+          .getConfiguration('sidekick')
+          .update('enableSessionMonitoring', true, vscode.ConfigurationTarget.Global);
+      }
+    });
 }
 
 /**

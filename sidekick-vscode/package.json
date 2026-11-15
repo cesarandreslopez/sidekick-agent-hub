@@ -66,7 +66,8 @@
               "markdown": "media/walkthrough/session.md"
             },
             "completionEvents": [
-              "onCommand:sidekick.walkthrough.sessionDetected"
+              "onCommand:sidekick.walkthrough.sessionDetected",
+              "onContext:sidekick.walkthrough.sessionDetected"
             ]
           },
           {
@@ -106,12 +107,13 @@
           {
             "id": "sidekick.captureNote",
             "title": "Capture your first knowledge note",
-            "description": "Open a file and run [Add Knowledge Note](command:sidekick.addKnowledgeNote).",
+            "description": "Open a file, put the cursor on a line, then right-click and choose Sidekick › Add Knowledge Note (or run Sidekick: Add Knowledge Note from the Command Palette).",
             "media": {
               "markdown": "media/walkthrough/note.md"
             },
             "completionEvents": [
-              "onCommand:sidekick.walkthrough.noteCaptured"
+              "onCommand:sidekick.walkthrough.noteCaptured",
+              "onContext:sidekick.walkthrough.noteCaptured"
             ]
           }
         ]
@@ -1272,7 +1274,7 @@
       },
       {
         "command": "sidekick.accounts.signInAgain",
-        "title": "Sign In Again",
+        "title": "Sign In Again to Account…",
         "category": "Sidekick",
         "icon": "$(sign-in)"
       },
@@ -1449,14 +1451,6 @@
           "when": "false"
         },
         {
-          "command": "sidekick.accounts.signInAgain",
-          "when": "false"
-        },
-        {
-          "command": "sidekick.accounts.openTerminal",
-          "when": "false"
-        },
-        {
           "command": "sidekick.switchAccount",
           "when": "false"
         },
@@ -1598,12 +1592,12 @@
         },
         {
           "command": "sidekick.dumpSession",
-          "when": "view == sidekick.dashboard",
+          "when": "view == sidekick.dashboard && sidekick.monitoringActive",
           "group": "navigation"
         },
         {
           "command": "sidekick.generateReport",
-          "when": "view == sidekick.dashboard",
+          "when": "view == sidekick.dashboard && sidekick.monitoringActive",
           "group": "navigation"
         },
         {
@@ -1780,6 +1774,11 @@
       {
         "view": "sidekick.tempFiles",
         "contents": "No files touched yet.\nFiles your agent reads, writes, or edits this session appear here for one-click access.\n[Refresh Session](command:sidekick.refreshSession)"
+      },
+      {
+        "view": "sidekick.knowledgeNotes",
+        "contents": "Knowledge notes are saved per project.\nOpen a folder to capture gotchas, patterns, guidelines, and tips attached to its files.\n[Open Folder](command:workbench.action.files.openFolder)",
+        "when": "workspaceFolderCount == 0"
       },
       {
         "view": "sidekick.accounts",
