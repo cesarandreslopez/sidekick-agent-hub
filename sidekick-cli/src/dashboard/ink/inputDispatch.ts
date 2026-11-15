@@ -77,6 +77,8 @@ export interface InputDispatchContext {
   detailTabCount: number;
   detailLineCount: number;
   detailViewportHeight: number;
+  /** Visible side-list rows (PgUp/PgDn page by this much). */
+  sideViewportHeight?: number;
   addToast: (message: string, severity: 'error' | 'warning' | 'info') => void;
   toggleSessionFilter: () => void;
   /** Called after the mouse-capture toggle flips, with the new value. */
@@ -115,13 +117,13 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     detailTabCount,
     detailLineCount,
     detailViewportHeight,
+    sideViewportHeight = 10,
     addToast,
     toggleSessionFilter,
     onMouseSettingChange,
     onRefresh,
     onGenerateReport,
     onTogglePin,
-    isPinned,
     pendingSessionPath,
     onSessionSwitch,
     accountViews,
@@ -185,30 +187,18 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
     if (key.return) {
       const action = contextActions[state.contextMenuIndex];
       if (action && selectedItem) {
-        const msg = action.handler(selectedItem);
-        if (typeof msg === 'string')
-          addToast(
-            msg,
-            msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable')
-              ? 'error'
-              : 'info',
-          );
+        toastResult(action.handler(selectedItem), addToast);
         dispatch({ type: 'CONTEXT_MENU_SELECT' });
+        dispatch({ type: 'TICK' });
       }
       return;
     }
     // Direct key shortcut
     const match = contextActions.find((a) => a.key === input);
     if (match && selectedItem) {
-      const msg = match.handler(selectedItem);
-      if (typeof msg === 'string')
-        addToast(
-          msg,
-          msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable')
-            ? 'error'
-            : 'info',
-        );
+      toastResult(match.handler(selectedItem), addToast);
       dispatch({ type: 'CONTEXT_MENU_SELECT' });
+      dispatch({ type: 'TICK' });
     }
     return;
   }
@@ -250,10 +240,8 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
   if (state.overlay === 'help') {
     if (key.escape || input === '?' || input === 'q') {
       dispatch({ type: 'SET_OVERLAY', overlay: null });
-    } else if (input === 'j' || key.downArrow) {
-      dispatch({ type: 'OVERLAY_SCROLL', delta: 1 });
-    } else if (input === 'k' || key.upArrow) {
-      dispatch({ type: 'OVERLAY_SCROLL', delta: -1 });
+    } else {
+      scrollOverlay(input, key, dispatch);
     }
     return;
   }
@@ -262,10 +250,8 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
   if (state.overlay === 'changelog') {
     if (key.escape || input === 'V' || input === 'q') {
       dispatch({ type: 'SET_OVERLAY', overlay: null });
-    } else if (input === 'j' || key.downArrow) {
-      dispatch({ type: 'OVERLAY_SCROLL', delta: 1 });
-    } else if (input === 'k' || key.upArrow) {
-      dispatch({ type: 'OVERLAY_SCROLL', delta: -1 });
+    } else {
+      scrollOverlay(input, key, dispatch);
     }
     return;
   }
@@ -379,7 +365,7 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
       (b) => b.keys.includes(input) && (!b.condition || b.condition(selectedItem)),
     );
     if (bindingMatch) {
-      bindingMatch.handler(selectedItem);
+      toastResult(bindingMatch.handler(selectedItem), addToast);
       dispatch({ type: 'TICK' });
       return;
     }
@@ -390,14 +376,9 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
         (a) => a.key === input && (!a.condition || a.condition(selectedItem)),
       );
       if (actionMatch) {
-        const msg = actionMatch.handler(selectedItem);
-        if (typeof msg === 'string')
-          addToast(
-            msg,
-            msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('unavailable')
-              ? 'error'
-              : 'info',
-          );
+        toastResult(actionMatch.handler(selectedItem), addToast);
+        // Re-render now: a handler that changed panel state returns nothing.
+        dispatch({ type: 'TICK' });
         return;
       }
     }
@@ -433,9 +414,10 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
   }
 
   // Pin session toggle
+  // The host announces the new pin state; the isPinned prop here can be a
+  // render behind when p is pressed twice quickly.
   if (input === 'p' && onTogglePin) {
     onTogglePin();
-    addToast(isPinned ? 'Session unpinned' : 'Session pinned', 'info');
     return;
   }
 
@@ -447,7 +429,11 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
 
   // Context menu
   if (input === 'x') {
-    if (selectedItem && panel.getActions().length > 0) {
+    if (panel.getActions().length === 0) {
+      addToast(`No actions on the ${panel.title} panel`, 'info');
+    } else if (!selectedItem) {
+      addToast('Select an item first', 'info');
+    } else {
       dispatch({ type: 'SET_OVERLAY', overlay: 'context-menu' });
     }
     return;
@@ -480,14 +466,21 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
       }
       return;
     }
-    if (input === 'g') {
+    if (input === 'g' || key.home) {
       dispatch({ type: 'SELECT_ITEM', index: 0 });
       sideScroll.selectFirst();
       return;
     }
-    if (input === 'G') {
+    if (input === 'G' || key.end) {
       dispatch({ type: 'SELECT_ITEM', index: Math.max(0, currentItemCount - 1) });
       sideScroll.selectLast();
+      return;
+    }
+    if (key.pageDown || key.pageUp) {
+      if (currentItemCount === 0) return;
+      const step = Math.max(1, sideViewportHeight - 1) * (key.pageDown ? 1 : -1);
+      const index = Math.max(0, Math.min(currentItemCount - 1, clampedSelection + step));
+      if (index !== clampedSelection) dispatch({ type: 'SELECT_ITEM', index });
       return;
     }
     if (key.return) {
@@ -519,16 +512,46 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
       dispatch({ type: 'SET_FOCUS', target: 'side' });
       return;
     }
-    if (input === 'g') {
+    if (input === 'g' || key.home) {
       dispatch({ type: 'SCROLL_DETAIL', offset: 0 });
       return;
     }
-    if (input === 'G') {
+    if (input === 'G' || key.end) {
       dispatch({
         type: 'SCROLL_DETAIL',
         offset: maxDetailScroll(detailLineCount, detailViewportHeight),
       });
       return;
     }
+    if (key.pageDown || key.pageUp) {
+      const step = Math.max(1, detailViewportHeight - 2);
+      dispatch({
+        type: 'SCROLL_DETAIL_DELTA',
+        delta: key.pageDown ? step : -step,
+        totalLines: detailLineCount,
+        viewportHeight: detailViewportHeight,
+      });
+      return;
+    }
   }
+}
+
+/** Raise a handler's string result as a toast (errors in red). */
+function toastResult(
+  msg: string | void,
+  addToast: (message: string, severity: 'error' | 'warning' | 'info') => void,
+): void {
+  if (typeof msg !== 'string') return;
+  const lower = msg.toLowerCase();
+  addToast(msg, lower.includes('fail') || lower.includes('unavailable') ? 'error' : 'info');
+}
+
+/** j/k, arrows and page keys in a scrollable overlay. */
+function scrollOverlay(input: string, key: Key, dispatch: (action: Action) => void): void {
+  if (input === 'j' || key.downArrow) dispatch({ type: 'OVERLAY_SCROLL', delta: 1 });
+  else if (input === 'k' || key.upArrow) dispatch({ type: 'OVERLAY_SCROLL', delta: -1 });
+  else if (key.pageDown) dispatch({ type: 'OVERLAY_SCROLL', delta: 10 });
+  else if (key.pageUp) dispatch({ type: 'OVERLAY_SCROLL', delta: -10 });
+  else if (input === 'g' || key.home) dispatch({ type: 'OVERLAY_SCROLL', delta: -100_000 });
+  else if (input === 'G' || key.end) dispatch({ type: 'OVERLAY_SCROLL', delta: 100_000 });
 }

@@ -3,7 +3,14 @@
  * Shows plan steps, metrics, and raw markdown across three detail tabs.
  */
 
-import type { SidePanel, PanelItem, PanelAction, DetailTab, DetailRenderContext } from './types';
+import type {
+  SidePanel,
+  PanelItem,
+  PanelAction,
+  DetailTab,
+  DetailRenderContext,
+  KeyBinding,
+} from './types';
 import type { DashboardMetrics, PlanInfo } from '../DashboardState';
 import type { StaticData } from '../StaticDataLoader';
 import type { PersistedPlan, PlanSource } from 'sidekick-shared';
@@ -40,12 +47,23 @@ const COMPLEXITY_BADGES: Record<string, string> = {
 
 const SOURCE_CYCLE: (PlanSource | 'all')[] = ['all', 'claude-code', 'opencode', 'codex'];
 
+const SOURCE_NAMES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  opencode: 'OpenCode',
+  codex: 'Codex',
+};
+
 export class PlansPanel implements SidePanel {
   readonly id = 'plans';
   readonly title = 'Plans';
   readonly shortTitle = 'Plan';
   readonly shortcutKey = 6;
-  readonly emptyStateHint = 'Plans created by your agent appear here.';
+
+  get emptyStateHint(): string {
+    return this.sourceFilter === 'all'
+      ? 'Plans created by your agent appear here.'
+      : `No ${SOURCE_NAMES[this.sourceFilter]} plans. Press S to change source.`;
+  }
 
   private sourceFilter: PlanSource | 'all' = 'all';
   /** Bumped when the source filter cycles. */
@@ -128,10 +146,17 @@ export class PlansPanel implements SidePanel {
         label: 'Copy markdown',
         handler: (item) => this.copyMarkdown(item),
       },
+    ];
+  }
+
+  getKeybindings(): KeyBinding[] {
+    return [
       {
-        // 'S', not 's': lowercase s is the reserved global session switch.
-        key: 'S',
-        label: `Source: ${this.sourceFilter}`,
+        // 'S', not 's': lowercase s is the reserved global session switch. A
+        // keybinding rather than an item action, so it still works when the
+        // filter has emptied the list.
+        keys: ['S'],
+        label: `source: ${this.sourceFilter === 'all' ? 'all' : SOURCE_NAMES[this.sourceFilter]}`,
         handler: () => this.cycleSource(),
       },
     ];
@@ -317,9 +342,10 @@ export class PlansPanel implements SidePanel {
     return result.message;
   }
 
-  private cycleSource(): void {
+  private cycleSource(): string {
     const idx = SOURCE_CYCLE.indexOf(this.sourceFilter);
     this.sourceFilter = SOURCE_CYCLE[(idx + 1) % SOURCE_CYCLE.length];
     this.viewVersion++;
+    return `Plans source: ${this.sourceFilter === 'all' ? 'all sources' : SOURCE_NAMES[this.sourceFilter]}`;
   }
 }

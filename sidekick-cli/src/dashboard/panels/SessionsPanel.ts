@@ -223,6 +223,7 @@ export class SessionsPanel implements SidePanel {
       {
         keys: ['v'],
         label: 'cycle view',
+        context: 'Mind Map tab',
         handler: () => {
           const modes: MindMapView[] = ['tree', 'boxed', 'flow'];
           const idx = modes.indexOf(this.mindMapView);
@@ -238,6 +239,7 @@ export class SessionsPanel implements SidePanel {
         // alternative on this panel.
         keys: ['F'],
         label: 'filter nodes',
+        context: 'Mind Map tab',
         handler: () => {
           const idx = MINDMAP_FILTERS.indexOf(this.mindMapFilter);
           this.mindMapFilter = MINDMAP_FILTERS[(idx + 1) % MINDMAP_FILTERS.length];
@@ -249,6 +251,7 @@ export class SessionsPanel implements SidePanel {
       {
         keys: ['n'],
         label: 'AI narrative',
+        context: 'AI Summary tab',
         handler: (_item?: PanelItem) => {
           this.generateNarrative();
         },
@@ -726,8 +729,8 @@ export class SessionsPanel implements SidePanel {
     const diffStats = this.diffCache?.getStats() ?? new Map();
     const filterLabel =
       this.mindMapFilter !== 'all'
-        ? ` {yellow-fg}[f: ${this.mindMapFilter}]{/yellow-fg}`
-        : ' {grey-fg}[f: all]{/grey-fg}';
+        ? ` {yellow-fg}[F: ${this.mindMapFilter}]{/yellow-fg}`
+        : ' {grey-fg}[F: all]{/grey-fg}';
     const viewLabel = `{grey-fg}[v: ${this.mindMapView}]{/grey-fg}${filterLabel}`;
 
     if (this.mindMapView === 'boxed') {

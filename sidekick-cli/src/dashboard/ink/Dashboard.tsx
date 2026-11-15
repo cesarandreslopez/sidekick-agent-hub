@@ -652,6 +652,7 @@ export function Dashboard({
         detailTabCount: detailTabs.length,
         detailLineCount: detailLines.length,
         detailViewportHeight,
+        sideViewportHeight,
         addToast,
         toggleSessionFilter,
         onMouseSettingChange,

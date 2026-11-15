@@ -207,7 +207,8 @@ describe('context menu overlay', () => {
     handleDashboardInput('', makeKey({ return: true }), ctx);
     expect(actions[0].handler).toHaveBeenCalledWith(item);
     expect(addToast).toHaveBeenCalledWith('Deleted', 'info');
-    expect(dispatched).toEqual([{ type: 'CONTEXT_MENU_SELECT' }]);
+    // TICK re-renders at once: an action that changed panel state returns nothing.
+    expect(dispatched).toEqual([{ type: 'CONTEXT_MENU_SELECT' }, { type: 'TICK' }]);
   });
 
   it("a failing action's message toasts as error", () => {
@@ -309,12 +310,67 @@ describe('global keys', () => {
     expect(onGenerateReport).toHaveBeenCalledOnce();
   });
 
-  it("'p' toggles pin with a toast", () => {
+  it("'p' toggles pin and leaves the announcement to the host", () => {
+    // The host knows the new state; the isPinned prop can be a render behind.
     const onTogglePin = vi.fn();
     const { ctx, addToast } = makeCtx({}, { onTogglePin, isPinned: true });
     handleDashboardInput('p', makeKey(), ctx);
     expect(onTogglePin).toHaveBeenCalledOnce();
-    expect(addToast).toHaveBeenCalledWith('Session unpinned', 'info');
+    expect(addToast).not.toHaveBeenCalled();
+  });
+
+  it("'x' explains why there is no actions menu", () => {
+    const { ctx, addToast, dispatched } = makeCtx();
+    handleDashboardInput('x', makeKey(), ctx);
+    expect(dispatched).toEqual([]);
+    expect(addToast).toHaveBeenCalledWith('No actions on the Stub panel', 'info');
+  });
+
+  it('a direct panel action re-renders right away', () => {
+    const handler = vi.fn(() => undefined);
+    const item = { id: 'a', label: 'A', sortKey: 0, data: {} };
+    const { ctx, dispatched } = makeCtx(
+      {},
+      { panel: makePanel({ actions: [{ key: 'c', label: 'Copy', handler }] }), selectedItem: item },
+    );
+    handleDashboardInput('c', makeKey(), ctx);
+    expect(handler).toHaveBeenCalledWith(item);
+    expect(dispatched).toEqual([{ type: 'TICK' }]);
+  });
+
+  it('a panel binding can return a toast', () => {
+    const { ctx, addToast } = makeCtx(
+      {},
+      { panel: makePanel({ bindings: [{ keys: ['S'], label: 'source', handler: () => 'Plans source: Codex' }] }) },
+    );
+    handleDashboardInput('S', makeKey(), ctx);
+    expect(addToast).toHaveBeenCalledWith('Plans source: Codex', 'info');
+  });
+
+  it('PgDn / PgUp page the side list and Home / End jump', () => {
+    const { ctx, dispatched } = makeCtx(
+      {},
+      { currentItemCount: 50, clampedSelection: 5, sideViewportHeight: 10 },
+    );
+    handleDashboardInput('', makeKey({ pageDown: true }), ctx);
+    handleDashboardInput('', makeKey({ pageUp: true }), ctx);
+    handleDashboardInput('', makeKey({ end: true } as Partial<Key>), ctx);
+    expect(dispatched).toEqual([
+      { type: 'SELECT_ITEM', index: 14 },
+      { type: 'SELECT_ITEM', index: 0 },
+      { type: 'SELECT_ITEM', index: 49 },
+    ]);
+  });
+
+  it('PgDn pages the detail pane by its height', () => {
+    const { ctx, dispatched } = makeCtx(
+      { focusTarget: 'detail' },
+      { detailLineCount: 100, detailViewportHeight: 12 },
+    );
+    handleDashboardInput('', makeKey({ pageDown: true }), ctx);
+    expect(dispatched).toEqual([
+      { type: 'SCROLL_DETAIL_DELTA', delta: 10, totalLines: 100, viewportHeight: 12 },
+    ]);
   });
 
   it("'s' switches to the pending session", () => {
