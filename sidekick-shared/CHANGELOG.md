@@ -5,6 +5,20 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.2] - 2026-11-15
+
+### Changed
+
+- **`formatTokenCount()`** uses a `B` suffix from one billion (`204,395,900,000` → `204.4B`, previously `204395.9M`). A value that rounds to `1000.0` of one unit is shown as `1.0` of the next (`999,950` → `1.0M`, previously `1000.0k`). Other outputs are unchanged.
+
+### Fixed
+
+- **`readClaudeCodePlanFiles()`** looked for the Claude Code project folder with Sidekick's config-store encoder. For workspace paths containing dots, spaces or other non-alphanumeric characters, that never found the folder. It now uses `encodeClaudeWorkspacePath()`. Paths the old encoder resolved still resolve to the same folder.
+
+### Added
+
+- **`readClaudeCodePlanFiles()` entries carry `sessionIds`.** This is every session whose transcript names the plan, sorted. `sessionId` keeps its meaning (the plan slug).
+
 ## [0.33.1] - 2026-11-13
 
 ### Fixed

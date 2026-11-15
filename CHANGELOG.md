@@ -5,6 +5,139 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.2] - 2026-11-15
+
+A UI and UX pass over the VS Code extension and the terminal dashboard. An audit found about 130 defects across the dashboard, the other views, the extension's commands and settings, and the terminal UI. Each finding was checked against the code before it was fixed.
+
+### Changed
+
+- **BREAKING (VS Code): two default shortcuts moved off core VS Code shortcuts.** They shadowed **Trigger Parameter Hints** and **View: Toggle Problems**. Each new shortcut is the old one with a `Ctrl+K` / `Cmd+K` prefix. To keep the old shortcuts, rebind them in Keyboard Shortcuts (search "sidekick").
+
+  | Command                             | Before                                 | Now                                                 |
+  | ----------------------------------- | -------------------------------------- | --------------------------------------------------- |
+  | `Sidekick: Trigger Completion`      | `Ctrl+Shift+Space` / `Cmd+Shift+Space` | `Ctrl+K Ctrl+Shift+Space` / `Cmd+K Cmd+Shift+Space` |
+  | `Sidekick: Transform Selected Code` | `Ctrl+Shift+M` / `Cmd+Shift+M`         | `Ctrl+K Ctrl+Shift+M` / `Cmd+K Cmd+Shift+M`         |
+
+  Transform and Generate Documentation no longer run in read-only editors.
+
+- **Manual completions start at once.** `sidekick.debounceMs` now defaults to `0`. Inline completions only run when you ask for one, so the old one-second wait only delayed them. The docs no longer describe completions as automatic.
+- **The terminal dashboard and `sidekick map --follow` use the alternate screen.** Your scrollback is no longer erased while they run, including in the session picker, and the terminal comes back as it was when you quit, is closed (SIGHUP) or is interrupted.
+- **One number format.** Token counts read `12.3k`, `4.5M` and `1.2B` in both products. `sidekick-shared`'s `formatTokenCount()` gained the `B` suffix, and a value that rounds to `1000.0` of one unit is shown as `1.0` of the next (for example `999,950` → `1.0M`).
+
+### Fixed
+
+- **VS Code: Session Analytics dashboard**
+  - Most Session-tab panels used to stop updating once the view loaded. These were File Changes, Errors, Context Attribution, turn and context charts, Analytics, Task Performance, Cache, Recovery, Tool Efficiency and Decisions. They now refresh every few seconds while a session runs, and expanded tools, error groups and timeline rows stay open.
+  - The Summary tab no longer keeps the previous session's numbers. It reports the real context peak and counts API calls the same way as the Session tab. It shows "—" for Tasks Done when a session had no tasks.
+  - Duration and tok/min stop at the last activity of an idle or past session. The Advanced Burn Rate trend can change again.
+  - History tab:
+    - The Health tab's Refresh button no longer empties History.
+    - Drill-down shows where you are, with a way back, and stops jumping to the top range.
+    - Days without activity appear on the axis, so the previous-period line lines up.
+    - "By tool" plots tool calls, not message counts, on a call-count axis.
+    - Stacked charts have a legend and named tooltips.
+    - An empty range says so instead of offering to import history you already have.
+  - Status and badges:
+    - The status pill reads **Live**, **Viewing** or **No session**, matching the session list.
+    - Context-health and truncation chips and the Activity and Decisions badges reset when you switch session.
+    - A failed provider switch no longer freezes the session list.
+  - Keyboard and screen readers:
+    - Tool and error rows, the plan toggle, the drill-down back button, the What's New dialog and the info tooltips work from the keyboard.
+    - Live numbers no longer re-announce every few hundred milliseconds.
+  - Layout and text:
+    - Large numbers, long paths and MCP tool names no longer push the cards and tables wider than the sidebar. Long decision lists scroll.
+    - Charts follow theme changes.
+    - The text is provider-neutral, plurals are right, and task statuses read "In Progress".
+    - The word chart is labelled "Frequent Words" and skips stopwords.
+    - Timeline search highlighting no longer corrupts escaped characters.
+    - z.ai quota history is drawn.
+    - The dashboard remembers its tab and History choices.
+- **VS Code: other views**
+  - **Conversation viewer and Tool Inspector:** tool rows start collapsed and toggle correctly. The views' content security policy had been stripping inline styles. The Conversation viewer has a Refresh button, and search highlights and opens its matches.
+  - **Project Timeline:**
+    - Session cards expand. Their inline click handlers were blocked.
+    - OpenCode sessions appear.
+    - The range buttons match the data.
+    - A past session no longer shows as "Active".
+  - **Explain:** uses the complexity you pick.
+  - **Error panel:**
+    - A late answer can't land under a newer error.
+    - Apply Fix targets the right document (including on Windows) and applies once.
+    - A failed fix says why.
+    - Cancelling shows "Cancelled".
+  - **Plans:**
+    - No longer rebuilds and re-animates on every tool call or collapses what you opened.
+    - Lists each Claude Code plan once.
+    - Finds plans for workspace paths with dots or spaces.
+  - **Kanban:**
+    - Keeps carried-over tasks whose ids repeat in a new session.
+    - Shows failed subagents.
+    - Counts what it shows, and dates timestamps from earlier days.
+    - "Archive All" is now **Clear Carried Over** and asks before removing anything.
+  - **Mind Map:**
+    - Subagent file and URL nodes open.
+    - A **Follow** toggle stops it panning away while you inspect.
+    - The graph centres correctly.
+  - **Accessibility:** clickable headers, chips and legend items work from the keyboard. Activity Map insight rows keep focus. Plans status chips meet contrast.
+  - **Monitoring-disabled placeholder:** shows one state at a time and offers the reload after you enable monitoring. Elements toggled with the `hidden` attribute now hide in every view, so the Activity Map's replay controls no longer appear before a session exists.
+  - **Activity Map replay picker:** names sessions.
+- **VS Code: commands, settings and status bar**
+  - **Explain Error with AI** and **Fix Error with AI** from the editor context menu no longer fail. They find the error or warning at the selection.
+  - **Quick Ask:**
+    - Applies its edit to the code it was asked about, even if you moved the cursor.
+    - Asks before applying large edits.
+    - Its Preview leads somewhere.
+    - Output channels no longer prefix answers with log timestamps.
+  - **Cancelling AI actions:** commit messages, docs, review and PR descriptions are cancelled quietly, with one progress notification.
+  - **Status bar:**
+    - The "Sidekick" item shows whether inline completions are actually on.
+    - Each of the three status bar items can be hidden on its own and has a spoken label.
+  - **Walkthrough:** steps complete, and its **Add Knowledge Note** link works.
+  - **Monitoring turned off:** commands now explain how to turn monitoring on instead of failing.
+  - **Paths:**
+    - The handoff pointer written into `CLAUDE.md` / `AGENTS.md` uses your real config folder.
+    - Knowledge-note gutter icons work on Windows and in multi-root workspaces.
+    - Latest Files Touched no longer lists deleted files or folders and opens relative paths correctly.
+  - **Settings:** changing `sidekick.sessionProvider` offers a reload, and `sidekick.enableEventLog` applies at once. `sidekick.claudePath` and `sidekick.sidekickCliPath` are machine-scoped.
+  - **Other commands:**
+    - **Generate Session Summary** from the palette opens the Summary tab.
+    - An expired active account can sign in again from the account picker.
+    - Escape on the PR base-branch prompt cancels.
+  - **Quota warnings:** they fire once per provider and window. They no longer repeat after a reload or when two providers report quota.
+  - **CLI HTML report:** its filters, copy buttons and styles work when it opens inside VS Code.
+  - **Small fixes:** event-stream tooltips, Auto-Detect marked as current, auto-switch toast wording, path diagnostics, setting descriptions and command titles.
+- **Terminal dashboard (`sidekick dashboard`)**
+  - **Fits 80×24 and smaller terminals:**
+    - The help overlay, changelog overlay, status bar and both tab bars fit.
+    - The panel tab bar shortens to abbreviations, then digits, and marks the active panel with `▸`.
+    - The side list keeps its width, so mouse clicks land where they are drawn.
+  - **Detail pane:**
+    - Blank lines keep their height.
+    - Long lines and JSON wrap into real rows, so scrolling and borders stay right.
+    - Text in braces (`${HOME}`, JSON objects, agent text that happens to contain `{bold}`) is no longer read as a style tag.
+  - **Active-session filter:** the default filter no longer hides tasks, notes and decisions that carry a session id. It follows the live session.
+  - **Selection** stays on the same item as new events arrive.
+  - **Keys:**
+    - Help opened from the splash screen is visible.
+    - PgUp/PgDn/Home/End scroll.
+    - Mouse escape codes are no longer typed into the filter.
+    - The filter's mode hints are accurate.
+    - Help shows where each key applies.
+    - The detail tab stays put when you move between items.
+  - **Notices:** pins, a new session waiting while pinned, and the `r` report (with its path or error) are announced.
+  - **Colours:** `NO_COLOR` is honoured. Grey and white text no longer vanish on light or Solarized themes. The account badge spells out its state.
+  - **Status bar:** a kept filter stays visible when the row is tight, and the splash screen only advertises keys that work.
+  - **Wording:** statuses read "In Progress".
+  - **Clipboard:** copy works over SSH (OSC 52) and on Windows.
+- **CLI commands**
+  - `sidekick tasks --status in_progress` works.
+  - Plurals are right ("1 session").
+  - `sidekick stats` marks a partial cost total and suggests `sidekick import` when there is no history.
+
+### Added
+
+- **`sidekick-shared`:** `readClaudeCodePlanFiles()` entries carry `sessionIds`, every session that wrote the plan. `sessionId` keeps its meaning.
+
 ## [0.33.1] - 2026-11-13
 
 ### Fixed

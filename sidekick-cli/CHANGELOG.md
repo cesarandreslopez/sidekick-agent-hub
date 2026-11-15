@@ -5,6 +5,47 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.2] - 2026-11-15
+
+A UI and UX pass over the terminal dashboard. Each audit finding was checked against the code before it was fixed.
+
+### Changed
+
+- **`sidekick dashboard` and `sidekick map --follow` use the alternate screen.** That includes the session picker. Your scrollback is no longer erased, and the terminal is restored when you quit or the terminal closes (SIGHUP) or is interrupted.
+- **One number format.** Token counts read `12.3k`, `4.5M` and `1.2B` everywhere, matching the VS Code extension. Statuses read "In Progress".
+
+### Fixed
+
+- **Fits 80×24 and smaller terminals.**
+  - The help overlay, changelog overlay, status bar and both tab bars fit.
+  - The panel tab bar shortens to abbreviations, then digits, and marks the active panel with `▸`.
+  - The side list keeps its width, so mouse clicks land where they are drawn.
+- **Detail pane.**
+  - Blank lines keep their height.
+  - Long lines and JSON wrap into real rows.
+  - Text in braces (`${HOME}`, JSON objects, agent text containing `{bold}`) is shown literally.
+- **The default active-session filter** no longer hides tasks, notes and decisions that carry a session id, and it follows the live session.
+- **Selection** stays on the same item as new events arrive.
+- **Keys.**
+  - Help opened from the splash screen is visible.
+  - PgUp/PgDn/Home/End scroll.
+  - Mouse escape codes are never typed into the filter.
+  - The filter shows that `Tab` cycles its modes.
+  - Help shows where each key applies.
+  - The detail tab stays put between items.
+  - Plans' `S` source filter responds.
+- **Notices.** Pins, a new session waiting while pinned, and the `r` report, with its path or error, are announced.
+- **Colour.**
+  - `NO_COLOR` is honoured.
+  - Grey and white text no longer vanish on light or Solarized themes.
+  - The account badge spells out its state.
+  - A kept filter stays visible on a tight status bar.
+- **Clipboard.** Copy works over SSH (OSC 52) and on Windows.
+- **Commands.**
+  - `sidekick tasks --status in_progress` works.
+  - Plurals are right.
+  - `sidekick stats` marks a partial cost total and suggests `sidekick import` when there is no history.
+
 ## [0.33.1] - 2026-11-13
 
 ### Fixed

@@ -5,6 +5,86 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.2] - 2026-11-15
+
+A UI and UX pass. Each audit finding was checked against the code before it was fixed.
+
+### Changed
+
+- **BREAKING: two default shortcuts moved off core VS Code shortcuts.** They shadowed **Trigger Parameter Hints** and **View: Toggle Problems**. Each new shortcut is the old one with a `Ctrl+K` / `Cmd+K` prefix. To keep the old shortcuts, rebind them in Keyboard Shortcuts (search "sidekick").
+
+  | Command                             | Before                                 | Now                                                 |
+  | ----------------------------------- | -------------------------------------- | --------------------------------------------------- |
+  | `Sidekick: Trigger Completion`      | `Ctrl+Shift+Space` / `Cmd+Shift+Space` | `Ctrl+K Ctrl+Shift+Space` / `Cmd+K Cmd+Shift+Space` |
+  | `Sidekick: Transform Selected Code` | `Ctrl+Shift+M` / `Cmd+Shift+M`         | `Ctrl+K Ctrl+Shift+M` / `Cmd+K Cmd+Shift+M`         |
+
+  Transform and Generate Documentation no longer run in read-only editors.
+
+- **Manual completions start at once.** `sidekick.debounceMs` now defaults to `0`. Completions only run when you ask for one, so the old one-second wait only delayed them.
+- **One number format.** Token counts read `12.3k`, `4.5M` and `1.2B`, matching the CLI.
+
+### Fixed
+
+- **Session Analytics dashboard**
+  - **Session tab:**
+    - Most panels used to stop updating once the view loaded. They now refresh every few seconds while a session runs. Expanded tools, error groups and timeline rows stay open.
+    - The status pill reads **Live**, **Viewing** or **No session**, by the same rule as the other views.
+    - Chips and badges reset when you switch session.
+    - Duration and tok/min stop at an idle or past session's last activity.
+  - **Summary tab:** no longer keeps the previous session's numbers, and its peak, API calls and Tasks Done mean what they say.
+  - **History tab:**
+    - Health's Refresh no longer empties it.
+    - Drill-down has a way back.
+    - Days without activity appear on the axis.
+    - "By tool" plots tool calls.
+    - Stacked charts have a legend.
+    - An empty range says so instead of offering to import history you already have.
+  - **Keyboard and screen readers:** rows, toggles, the What's New dialog and the info tooltips work from the keyboard. Live numbers no longer re-announce constantly.
+  - **Layout:** large numbers, long paths and MCP tool names fit a narrow sidebar, and long decision lists scroll.
+  - **Display and wording:**
+    - Charts follow theme changes.
+    - The text is provider-neutral, and the word chart is labelled "Frequent Words".
+    - z.ai quota history is drawn.
+    - The dashboard remembers its tab and History choices.
+- **Other views**
+  - **Conversation viewer and Tool Inspector:** tool rows start collapsed and toggle correctly under the views' content security policy. The Conversation viewer has a Refresh button and highlights search matches.
+  - **Project Timeline:** cards expand, OpenCode sessions appear, and the range buttons match the data.
+  - **Explain:** uses the complexity you pick.
+  - **Error panel:** shows only the newest request, applies a fix once to the right document (including on Windows), and says why a fix failed.
+  - **Plans:** stops rebuilding on every tool call, lists each Claude Code plan once, and finds plans for workspace paths with dots or spaces.
+  - **Kanban:**
+    - Keeps carried-over tasks.
+    - Shows failed subagents.
+    - Dates older timestamps.
+    - **Archive All** is now **Clear Carried Over** and asks first.
+  - **Mind Map:** subagent file and URL nodes open, a **Follow** toggle stops auto-panning, and the graph centres correctly.
+  - **Accessibility:** clickable headers, chips and legend items work from the keyboard, and Plans status chips meet contrast.
+  - **Monitoring-disabled placeholder:** shows one state at a time.
+  - **Elements toggled with the `hidden` attribute** now hide in every view.
+- **Commands, settings and status bar**
+  - **Explain Error with AI** and **Fix Error with AI** from the editor context menu find the error at the selection instead of failing.
+  - **Quick Ask:** applies its edit to the code it was asked about, asks before applying large edits, and writes plain output.
+  - **Cancelling** a commit message, docs, review or PR description is quiet, with one progress notification.
+  - **Status bar:**
+    - The **Sidekick** item shows whether inline completions are on.
+    - Each status bar item can be hidden separately and has a spoken label.
+  - **Walkthrough:** steps complete, and its **Add Knowledge Note** link works.
+  - **Monitoring turned off:** commands that need monitoring offer **Enable Monitoring** instead of failing.
+  - **Paths:**
+    - The handoff pointer uses your real config folder.
+    - Knowledge-note gutter icons work on Windows and in multi-root workspaces.
+    - Latest Files Touched lists only openable files.
+  - **Settings:**
+    - Changing `sidekick.sessionProvider` offers a reload.
+    - `sidekick.enableEventLog` applies at once.
+    - `sidekick.claudePath` and `sidekick.sidekickCliPath` are machine-scoped.
+  - **Quota warnings:** fire once per provider and window, and stay quiet after a reload.
+  - **Session reports:** the CLI HTML report's filters, copy buttons and styles work inside VS Code.
+  - **Other commands:**
+    - **Generate Session Summary** opens the Summary tab.
+    - An expired active account can sign in again from the picker.
+    - **Sign In Again to Account…** and **Open Terminal as Account** are in the Command Palette.
+
 ## [0.33.1] - 2026-11-13
 
 ### Fixed
