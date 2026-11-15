@@ -146,11 +146,13 @@
           "sidekick.claudePath": {
             "type": "string",
             "default": "",
+            "scope": "machine-overridable",
             "description": "Custom path to the Claude CLI executable. Leave empty to auto-detect. Useful when claude is installed via pnpm or in a non-standard location."
           },
           "sidekick.sidekickCliPath": {
             "type": "string",
             "default": "",
+            "scope": "machine-overridable",
             "description": "Custom path to the Sidekick CLI executable (sidekick-agent-hub). Leave empty to auto-detect."
           },
           "sidekick.updateCheck.enabled": {
@@ -476,7 +478,7 @@
           "sidekick.pricing.hydrateFromLiteLLM": {
             "type": "boolean",
             "default": true,
-            "description": "On startup, fetch the LiteLLM model catalog and cache it to ~/.config/sidekick/pricing-catalog.json. Keeps costs and context window sizes accurate for new models without manual updates. Disable to stay fully offline."
+            "description": "On startup, fetch the LiteLLM model catalog and cache it to pricing-catalog.json in the Sidekick config folder (~/.config/sidekick, %APPDATA%\\sidekick on Windows, or $SIDEKICK_CONFIG_DIR). Keeps costs and context window sizes accurate for new models without manual updates. Disable to stay fully offline."
           },
           "sidekick.pricing.cacheTtlHours": {
             "type": "number",
@@ -868,7 +870,7 @@
           "sidekick.enableEventLog": {
             "type": "boolean",
             "default": false,
-            "description": "Record all session events to ~/.config/sidekick/event-logs/ as a JSONL audit trail for debugging."
+            "description": "Record all session events to event-logs/ in the Sidekick config folder (~/.config/sidekick, %APPDATA%\\sidekick on Windows, or $SIDEKICK_CONFIG_DIR) as a JSONL audit trail for debugging. Takes effect after a window reload."
           },
           "sidekick.eventLogMaxSizeMB": {
             "type": "number",
@@ -897,7 +899,7 @@
             "description": "Controls automatic session context handoff generation.",
             "enumDescriptions": [
               "Do not generate handoff documents",
-              "Generate handoff document at session end (stored in ~/.config/sidekick/handoffs/)",
+              "Generate handoff document at session end (stored in handoffs/ in the Sidekick config folder)",
               "Generate handoff and show notification at next session start"
             ]
           },
@@ -1133,7 +1135,7 @@
       },
       {
         "command": "sidekick.sessionDiagnostics",
-        "title": "Session Path Diagnostics",
+        "title": "Session Path Diagnostics (Claude Code)",
         "category": "Sidekick",
         "icon": "$(info)"
       },

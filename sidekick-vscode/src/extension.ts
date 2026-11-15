@@ -19,6 +19,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { AuthService } from './services/AuthService';
 import { CompletionService } from './services/CompletionService';
 import { warmupSdk } from './services/MaxSubscriptionClient';
@@ -117,18 +118,22 @@ import { resolveModel } from './services/ModelResolver';
 import { featureEffort, PROVIDER_DISPLAY_NAMES } from './types/inferenceProvider';
 import { getNonce } from './utils/nonce';
 import { resolveDiagnosticAtSelection } from './utils/diagnosticAtSelection';
+import { PROVIDER_LABELS, accountDisplayName } from './commands/accountQuickPick';
 import { formatTimeoutSeconds } from './utils/formatTimeout';
 import type { AccountProviderId, SyncReport } from 'sidekick-shared';
 import {
   AutoSwitchController,
   MultiProviderQuotaService,
   ensureDefaultAccounts,
+  getConfigDir,
 } from 'sidekick-shared';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shared/node';
 
 
 /** Status bar manager for multi-state status display */
+/** Set while sidekick.setSessionProvider updates the setting and switches live. */
+let sessionProviderSwitchInFlight = false;
 let statusBarManager: StatusBarManager | undefined;
 
 /** Auth service managing Claude API access */
@@ -758,7 +763,16 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const filePath = path.join(wsFolder.uri.fsPath, target.primaryFile);
         const handoffSlug = getProjectSlug(wsFolder.uri.fsPath);
-        const oneLiner = `\nIf resuming prior work or need context on previous sessions, read ~/.config/sidekick/handoffs/${handoffSlug}-latest.md\n`;
+        // The real handoff location (getConfigDir honours SIDEKICK_CONFIG_DIR and
+        // %APPDATA% on Windows), shown as ~/… under the home directory so the
+        // committed instruction file never carries the username.
+        const full = path.join(getConfigDir(), 'handoffs', `${handoffSlug}-latest.md`);
+        const home = os.homedir();
+        const shown =
+          full === home || full.startsWith(home + path.sep)
+            ? '~' + full.slice(home.length).split(path.sep).join('/')
+            : full;
+        const oneLiner = `\nIf resuming prior work or need context on previous sessions, read ${shown}\n`;
 
         // Check if file exists and if one-liner is already present
         let existingContent = '';
@@ -768,7 +782,12 @@ export async function activate(context: vscode.ExtensionContext) {
           // File doesn't exist, will create it
         }
 
-        if (existingContent.includes('sidekick/handoffs/')) {
+        // Separator-agnostic, and matches pointers written to any config dir.
+        const normalized = existingContent.replace(/\\/g, '/');
+        if (
+          normalized.includes(`handoffs/${handoffSlug}-latest.md`) ||
+          normalized.includes('sidekick/handoffs/')
+        ) {
           vscode.window.showInformationMessage(
             `Handoff reference already set up in ${target.primaryFile}.`,
           );
@@ -887,10 +906,17 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register generate session summary command
     context.subscriptions.push(
-      vscode.commands.registerCommand('sidekick.generateSessionSummary', () => {
-        if (dashboardProvider) {
-          dashboardProvider.generateSummaryOnDemand();
+      vscode.commands.registerCommand('sidekick.generateSessionSummary', async () => {
+        if (!dashboardProvider) return;
+        // The summary renders on the dashboard's Summary tab; posting it to a
+        // closed view dropped it, so reveal the view and the tab first.
+        try {
+          await vscode.commands.executeCommand(`${DashboardViewProvider.viewType}.focus`);
+        } catch {
+          // The view container may be hidden; the tab still switches for the next show.
         }
+        dashboardProvider.showTab('summary');
+        dashboardProvider.generateSummaryOnDemand();
       }),
     );
 
@@ -1361,6 +1387,26 @@ export async function activate(context: vscode.ExtensionContext) {
   // The setting is read once at activation, so a change needs a reload to take
   // effect. Previously it appeared to do nothing until the user happened to
   // reload for another reason.
+  // sessionProvider and enableEventLog are also read once at activation. A
+  // change made in Settings (rather than through the dashboard's provider
+  // picker, which switches live) needs a reload too.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      const providerChanged =
+        event.affectsConfiguration('sidekick.sessionProvider') && !sessionProviderSwitchInFlight;
+      const eventLogChanged = event.affectsConfiguration('sidekick.enableEventLog');
+      if (!enableMonitoring || (!providerChanged && !eventLogChanged)) return;
+      const what = providerChanged ? 'Session provider' : 'Event logging';
+      const action = await vscode.window.showInformationMessage(
+        `${what} setting changed. Reload to apply.`,
+        'Reload Window',
+      );
+      if (action === 'Reload Window') {
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+      }
+    }),
+  );
+
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (!event.affectsConfiguration('sidekick.enableSessionMonitoring')) return;
@@ -1482,7 +1528,19 @@ export async function activate(context: vscode.ExtensionContext) {
       switchAccount: (providerId, accountId) => accountService.switch(providerId, accountId),
       onTransition: (event) => {
         accountService.refresh();
-        vscode.window.showInformationMessage(`Sidekick auto-switched ${event.provider} account.`);
+        const accounts = accountService.listAccountsWithHealth(event.provider);
+        const nameOf = (id: string) => {
+          const view = accounts.find((v) => v.id === id);
+          return view ? accountDisplayName(view) : id;
+        };
+        void vscode.window
+          .showInformationMessage(
+            `Sidekick switched ${PROVIDER_LABELS[event.provider]} from ${nameOf(event.from)} to ${nameOf(event.to)} after the quota threshold was reached.`,
+            'Undo',
+          )
+          .then(async (choice) => {
+            if (choice === 'Undo') await accountService.undo(event.provider);
+          });
       },
       log: (message, error) => logError(message, error),
     });
@@ -1690,13 +1748,20 @@ export async function activate(context: vscode.ExtensionContext) {
       const target = vscode.workspace.workspaceFolders?.length
         ? vscode.ConfigurationTarget.Workspace
         : vscode.ConfigurationTarget.Global;
-      await config.update('sessionProvider', providerId, target);
+      // This command switches live, so the settings listener must not also
+      // ask for a reload.
+      sessionProviderSwitchInFlight = true;
+      try {
+        await config.update('sessionProvider', providerId, target);
 
-      const newProvider = detectProvider();
+        const newProvider = detectProvider();
 
-      const switched = await sessionMonitor.switchProvider(newProvider);
-      if (!switched) {
-        log(`Switched session provider to ${providerId}, no active session found yet`);
+        const switched = await sessionMonitor.switchProvider(newProvider);
+        if (!switched) {
+          log(`Switched session provider to ${providerId}, no active session found yet`);
+        }
+      } finally {
+        sessionProviderSwitchInFlight = false;
       }
 
       peakHoursService?.reconcile();
@@ -1755,7 +1820,8 @@ export async function activate(context: vscode.ExtensionContext) {
       const diag = getSessionDiagnostics(workspacePath);
 
       // Log detailed diagnostics
-      log('=== Session Diagnostics ===');
+      // Path resolution is Claude Code's ~/.claude/projects layout.
+      log('=== Session Diagnostics (Claude Code) ===');
       log(`Platform: ${diag.platform}`);
       log(`Workspace path: ${diag.workspacePath}`);
       log(`Encoded path: ${diag.encodedPath}`);
@@ -1785,8 +1851,15 @@ export async function activate(context: vscode.ExtensionContext) {
           `Expected dir not found. Similar dirs exist: ${diag.similarDirs.join(', ')}. Check Sidekick logs for details.`,
         );
       } else {
+        const providerId = sessionMonitor?.getProvider().id;
+        const note =
+          providerId && providerId !== 'claude-code'
+            ? ' This check covers Claude Code only; the active session provider is ' +
+              (providerId === 'codex' ? 'Codex' : 'OpenCode') +
+              '.'
+            : '';
         vscode.window.showWarningMessage(
-          `No session directory found. Expected: ${diag.encodedPath}. Check Sidekick logs for details.`,
+          `No Claude Code session directory found. Expected: ${diag.expectedSessionDir}.${note} Check Sidekick logs for details.`,
         );
       }
     }),
@@ -2036,14 +2109,16 @@ export async function activate(context: vscode.ExtensionContext) {
         },
       ];
 
-      // Mark current provider
+      // Mark the setting's value as current. 'auto' is the contributed default,
+      // so it is the current choice whenever the setting resolves to it; the
+      // provider it resolved to is named rather than marked as a pinned choice.
+      const configured =
+        vscode.workspace.getConfiguration('sidekick').get<string>('inferenceProvider') ?? 'auto';
       for (const p of providers) {
-        if (
-          p.id === current ||
-          (current === 'claude-max' &&
-            p.id === 'auto' &&
-            !vscode.workspace.getConfiguration('sidekick').get('inferenceProvider'))
-        ) {
+        if (configured === 'auto' && p.id === 'auto') {
+          const resolvedName = providers.find((q) => q.id === current)?.label.replace(/^\$\([^)]*\)\s*/, '');
+          p.description += resolvedName ? ` (current → ${resolvedName})` : ' (current)';
+        } else if (configured !== 'auto' && p.id === current) {
           p.description += ' (current)';
         }
       }
