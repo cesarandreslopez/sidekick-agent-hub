@@ -10,17 +10,29 @@
 import * as vscode from 'vscode';
 import type { SessionMonitor } from '../services/SessionMonitor';
 import { ProjectTimelineDataService } from '../services/ProjectTimelineDataService';
+import * as fs from 'fs';
 import type {
   ProjectTimelineState,
   ProjectTimelineMessage,
   WebviewTimelineMessage,
   TimelineRange,
+  TimelineSessionEntry,
 } from '../types/projectTimeline';
+import { formatDurationMs, formatTokenCount } from 'sidekick-shared/browser';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
+
+/** True when a session path is a real file (DB-backed providers use synthetic paths). */
+function isRealFile(sessionPath: string): boolean {
+  try {
+    return fs.statSync(sessionPath).isFile();
+  } catch {
+    return false;
+  }
+}
 
 /**
  * WebviewViewProvider for the multi-session project timeline.
@@ -33,6 +45,8 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   private _dataService: ProjectTimelineDataService;
   private _currentRange: TimelineRange = '7d';
   private _refreshTimer?: ReturnType<typeof setTimeout>;
+  /** Entries from the last timeline post, used to resolve expand requests. */
+  private _lastSessions: TimelineSessionEntry[] = [];
 
   /** Manages rotating phrase timers */
   private readonly _phrases: PhraseRotationManager;
@@ -147,17 +161,22 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
 
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspacePath) {
-      log('[Timeline] No workspace folder open, skipping update');
+      log('[Timeline] No workspace folder open');
+      this._postMessage({ type: 'noWorkspace' });
       return;
     }
 
     try {
       const currentSessionPath = this._sessionMonitor.getSessionPath();
-      const sessions = this._dataService.getTimelineEntries(
-        workspacePath,
-        this._currentRange,
-        currentSessionPath,
-      );
+      const sessions = this._dataService
+        .getTimelineEntries(workspacePath, this._currentRange, currentSessionPath)
+        .map((entry) => ({
+          ...entry,
+          durationLabel: formatDurationMs(entry.durationMs, { invalid: '—' }),
+          tokensLabel: formatTokenCount(entry.totalTokens),
+          canOpenFile: isRealFile(entry.sessionPath),
+        }));
+      this._lastSessions = sessions;
 
       const projectName = vscode.workspace.workspaceFolders?.[0]?.name || 'Project';
 
@@ -176,31 +195,27 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   }
 
   private _sendSessionDetail(sessionId: string): void {
-    // Find the session path from our cached entries
-    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspacePath) return;
-
-    const currentSessionPath = this._sessionMonitor.getSessionPath();
-    const sessions = this._dataService.getTimelineEntries(
-      workspacePath,
-      this._currentRange,
-      currentSessionPath,
-    );
-
-    const session = sessions.find((s) => s.sessionId === sessionId);
-    if (!session) return;
-
-    const detail = this._dataService.getSessionDetail(session.sessionPath);
+    // Resolve from the list the webview is showing; no rescan per expand.
+    const session = this._lastSessions.find((s) => s.sessionId === sessionId);
+    const detail = session ? this._dataService.getSessionDetail(session.sessionPath) : null;
     if (detail) {
-      this._postMessage({ type: 'sessionDetail', detail });
+      // The webview keys its cards by the timeline entry's id.
+      this._postMessage({ type: 'sessionDetail', detail: { ...detail, sessionId } });
+    } else {
+      this._postMessage({ type: 'sessionDetailUnavailable', sessionId });
     }
   }
 
   private _openSessionFile(sessionPath: string): void {
+    // Only paths the webview was shown are opened.
+    if (!this._lastSessions.some((s) => s.sessionPath === sessionPath)) return;
     const uri = vscode.Uri.file(sessionPath);
     vscode.workspace.openTextDocument(uri).then(
       (doc) => vscode.window.showTextDocument(doc),
-      () => log(`Could not open session file: ${sessionPath}`),
+      () => {
+        log(`Could not open session file: ${sessionPath}`);
+        void vscode.window.showWarningMessage('Could not open this session file.');
+      },
     );
   }
 
@@ -267,6 +282,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       margin-left: auto;
       display: flex;
       gap: var(--sk-space-1);
+      flex-wrap: wrap;
     }
 
     .range-btn {
@@ -333,6 +349,28 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     }
 
     .session-header:hover { background: var(--vscode-list-hoverBackground); }
+    .session-header:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: -1px;
+    }
+
+    .icon-btn {
+      border: none;
+      background: transparent;
+      color: var(--vscode-foreground);
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: var(--sk-radius-sm);
+      font-size: var(--sk-font-base);
+    }
+    .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground); }
+    .icon-btn:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+
+    .detail-note {
+      color: var(--vscode-descriptionForeground);
+      font-size: 10px;
+      font-style: italic;
+    }
 
     .session-title-row {
       display: flex;
@@ -356,10 +394,12 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       font-weight: 500;
     }
 
-    .session-status.active {
-      background: var(--vscode-testing-iconPassed);
-      color: var(--vscode-editor-background);
+    .session-status {
+      border: 1px solid currentColor;
+      background: transparent;
     }
+    .session-status.live { color: var(--vscode-testing-iconPassed); }
+    .session-status.viewing { color: var(--vscode-descriptionForeground); }
 
     .session-meta {
       display: flex;
@@ -458,13 +498,14 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       <button class="range-btn active" data-range="7d" aria-pressed="true">7d</button>
       <button class="range-btn" data-range="30d" aria-pressed="false">30d</button>
       <button class="range-btn" data-range="all" aria-pressed="false">All</button>
+      <button class="icon-btn" id="refresh-btn" title="Refresh timeline" aria-label="Refresh timeline">&#x21bb;</button>
     </div>
   </div>
   <p id="header-phrase" class="header-phrase">${getRandomPhrase()}</p>
 
   <div id="empty" class="empty-state" style="display: none;">
-    <p>No sessions found in this time range.</p>
-    <p>Try expanding the range, or start a new session to see it appear here.</p>
+    <p id="empty-title">No sessions found in this time range.</p>
+    <p id="empty-hint">Try expanding the range, or start a new session to see it appear here.</p>
     <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
   </div>
 
@@ -477,33 +518,36 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     var vscode = acquireVsCodeApi();
     var sessionListEl = document.getElementById('session-list');
     var emptyEl = document.getElementById('empty');
+    var emptyTitleEl = document.getElementById('empty-title');
+    var emptyHintEl = document.getElementById('empty-hint');
     var loadingEl = document.getElementById('loading');
     var rangeButtons = document.querySelectorAll('.range-btn');
-    var expandedSessions = {};
+    // Cards the user opened and details already fetched are tracked
+    // separately, so a timeline refresh never closes an open card.
+    var openIds = {};
+    var detailCache = {};
+    var unavailableIds = {};
 
-    // Range button handlers
+    function syncRangeButtons(range) {
+      rangeButtons.forEach(function(b) {
+        var on = b.dataset.range === range;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+
     rangeButtons.forEach(function(btn) {
       btn.addEventListener('click', function() {
-        rangeButtons.forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
-        btn.classList.add('active');
-        btn.setAttribute('aria-pressed', 'true');
+        syncRangeButtons(btn.dataset.range);
         vscode.postMessage({ type: 'setRange', range: btn.dataset.range });
       });
     });
 
-    function formatDuration(ms) {
-      if (ms < 60000) return Math.round(ms / 1000) + 's';
-      if (ms < 3600000) return Math.round(ms / 60000) + 'm';
-      var h = Math.floor(ms / 3600000);
-      var m = Math.round((ms % 3600000) / 60000);
-      return h + 'h ' + m + 'm';
-    }
-
-    function formatTokens(n) {
-      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-      return String(n);
-    }
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+      detailCache = {};
+      unavailableIds = {};
+      vscode.postMessage({ type: 'refresh' });
+    });
 
     function formatTime(iso) {
       var d = new Date(iso);
@@ -516,11 +560,23 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
              d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
+    function readableStatus(status) {
+      var map = { in_progress: 'In Progress', pending: 'Pending', completed: 'Completed', deleted: 'Deleted' };
+      return map[status] || String(status || '');
+    }
+
+    function showEmpty(title, hint) {
+      emptyTitleEl.textContent = title;
+      emptyHintEl.textContent = hint;
+      emptyEl.style.display = 'flex';
+      sessionListEl.style.display = 'none';
+      loadingEl.style.display = 'none';
+    }
+
     function renderTimeline(state) {
+      syncRangeButtons(state.range);
       if (!state.sessions || state.sessions.length === 0) {
-        emptyEl.style.display = 'flex';
-        sessionListEl.style.display = 'none';
-        loadingEl.style.display = 'none';
+        showEmpty('No sessions found in this time range.', 'Try expanding the range, or start a new session to see it appear here.');
         return;
       }
 
@@ -528,43 +584,44 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       sessionListEl.style.display = 'block';
       loadingEl.style.display = 'none';
 
-      // Find max duration for relative bar sizing
       var maxDuration = Math.max.apply(null, state.sessions.map(function(s) { return s.durationMs; }));
+      var listed = {};
 
       var html = '';
       for (var i = 0; i < state.sessions.length; i++) {
         var s = state.sessions[i];
+        listed[s.sessionId] = true;
         var cardClass = 'session-card';
         if (s.isCurrent && s.isActive) cardClass += ' active-session';
         else if (s.isCurrent) cardClass += ' current';
 
         var barWidth = maxDuration > 0 ? Math.max(4, (s.durationMs / maxDuration) * 100) : 4;
         var barClass = s.durationMs < 60000 ? 'timeline-bar short' : 'timeline-bar';
+        var open = !!openIds[s.sessionId];
+        var detailId = 'detail-' + i;
 
-        html += '<div class="' + cardClass + '" data-session-id="' + s.sessionId + '" data-session-path="' + escapeHtml(s.sessionPath) + '">';
-        html += '<div class="session-header" onclick="toggleSession(this)">';
+        html += '<div class="' + cardClass + '" data-session-id="' + escapeHtml(s.sessionId) + '" data-session-path="' + escapeHtml(s.sessionPath) + '" data-can-open="' + (s.canOpenFile ? '1' : '') + '">';
+        html += '<div class="session-header" role="button" tabindex="0" aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + detailId + '">';
 
-        // Title row
         html += '<div class="session-title-row">';
-        html += '<span class="session-label">' + escapeHtml(s.label) + '</span>';
-        if (s.isActive) {
-          html += '<span class="session-status active">Active</span>';
+        html += '<span class="session-label" title="' + escapeHtml(s.label) + '">' + escapeHtml(s.label) + '</span>';
+        if (s.isCurrent) {
+          html += s.isActive
+            ? '<span class="session-status live">Live</span>'
+            : '<span class="session-status viewing">Viewing</span>';
         }
         html += '</div>';
 
-        // Duration bar
         html += '<div class="' + barClass + '" style="width: ' + barWidth + '%;"></div>';
 
-        // Meta row
         html += '<div class="session-meta">';
         html += '<span class="meta-item">' + formatTime(s.startTime) + '</span>';
-        html += '<span class="meta-item">' + formatDuration(s.durationMs) + '</span>';
-        html += '<span class="meta-item">' + s.messageCount + ' msgs</span>';
+        html += '<span class="meta-item">' + escapeHtml(s.durationLabel || '') + '</span>';
+        html += '<span class="meta-item">' + s.messageCount + ' msg' + (s.messageCount === 1 ? '' : 's') + '</span>';
         html += '</div>';
 
-        // Badges
         html += '<div class="session-badges">';
-        html += '<span class="badge tokens">' + formatTokens(s.totalTokens) + ' tokens</span>';
+        html += '<span class="badge tokens" title="' + Number(s.totalTokens).toLocaleString() + ' tokens">' + escapeHtml(s.tokensLabel || String(s.totalTokens)) + ' tokens</span>';
         if (s.taskCount > 0) {
           html += '<span class="badge">' + s.taskCount + ' task' + (s.taskCount > 1 ? 's' : '') + '</span>';
         }
@@ -578,26 +635,30 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
 
         html += '</div>'; // session-header
 
-        // Detail section (hidden by default)
-        var detailVisible = expandedSessions[s.sessionId] ? ' visible' : '';
-        html += '<div class="session-detail' + detailVisible + '" id="detail-' + s.sessionId + '">';
-        if (expandedSessions[s.sessionId]) {
-          html += renderDetailContent(expandedSessions[s.sessionId]);
-        } else {
-          html += '<div class="loading">Loading details...</div>';
-        }
+        html += '<div class="session-detail' + (open ? ' visible' : '') + '" id="' + detailId + '">';
+        html += detailBody(s.sessionId, !!s.canOpenFile);
         html += '</div>';
 
         html += '</div>'; // session-card
       }
 
+      // Forget open cards that left the list (range change).
+      Object.keys(openIds).forEach(function(id) { if (!listed[id]) delete openIds[id]; });
       sessionListEl.innerHTML = html;
+    }
+
+    function detailBody(sessionId, canOpen) {
+      var html;
+      if (detailCache[sessionId]) html = renderDetailContent(detailCache[sessionId]);
+      else if (unavailableIds[sessionId]) html = '<div class="detail-note">Details are unavailable for this session.</div>';
+      else html = '<div class="loading">Loading details...</div>';
+      if (canOpen) html += '<button type="button" class="open-file-btn">Open session file</button>';
+      return html;
     }
 
     function renderDetailContent(detail) {
       var html = '';
 
-      // Key files
       if (detail.toolBreakdown && detail.toolBreakdown.length > 0) {
         html += '<div class="detail-section">';
         html += '<h3>Tool Usage</h3>';
@@ -609,18 +670,16 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
         html += '</ul></div>';
       }
 
-      // Tasks
       if (detail.tasks && detail.tasks.length > 0) {
         html += '<div class="detail-section">';
         html += '<h3>Tasks (' + detail.tasks.length + ')</h3>';
         html += '<ul class="detail-list">';
         for (var j = 0; j < detail.tasks.length && j < 5; j++) {
-          html += '<li>' + escapeHtml(detail.tasks[j].subject) + ' <span class="count">(' + detail.tasks[j].status + ')</span></li>';
+          html += '<li>' + escapeHtml(detail.tasks[j].subject) + ' <span class="count">(' + escapeHtml(readableStatus(detail.tasks[j].status)) + ')</span></li>';
         }
         html += '</ul></div>';
       }
 
-      // Errors
       if (detail.errors && detail.errors.length > 0) {
         html += '<div class="detail-section">';
         html += '<h3>Errors</h3>';
@@ -631,6 +690,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
         html += '</ul></div>';
       }
 
+      if (!html) html = '<div class="detail-note">No details recorded for this session.</div>';
       return html;
     }
 
@@ -639,36 +699,73 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    // Toggle session detail (exposed globally for onclick)
-    window.toggleSession = function(headerEl) {
-      var card = headerEl.closest('.session-card');
-      var sessionId = card.dataset.sessionId;
-      var detailEl = document.getElementById('detail-' + sessionId);
-
-      if (detailEl.classList.contains('visible')) {
-        detailEl.classList.remove('visible');
-        delete expandedSessions[sessionId];
-      } else {
-        detailEl.classList.add('visible');
-        if (!expandedSessions[sessionId]) {
-          vscode.postMessage({ type: 'expandSession', sessionId: sessionId });
-        }
+    function findCard(sessionId) {
+      var cards = sessionListEl.querySelectorAll('.session-card');
+      for (var i = 0; i < cards.length; i++) {
+        if (cards[i].dataset.sessionId === sessionId) return cards[i];
       }
-    };
+      return null;
+    }
 
-    // Handle messages from extension
+    function toggleSession(headerEl) {
+      var card = headerEl.closest('.session-card');
+      if (!card) return;
+      var sessionId = card.dataset.sessionId;
+      var detailEl = card.querySelector('.session-detail');
+      var open = !openIds[sessionId];
+      if (open) openIds[sessionId] = true;
+      else delete openIds[sessionId];
+      detailEl.classList.toggle('visible', open);
+      headerEl.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open && !detailCache[sessionId]) {
+        delete unavailableIds[sessionId];
+        detailEl.innerHTML = detailBody(sessionId, card.dataset.canOpen === '1');
+        vscode.postMessage({ type: 'expandSession', sessionId: sessionId });
+      }
+    }
+
+    // Delegated handlers: the CSP blocks inline on* attributes.
+    sessionListEl.addEventListener('click', function(e) {
+      var openBtn = e.target.closest('.open-file-btn');
+      if (openBtn) {
+        var card = openBtn.closest('.session-card');
+        if (card) vscode.postMessage({ type: 'openSession', sessionPath: card.dataset.sessionPath });
+        return;
+      }
+      var header = e.target.closest('.session-header');
+      if (header) toggleSession(header);
+    });
+    sessionListEl.addEventListener('keydown', function(e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var header = e.target.closest('.session-header');
+      if (!header || e.target !== header) return;
+      e.preventDefault();
+      toggleSession(header);
+    });
+
+    function updateDetail(sessionId) {
+      var card = findCard(sessionId);
+      if (!card) return;
+      var detailEl = card.querySelector('.session-detail');
+      if (detailEl) detailEl.innerHTML = detailBody(sessionId, card.dataset.canOpen === '1');
+    }
+
     window.addEventListener('message', function(event) {
       var message = event.data;
       switch (message.type) {
         case 'updateTimeline':
           renderTimeline(message.state);
           break;
+        case 'noWorkspace':
+          showEmpty('Open a folder to see its session timeline.', 'The timeline lists the agent sessions recorded for the open workspace.');
+          break;
         case 'sessionDetail':
-          expandedSessions[message.detail.sessionId] = message.detail;
-          var detailEl = document.getElementById('detail-' + message.detail.sessionId);
-          if (detailEl) {
-            detailEl.innerHTML = renderDetailContent(message.detail);
-          }
+          detailCache[message.detail.sessionId] = message.detail;
+          updateDetail(message.detail.sessionId);
+          break;
+        case 'sessionDetailUnavailable':
+          unavailableIds[message.sessionId] = true;
+          updateDetail(message.sessionId);
           break;
         case 'loading':
           loadingEl.style.display = message.loading ? 'block' : 'none';
@@ -684,7 +781,6 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       }
     });
 
-    // Signal ready
     vscode.postMessage({ type: 'ready' });
   })();
   </script>

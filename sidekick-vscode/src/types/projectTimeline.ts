@@ -47,14 +47,23 @@ export interface TimelineSessionEntry {
   /** Key files touched (max 10) */
   keyFiles: string[];
 
-  /** Whether this is the currently active session */
+  /** Whether this is the session the monitor is attached to */
   isCurrent: boolean;
 
-  /** Whether the session is still in progress */
+  /** Whether the attached session is live (its file changed in the last two minutes) */
   isActive: boolean;
 
   /** Models used in this session */
   models: string[];
+
+  /** Host-formatted duration (shared formatter), filled when sent to the webview */
+  durationLabel?: string;
+
+  /** Host-formatted token total (shared formatter), filled when sent to the webview */
+  tokensLabel?: string;
+
+  /** Whether the session is a real file the editor can open */
+  canOpenFile?: boolean;
 }
 
 /**
@@ -102,6 +111,8 @@ export interface ProjectTimelineState {
 export type ProjectTimelineMessage =
   | { type: 'updateTimeline'; state: ProjectTimelineState }
   | { type: 'sessionDetail'; detail: TimelineSessionDetail }
+  | { type: 'sessionDetailUnavailable'; sessionId: string }
+  | { type: 'noWorkspace' }
   | { type: 'loading'; loading: boolean }
   | { type: 'updatePhrase'; phrase: string }
   | { type: 'updateEmptyPhrase'; phrase: string };

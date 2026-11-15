@@ -26,6 +26,18 @@ interface CachedEntry {
   mtime: number;
 }
 
+/** Cached session detail, keyed by path and invalidated by mtime. */
+interface CachedDetail {
+  detail: TimelineSessionDetail;
+  mtime: number;
+}
+
+/**
+ * A session counts as live while its file changed this recently. Matches the
+ * session list's activity window so both views agree on "Live".
+ */
+export const TIMELINE_LIVE_WINDOW_MS = 2 * 60 * 1000;
+
 /**
  * Data service that scans session files to build timeline entries.
  *
@@ -35,6 +47,8 @@ interface CachedEntry {
 export class ProjectTimelineDataService {
   /** Cache keyed by session path */
   private _cache = new Map<string, CachedEntry>();
+  /** Expanded-detail cache keyed by session path */
+  private _detailCache = new Map<string, CachedDetail>();
 
   constructor(private readonly _provider: SessionProvider) {}
 
@@ -84,6 +98,18 @@ export class ProjectTimelineDataService {
    * @returns Session detail or null if parse fails
    */
   getSessionDetail(sessionPath: string): TimelineSessionDetail | null {
+    const mtime = this._getMtime(sessionPath);
+    const cached = this._detailCache.get(sessionPath);
+    if (cached && mtime !== null && cached.mtime === mtime) return cached.detail;
+
+    const detail = this._readSessionDetail(sessionPath);
+    if (detail && mtime !== null) {
+      this._detailCache.set(sessionPath, { detail, mtime });
+    }
+    return detail;
+  }
+
+  private _readSessionDetail(sessionPath: string): TimelineSessionDetail | null {
     try {
       const reader = this._provider.createReader(sessionPath);
       const events = reader.readAll();
@@ -149,6 +175,7 @@ export class ProjectTimelineDataService {
    */
   invalidateSession(sessionPath: string): void {
     this._cache.delete(sessionPath);
+    this._detailCache.delete(sessionPath);
   }
 
   /**
@@ -156,6 +183,24 @@ export class ProjectTimelineDataService {
    */
   clearCache(): void {
     this._cache.clear();
+    this._detailCache.clear();
+  }
+
+  /**
+   * Last-modified time for a session. DB-backed providers use synthetic paths
+   * that don't exist on disk, so fall back to the provider's own metadata.
+   */
+  private _getMtime(sessionPath: string): number | null {
+    try {
+      return fs.statSync(sessionPath).mtimeMs;
+    } catch {
+      const meta = this._provider.getSessionMetadata?.(sessionPath);
+      return meta ? meta.mtime.getTime() : null;
+    }
+  }
+
+  private _isLive(isCurrent: boolean, mtime: number): boolean {
+    return isCurrent && Date.now() - mtime < TIMELINE_LIVE_WINDOW_MS;
   }
 
   /**
@@ -165,27 +210,22 @@ export class ProjectTimelineDataService {
     sessionPath: string,
     currentSessionPath?: string | null,
   ): TimelineSessionEntry | null {
-    // Get file mtime
-    let mtime: number;
-    try {
-      const stat = fs.statSync(sessionPath);
-      mtime = stat.mtimeMs;
-    } catch {
-      return null;
-    }
+    const mtime = this._getMtime(sessionPath);
+    if (mtime === null) return null;
 
     // Check cache
     const cached = this._cache.get(sessionPath);
     if (cached && cached.mtime === mtime) {
-      // Update current/active flags which may change
+      // Update current/live flags which may change
       cached.entry.isCurrent = sessionPath === currentSessionPath;
-      cached.entry.isActive = cached.entry.isCurrent;
+      cached.entry.isActive = this._isLive(cached.entry.isCurrent, mtime);
       return cached.entry;
     }
 
     // Parse session
     const entry = this._parseSession(sessionPath, currentSessionPath);
     if (entry) {
+      entry.isActive = this._isLive(entry.isCurrent, mtime);
       this._cache.set(sessionPath, { entry, mtime });
     }
     return entry;
@@ -206,16 +246,9 @@ export class ProjectTimelineDataService {
   ): TimelineSessionEntry | null {
     const sessionId = this._provider.getSessionId(sessionPath);
 
-    let fileSize: number;
-    try {
-      fileSize = fs.statSync(sessionPath).size;
-    } catch {
-      return null;
-    }
-
-    if (fileSize === 0) return null;
-
-    if (this._provider.id === 'codex') {
+    // Codex rollouts and OpenCode (often DB-backed, with synthetic paths) are
+    // summarised by the provider's own stats reader.
+    if (this._provider.id !== 'claude-code') {
       try {
         const stats = this._provider.readSessionStats(sessionPath);
         if (!stats.startTime) return null;
@@ -238,7 +271,7 @@ export class ProjectTimelineDataService {
           totalCost: stats.costUsd,
           messageCount: stats.messageCount,
           taskCount: stats.toolUsage.TaskCreate || 0,
-          errorCount: 0,
+          errorCount: Object.values(stats.toolFailures ?? {}).reduce((sum, n) => sum + n, 0),
           keyFiles: [],
           isCurrent,
           isActive: isCurrent,
@@ -248,6 +281,15 @@ export class ProjectTimelineDataService {
         return null;
       }
     }
+
+    let fileSize: number;
+    try {
+      fileSize = fs.statSync(sessionPath).size;
+    } catch {
+      return null;
+    }
+
+    if (fileSize === 0) return null;
 
     // Read first chunk for start time, label, model
     const headChunk = this._readChunk(sessionPath, 0, Math.min(16384, fileSize));
