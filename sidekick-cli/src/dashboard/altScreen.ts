@@ -57,14 +57,23 @@ export function stripScrollbackErase(chunk: unknown): unknown {
 export function createAltScreen(stream: NodeJS.WriteStream = process.stdout): AltScreenSession {
   const isTTY = Boolean(stream.isTTY);
   let active = false;
+  // Once left, Ink's late writes (an unmount on a signal repaints the last
+  // frame) must not land on the restored main screen.
+  let left = false;
 
-  const write: WriteFn = (chunk, encoding, callback) =>
-    (stream.write as unknown as WriteFn).call(
+  const write: WriteFn = (chunk, encoding, callback) => {
+    if (left) {
+      const done = typeof encoding === 'function' ? encoding : callback;
+      if (typeof done === 'function') (done as () => void)();
+      return true;
+    }
+    return (stream.write as unknown as WriteFn).call(
       stream,
       stripScrollbackErase(chunk),
       encoding,
       callback,
     );
+  };
 
   // A proxy rather than a copy: columns/rows, isTTY and resize listeners stay
   // live on the real stream.
@@ -95,6 +104,7 @@ export function createAltScreen(stream: NodeJS.WriteStream = process.stdout): Al
     leave() {
       if (!active) return;
       active = false;
+      left = true;
       if (current === session) current = null;
       process.removeListener('exit', onExit);
       try {

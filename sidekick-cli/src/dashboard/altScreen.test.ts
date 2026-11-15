@@ -50,6 +50,18 @@ describe('alternate screen', () => {
     expect(onResize).toHaveBeenCalledTimes(1);
   });
 
+  it('drops writes made through its stream after it has left', () => {
+    const { stream, writes } = fakeStream(true);
+    const alt = createAltScreen(stream);
+    alt.enter();
+    alt.stdout.write('frame');
+    alt.leave();
+    const done = vi.fn();
+    expect(alt.stdout.write('\x1b[2J\x1b[Hlate frame', done)).toBe(true);
+    expect(done).toHaveBeenCalled();
+    expect(writes).toEqual(['\x1b[?1049h\x1b[H', 'frame', '\x1b[?1049l']);
+  });
+
   it('leaveActiveAltScreen restores the screen before a fatal message', () => {
     const { stream, writes } = fakeStream(true);
     const alt = createAltScreen(stream);
