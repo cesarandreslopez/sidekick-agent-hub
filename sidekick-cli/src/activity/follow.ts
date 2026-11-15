@@ -18,6 +18,7 @@ import {
 } from 'sidekick-shared';
 import type { SessionEvent, SessionProviderBase } from 'sidekick-shared';
 import { createDashboardSignalHandler } from '../commands/dashboardLifecycle';
+import { createAltScreen } from '../dashboard/altScreen';
 import { buildFollowFrame } from './frame';
 import type { FollowMode, FollowPanel } from './frame';
 import { LiveActivity } from './liveActivity';
@@ -306,12 +307,19 @@ export async function runMapFollow(options: MapFollowOptions): Promise<void> {
     instance?.unmount();
   }
 
-  instance = render(element(), { exitOnCtrlC: false, maxFps: 15 });
+  // Alternate screen: keeps the user's scrollback, restored on exit.
+  const altScreen = createAltScreen();
+  altScreen.enter();
+  instance = render(element(), { exitOnCtrlC: false, maxFps: 15, stdout: altScreen.stdout });
   scheduleTick();
-  const onSignal = createDashboardSignalHandler(cleanup, () => instance?.unmount());
+  const onSignal = createDashboardSignalHandler(cleanup, () => {
+    instance?.unmount();
+    altScreen.leave();
+  });
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
   await instance.waitUntilExit();
+  altScreen.leave();
   process.removeListener('SIGINT', onSignal);
   process.removeListener('SIGTERM', onSignal);
   cleanup();

@@ -31,6 +31,7 @@ import { detectProvider } from 'sidekick-shared';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { formatCliError } from './cliError';
+import { leaveActiveAltScreen } from './dashboard/altScreen';
 import { registerAccountsCommand } from './commands/accounts';
 
 const commandToken = firstCommandToken(process.argv.slice(2));
@@ -588,6 +589,9 @@ if (commandToken === undefined) {
 }
 
 program.parseAsync().catch((error: unknown) => {
+  // A full-screen TUI that failed must give the terminal back first, or the
+  // message is printed into the alternate screen and vanishes with it.
+  leaveActiveAltScreen();
   process.stderr.write(formatCliError(error));
   process.exitCode = 1;
 });

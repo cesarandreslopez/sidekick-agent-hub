@@ -70,6 +70,7 @@ import { ChartsPanel } from '../dashboard/panels/ChartsPanel';
 import { MapPanel } from '../dashboard/panels/MapPanel';
 import type { SidePanel } from '../dashboard/panels/types';
 import { showSessionPicker } from '../dashboard/ink/SessionPickerInk';
+import { createAltScreen } from '../dashboard/altScreen';
 import { Dashboard } from '../dashboard/ink/Dashboard';
 import { disableMouse } from '../dashboard/ink/mouse';
 import { checkInteractivePreflight, currentTerminalCapabilities } from './interactivePreflight';
@@ -733,7 +734,13 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     onAccountUndo: undoAccountSwitch,
   });
 
-  const instance = render(React.createElement(Dashboard, dashboardProps()));
+  // Full-screen in the alternate screen: the user's scrollback survives (Ink
+  // would otherwise erase it on every frame) and is restored on exit.
+  const altScreen = createAltScreen();
+  altScreen.enter();
+  const instance = render(React.createElement(Dashboard, dashboardProps()), {
+    stdout: altScreen.stdout,
+  });
   renderReady = true;
 
   // Re-render bridge: throttled rerender with new props
@@ -923,7 +930,10 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // Wrapped because 'exit' passes the exit code as the first argument, which
   // disableMouse would otherwise take as its stream.
   process.on('exit', () => disableMouse());
-  const onSignal = createDashboardSignalHandler(cleanup, () => instance.unmount());
+  const onSignal = createDashboardSignalHandler(cleanup, () => {
+    instance.unmount();
+    altScreen.leave();
+  });
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
 
@@ -1027,6 +1037,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   // Wait for exit
   await instance.waitUntilExit();
+  altScreen.leave();
   process.removeListener('SIGINT', onSignal);
   process.removeListener('SIGTERM', onSignal);
   cleanup();
