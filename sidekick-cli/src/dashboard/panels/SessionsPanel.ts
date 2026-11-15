@@ -35,6 +35,7 @@ import {
   detailWidth,
   visibleLength,
   truncate,
+  escapeBlessed,
 } from '../formatters';
 import {
   aggregateCostDisplay,
@@ -387,7 +388,7 @@ export class SessionsPanel implements SidePanel {
         ? (() => {
             const prefix = `[${formatTime(recentEvent.timestamp)}] ${recentEvent.type.padEnd(12)} `;
             const maxSummary = Math.max(20, w - prefix.length);
-            return `{yellow-fg}${prefix}${truncate(recentEvent.summary || '', maxSummary)}{/yellow-fg}`;
+            return `{yellow-fg}${prefix}${escapeBlessed(truncate(recentEvent.summary || '', maxSummary))}{/yellow-fg}`;
           })()
         : '{grey-fg}(no events yet){/grey-fg}';
 
@@ -703,7 +704,7 @@ export class SessionsPanel implements SidePanel {
         const prefixLen = 1 + time.length + 2 + 12 + 1;
         const summaryMax = Math.max(10, w - prefixLen - suffix.length);
         const rawSummary = truncate(ev.summary || '', summaryMax);
-        const summary = highlightEvent(rawSummary, 'blessed');
+        const summary = highlightEvent(escapeBlessed(rawSummary), 'blessed');
         const head = color ? `{${color}-fg}[${time}] ${label}{/${color}-fg}` : `[${time}] ${label}`;
         let line = `${head} ${summary}`;
         if (suffix) {
@@ -785,7 +786,7 @@ export class SessionsPanel implements SidePanel {
         const prefixLen = 2 + 1 + 2 + 1 + 10 + toolAnnotation.length + 1;
         const flowWidth = ctx?.width ?? detailWidth();
         const summaryMax = Math.max(10, flowWidth - prefixLen);
-        const summary = truncate(ev.summary || '', summaryMax);
+        const summary = escapeBlessed(truncate(ev.summary || '', summaryMax));
         const toolTag = ev.toolName ? ` {green-fg}[${ev.toolName}]{/green-fg}` : '';
         const typeLabel = color
           ? `{${color}-fg}${ev.type.padEnd(10)}{/${color}-fg}`

@@ -49,7 +49,7 @@ export class EventStreamPanel implements SidePanel {
     return events.map((ev, i) => {
       const time = formatTime(ev.timestamp);
       const badge = EVENT_TYPE_BADGES[ev.type] || '{grey-fg}[???]{/grey-fg}';
-      const summary = highlightEvent(ev.summary || '', 'blessed');
+      const summary = highlightEvent(escapeBlessed(ev.summary || ''), 'blessed');
       const label = `{grey-fg}${time}{/grey-fg} ${badge} ${summary}`;
 
       return {
@@ -127,7 +127,7 @@ export class EventStreamPanel implements SidePanel {
     lines.push(sectionHeader('Summary', w));
     lines.push('');
     const summary = String(ev.summary || '(no summary)');
-    lines.push(wordWrap(highlightEvent(summary, 'blessed'), w));
+    lines.push(wordWrap(highlightEvent(escapeBlessed(summary), 'blessed'), w));
 
     // Raw JSON
     lines.push('');
@@ -170,7 +170,7 @@ export class EventStreamPanel implements SidePanel {
       const ev = events[i];
       const time = formatTime(ev.timestamp);
       const badge = EVENT_TYPE_BADGES[ev.type] || '{grey-fg}[???]{/grey-fg}';
-      const summary = highlightEvent(ev.summary || '', 'blessed');
+      const summary = highlightEvent(escapeBlessed(ev.summary || ''), 'blessed');
 
       if (i === idx) {
         lines.push(

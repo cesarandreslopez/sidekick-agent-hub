@@ -311,8 +311,8 @@ describe('DashboardState', () => {
         (e) => e.type === 'summary' && e.summary.includes('compacted'),
       );
       expect(compactionEntry).toBeDefined();
-      expect(compactionEntry!.summary).toContain('150.0K');
-      expect(compactionEntry!.summary).toContain('60.0K');
+      expect(compactionEntry!.summary).toContain('150.0k');
+      expect(compactionEntry!.summary).toContain('60.0k');
       expect(m.timelineAppendCount).toBe(3);
       expect(m.eventCount).toBe(2);
     });

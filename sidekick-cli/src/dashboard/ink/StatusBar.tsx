@@ -34,6 +34,8 @@ export interface StatusHint {
 interface StatusBarProps {
   /** Terminal width the bar must fit in. */
   columns: number;
+  /** The splash screen is up: only `? help` and `q quit` do anything yet. */
+  splash?: boolean;
   eventCount: number;
   providerName?: string;
   permissionMode?: string | null;
@@ -133,15 +135,23 @@ export function buildStatusSegments(props: StatusBarProps): StatusSegment[] {
     center('data', 3, [{ text: props.dataBadge.text, color: props.dataBadge.color }]);
   }
   if (props.filterString) {
-    center('filter', 2, [
+    // A kept filter changes what every list shows, so it outranks the
+    // provider name, the version and MOUSE OFF when the row is tight.
+    center('filter', 1, [
       {
-        text: `filter: "${clipLabel(props.filterString, 16)}" (${props.matchCount ?? 0}/${props.totalCount ?? 0})`,
+        text: `filter "${clipLabel(props.filterString, 12)}" ${props.matchCount ?? 0}/${props.totalCount ?? 0}`,
         color: 'yellow',
       },
     ]);
   }
   if (props.sessionFilter) {
     center('session-filter', 3, [{ text: props.sessionFilter, color: 'magenta' }]);
+  }
+
+  if (props.splash) {
+    segments.push(hintSegment({ key: '?', label: 'help' }, 0, 'help'));
+    segments.push(hintSegment({ key: 'q', label: 'quit' }, 0, 'quit'));
+    return segments;
   }
 
   const nav: StatusHint[] =

@@ -6,6 +6,7 @@
  * TODOs) inline.
  */
 
+import { formatTokenCount } from 'sidekick-shared';
 import * as fs from 'fs';
 import type {
   AggregatedCostProvenance,
@@ -1254,8 +1255,7 @@ export class DashboardState {
 
 // ── Module-level helpers ──
 
+/** Token counts in the one shared format (`12.3k`, `4.5M`, `1.2B`). */
 function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+  return formatTokenCount(n);
 }

@@ -717,6 +717,7 @@ export function Dashboard({
           )}
           <StatusBar
             columns={columns}
+            splash
             eventCount={0}
             focusTarget="side"
             panelHints={[]}
