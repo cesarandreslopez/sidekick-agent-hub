@@ -221,16 +221,25 @@ export class ActivityMapPanel implements vscode.Disposable {
       );
       return undefined;
     }
+    // One batched label read where the provider supports it (DB-backed
+    // providers answer in a single query).
+    const labels: Map<string, string | null> = provider.extractSessionLabelsAsync
+      ? await provider.extractSessionLabelsAsync(sessions).catch(() => new Map())
+      : new Map(sessions.map((sessionPath) => [sessionPath, provider.extractSessionLabel(sessionPath)]));
     const items = sessions.map((sessionPath) => {
-      let detail = '';
+      const id = provider.getSessionId(sessionPath).slice(0, 8);
+      let modified = '';
       try {
-        detail = new Date(fs.statSync(sessionPath).mtimeMs).toLocaleString();
+        modified = new Date(fs.statSync(sessionPath).mtimeMs).toLocaleString();
       } catch {
-        // DB-backed sessions have no file to stat.
+        // DB-backed sessions have no file to stat; ask the provider.
+        const meta = provider.getSessionMetadata?.(sessionPath);
+        if (meta) modified = meta.mtime.toLocaleString();
       }
+      const label = labels.get(sessionPath)?.trim();
       return {
-        label: provider.getSessionId(sessionPath).slice(0, 8),
-        description: detail,
+        label: label || id,
+        description: [label ? id : '', modified].filter(Boolean).join(' · '),
         sessionPath,
       };
     });

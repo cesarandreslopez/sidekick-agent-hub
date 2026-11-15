@@ -14,37 +14,54 @@ import * as vscode from 'vscode';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { log, logError } from '../services/Logger';
 
-/** Message posted by the placeholder when the user opts back in. */
-interface EnableMonitoringMessage {
-  type: 'enableMonitoring';
+/** Messages posted by the placeholder. */
+interface PlaceholderMessage {
+  type: 'enableMonitoring' | 'reloadWindow';
 }
 
 export class MonitoringDisabledViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'sidekick.dashboard';
 
   private _disposables: vscode.Disposable[] = [];
+  private _view?: vscode.WebviewView;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
+    this._view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [this._extensionUri],
     };
-    webviewView.webview.html = this._getHtml(webviewView.webview);
+    // Monitoring may already be on (enabled earlier, reload still pending).
+    webviewView.webview.html = this._getHtml(webviewView.webview, this._isEnabled());
 
     webviewView.webview.onDidReceiveMessage(
-      (message: EnableMonitoringMessage) => {
-        if (message?.type !== 'enableMonitoring') return;
-        void this._enableMonitoring();
+      (message: PlaceholderMessage) => {
+        if (message?.type === 'enableMonitoring') void this._enableMonitoring();
+        else if (message?.type === 'reloadWindow') {
+          void vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
       },
       undefined,
       this._disposables,
     );
   }
 
+  private _isEnabled(): boolean {
+    return vscode.workspace
+      .getConfiguration('sidekick')
+      .get<boolean>('enableSessionMonitoring', true);
+  }
+
   private async _enableMonitoring(): Promise<void> {
     try {
+      // Already on (the reload toast was dismissed): the setting won't
+      // change again, so offer the reload here instead of doing nothing.
+      if (this._isEnabled()) {
+        this._showEnabled();
+        return;
+      }
       await vscode.workspace
         .getConfiguration('sidekick')
         .update('enableSessionMonitoring', true, vscode.ConfigurationTarget.Global);
@@ -61,6 +78,8 @@ export class MonitoringDisabledViewProvider implements vscode.WebviewViewProvide
         vscode.window.showWarningMessage(
           'A workspace setting is overriding sidekick.enableSessionMonitoring. Enable it in the workspace settings to start monitoring.',
         );
+      } else {
+        this._showEnabled();
       }
     } catch (error) {
       logError('Failed to enable session monitoring', error);
@@ -68,7 +87,12 @@ export class MonitoringDisabledViewProvider implements vscode.WebviewViewProvide
     }
   }
 
-  private _getHtml(webview: vscode.Webview): string {
+  /** Swaps the placeholder to its "reload to start" state. */
+  private _showEnabled(): void {
+    void this._view?.webview.postMessage({ type: 'enabled' });
+  }
+
+  private _getHtml(webview: vscode.Webview, enabled = false): string {
     const nonce = getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
@@ -103,7 +127,7 @@ export class MonitoringDisabledViewProvider implements vscode.WebviewViewProvide
   </style>
 </head>
 <body>
-  <div class="sk-empty-state">
+  <div class="sk-empty-state" id="off-state"${enabled ? ' hidden' : ''}>
     <h3>Session monitoring is off</h3>
     <p>
       Analytics, the mind map, the kanban board, and the other Agent Hub views
@@ -111,11 +135,25 @@ export class MonitoringDisabledViewProvider implements vscode.WebviewViewProvide
     </p>
     <button id="enable" class="sk-enable-btn">Enable session monitoring</button>
   </div>
+  <div class="sk-empty-state" id="on-state"${enabled ? '' : ' hidden'}>
+    <h3>Session monitoring is on</h3>
+    <p>Reload the window to start the Agent Hub views.</p>
+    <button id="reload" class="sk-enable-btn">Reload Window</button>
+  </div>
   <script nonce="${nonce}">
     (function () {
       const vscode = acquireVsCodeApi();
       document.getElementById('enable').addEventListener('click', function () {
         vscode.postMessage({ type: 'enableMonitoring' });
+      });
+      document.getElementById('reload').addEventListener('click', function () {
+        vscode.postMessage({ type: 'reloadWindow' });
+      });
+      window.addEventListener('message', function (event) {
+        if (!event.data || event.data.type !== 'enabled') return;
+        document.getElementById('off-state').hidden = true;
+        document.getElementById('on-state').hidden = false;
+        document.getElementById('reload').focus();
       });
     })();
   </script>
