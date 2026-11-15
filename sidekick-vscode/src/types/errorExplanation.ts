@@ -53,10 +53,17 @@ export interface FixSuggestion {
  * Messages sent from extension to webview
  */
 export type ErrorExplainExtensionMessage =
-  | { type: 'loadError'; errorContext: ErrorContext; code: string }
+  | {
+      type: 'loadError';
+      requestId: string;
+      mode: 'explain' | 'fix';
+      errorContext: ErrorContext;
+      code: string;
+    }
   | { type: 'explanationResult'; requestId: string; explanation: ErrorExplanation }
   | { type: 'explanationError'; requestId: string; error: string }
-  | { type: 'fixReady'; fixSuggestion: FixSuggestion }
+  | { type: 'cancelled'; requestId: string }
+  | { type: 'fixReady'; requestId: string; fixSuggestion: FixSuggestion }
   | { type: 'applyFixResult'; success: boolean; error?: string };
 
 /**
@@ -66,5 +73,6 @@ export type ErrorExplainWebviewMessage =
   | { type: 'webviewReady' }
   | { type: 'requestExplanation'; requestId: string; errorContext: ErrorContext; code: string }
   | { type: 'requestFix'; requestId: string; errorContext: ErrorContext; code: string }
-  | { type: 'applyFix'; fixSuggestion: FixSuggestion }
+  | { type: 'applyFix'; fixSuggestion?: FixSuggestion }
+  | { type: 'retry' }
   | { type: 'close' };

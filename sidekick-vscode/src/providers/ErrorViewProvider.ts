@@ -20,15 +20,30 @@ import type {
 import type { ComplexityLevel } from '../types/explain';
 import { getNonce } from '../utils/nonce';
 
+/** What the current request was made against; Retry and Apply Fix use it. */
+interface ErrorRequestTarget {
+  document: vscode.TextDocument;
+  /** Document URI and version captured when the request was made. */
+  uri: vscode.Uri;
+  version: number;
+  code: string;
+  errorContext: ErrorContext;
+  mode: 'explain' | 'fix';
+  complexity?: ComplexityLevel;
+}
+
 export class ErrorViewProvider implements vscode.Disposable {
   public static readonly viewType = 'sidekick.errorExplanation';
 
   private _panel?: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
-  private pendingRequests = new Map<string, { timestamp: number }>();
 
-  // Context for current error
-  private _code?: string;
+  /** Only the newest request may update the panel. */
+  private _currentRequestId?: string;
+  private _currentAbort?: AbortController;
+  private _target?: ErrorRequestTarget;
+  /** The fix the panel is showing, held on the host so Apply never trusts the webview. */
+  private _pendingFix?: { suggestion: FixSuggestion; uri: vscode.Uri; version: number };
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -51,8 +66,7 @@ export class ErrorViewProvider implements vscode.Disposable {
     complexity?: ComplexityLevel,
     signal?: AbortSignal,
   ): Promise<void> {
-    // Store code context
-    this._code = document.getText(diagnostic.range);
+    const code = document.getText(diagnostic.range);
 
     // Build error context
     const errorContext: ErrorContext = {
@@ -69,31 +83,76 @@ export class ErrorViewProvider implements vscode.Disposable {
       },
     };
 
+    await this.runRequest(
+      {
+        document,
+        uri: document.uri,
+        version: document.version,
+        code,
+        errorContext,
+        mode,
+        complexity,
+      },
+      signal,
+    );
+  }
+
+  /** Starts a request, superseding (and aborting) any request still running. */
+  private async runRequest(target: ErrorRequestTarget, signal?: AbortSignal): Promise<void> {
+    this._currentAbort?.abort();
+    const abort = new AbortController();
+    if (signal) {
+      if (signal.aborted) abort.abort();
+      else signal.addEventListener('abort', () => abort.abort(), { once: true });
+    }
+    const requestId = this.generateRequestId();
+    this._currentAbort = abort;
+    this._currentRequestId = requestId;
+    this._target = target;
+    this._pendingFix = undefined;
+
     // Create or reveal panel
     if (this._panel) {
       this._panel.reveal(vscode.ViewColumn.Two);
     } else {
-      this.createPanel(mode);
+      this.createPanel(target.mode);
     }
 
     // Update panel title based on mode
     if (this._panel) {
-      this._panel.title = mode === 'explain' ? 'Error Explanation' : 'Fix Error';
+      this._panel.title = target.mode === 'explain' ? 'Error Explanation' : 'Fix Error';
     }
 
     // Send error context to webview
     this._panel?.webview.postMessage({
       type: 'loadError',
-      errorContext,
-      code: this._code,
+      requestId,
+      mode: target.mode,
+      errorContext: target.errorContext,
+      code: target.code,
     } as ErrorExplainExtensionMessage);
 
     // Request AI explanation or fix
-    if (mode === 'explain') {
-      await this.handleExplanationRequest(this._code, errorContext, complexity, signal);
+    if (target.mode === 'explain') {
+      await this.handleExplanationRequest(requestId, target, abort.signal);
     } else {
-      await this.handleFixRequest(this._code, errorContext, signal);
+      await this.handleFixRequest(requestId, target, abort.signal);
     }
+  }
+
+  /** True while `requestId` is the newest request. */
+  private isCurrent(requestId: string): boolean {
+    return this._currentRequestId === requestId;
+  }
+
+  /** Reports a failure, or a neutral "cancelled" when the user stopped it. */
+  private postFailure(requestId: string, signal: AbortSignal, error: string): void {
+    if (!this.isCurrent(requestId)) return;
+    this._panel?.webview.postMessage(
+      signal.aborted
+        ? ({ type: 'cancelled', requestId } as ErrorExplainExtensionMessage)
+        : ({ type: 'explanationError', requestId, error } as ErrorExplainExtensionMessage),
+    );
   }
 
   /**
@@ -122,7 +181,10 @@ export class ErrorViewProvider implements vscode.Disposable {
             // Webview is ready to receive messages
             break;
           case 'applyFix':
-            await this.applyFix(message.fixSuggestion);
+            await this.applyFix();
+            break;
+          case 'retry':
+            if (this._target) await this.runRequest(this._target);
             break;
           case 'close':
             this._panel?.dispose();
@@ -136,8 +198,11 @@ export class ErrorViewProvider implements vscode.Disposable {
     // Handle panel disposal
     this._panel.onDidDispose(
       () => {
+        this._currentAbort?.abort();
         this._panel = undefined;
-        this._code = undefined;
+        this._target = undefined;
+        this._pendingFix = undefined;
+        this._currentRequestId = undefined;
       },
       undefined,
       this._disposables,
@@ -149,23 +214,19 @@ export class ErrorViewProvider implements vscode.Disposable {
    * Calls ErrorExplanationService and sends result back.
    */
   private async handleExplanationRequest(
-    code: string,
-    errorContext: ErrorContext,
-    complexity?: ComplexityLevel,
-    signal?: AbortSignal,
+    requestId: string,
+    target: ErrorRequestTarget,
+    signal: AbortSignal,
   ): Promise<void> {
-    const requestId = this.generateRequestId();
-    this.pendingRequests.set(requestId, { timestamp: Date.now() });
-
     try {
       const explanation = await this.errorExplanationService.explainError(
-        code,
-        errorContext,
-        complexity,
+        target.code,
+        target.errorContext,
+        target.complexity,
         signal,
       );
 
-      if (this.pendingRequests.has(requestId)) {
+      if (this.isCurrent(requestId)) {
         this._panel?.webview.postMessage({
           type: 'explanationResult',
           requestId,
@@ -173,16 +234,12 @@ export class ErrorViewProvider implements vscode.Disposable {
         } as ErrorExplainExtensionMessage);
       }
     } catch (error) {
-      if (this.pendingRequests.has(requestId)) {
-        this._panel?.webview.postMessage({
-          type: 'explanationError',
-          requestId,
-          error: error instanceof Error ? error.message : 'Explanation failed',
-        } as ErrorExplainExtensionMessage);
-      }
-      console.error('Error explanation failed:', error);
-    } finally {
-      this.pendingRequests.delete(requestId);
+      this.postFailure(
+        requestId,
+        signal,
+        error instanceof Error ? error.message : 'Explanation failed',
+      );
+      if (!signal.aborted) console.error('Error explanation failed:', error);
     }
   }
 
@@ -191,28 +248,29 @@ export class ErrorViewProvider implements vscode.Disposable {
    * Calls ErrorExplanationService and sends fix suggestion back.
    */
   private async handleFixRequest(
-    code: string,
-    errorContext: ErrorContext,
-    signal?: AbortSignal,
+    requestId: string,
+    target: ErrorRequestTarget,
+    signal: AbortSignal,
   ): Promise<void> {
-    const requestId = this.generateRequestId();
-    this.pendingRequests.set(requestId, { timestamp: Date.now() });
-
     try {
       const fixSuggestion = await this.errorExplanationService.generateFix(
-        code,
-        errorContext,
+        target.code,
+        target.errorContext,
         signal,
       );
 
-      if (!this.pendingRequests.has(requestId)) {
+      if (!this.isCurrent(requestId)) {
         return;
       }
 
       if (fixSuggestion) {
+        // The service only knows the file name; the host knows the real URI.
+        const suggestion: FixSuggestion = { ...fixSuggestion, documentUri: target.uri.toString() };
+        this._pendingFix = { suggestion, uri: target.uri, version: target.version };
         this._panel?.webview.postMessage({
           type: 'fixReady',
-          fixSuggestion,
+          requestId,
+          fixSuggestion: suggestion,
         } as ErrorExplainExtensionMessage);
       } else {
         this._panel?.webview.postMessage({
@@ -222,69 +280,64 @@ export class ErrorViewProvider implements vscode.Disposable {
         } as ErrorExplainExtensionMessage);
       }
     } catch (error) {
-      if (this.pendingRequests.has(requestId)) {
-        this._panel?.webview.postMessage({
-          type: 'explanationError',
-          requestId,
-          error: error instanceof Error ? error.message : 'Fix generation failed',
-        } as ErrorExplainExtensionMessage);
-      }
-      console.error('Fix generation failed:', error);
-    } finally {
-      this.pendingRequests.delete(requestId);
+      this.postFailure(
+        requestId,
+        signal,
+        error instanceof Error ? error.message : 'Fix generation failed',
+      );
+      if (!signal.aborted) console.error('Fix generation failed:', error);
     }
   }
 
   /**
-   * Apply a fix suggestion using WorkspaceEdit.
+   * Apply the fix the host is holding, if the document hasn't changed since.
    */
-  private async applyFix(fixSuggestion: FixSuggestion): Promise<void> {
-    try {
-      // Create WorkspaceEdit
-      const edit = new vscode.WorkspaceEdit();
+  private async applyFix(): Promise<void> {
+    const pending = this._pendingFix;
+    const post = (success: boolean, error?: string) =>
+      this._panel?.webview.postMessage({
+        type: 'applyFixResult',
+        success,
+        error,
+      } as ErrorExplainExtensionMessage);
 
-      // Build VS Code range from fix suggestion
-      const range = new vscode.Range(
-        new vscode.Position(fixSuggestion.range.startLine, fixSuggestion.range.startCharacter),
-        new vscode.Position(fixSuggestion.range.endLine, fixSuggestion.range.endCharacter),
+    if (!pending) {
+      post(false, 'This fix was already applied or is no longer available.');
+      return;
+    }
+
+    const document = vscode.workspace.textDocuments.find(
+      (doc) => doc.uri.toString() === pending.uri.toString(),
+    );
+    if (document && document.version !== pending.version) {
+      post(false, 'The file changed after this fix was generated. Run Fix Error again.');
+      return;
+    }
+
+    try {
+      const { range: r, fixedCode } = pending.suggestion;
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        pending.uri,
+        new vscode.Range(
+          new vscode.Position(r.startLine, r.startCharacter),
+          new vscode.Position(r.endLine, r.endCharacter),
+        ),
+        fixedCode,
       );
 
-      // Parse URI from string
-      const uri = vscode.Uri.parse(fixSuggestion.documentUri);
-
-      // Replace text at diagnostic range
-      edit.replace(uri, range, fixSuggestion.fixedCode);
-
-      // Apply edit
       const success = await vscode.workspace.applyEdit(edit);
 
       if (success) {
-        // Send success message to webview
-        this._panel?.webview.postMessage({
-          type: 'applyFixResult',
-          success: true,
-        } as ErrorExplainExtensionMessage);
-
-        // Show success notification
+        // One fix, one edit: a second click must not replace the range again.
+        this._pendingFix = undefined;
+        post(true);
         vscode.window.showInformationMessage('Fix applied successfully');
       } else {
-        // Send failure message to webview
-        this._panel?.webview.postMessage({
-          type: 'applyFixResult',
-          success: false,
-          error: 'Failed to apply edit',
-        } as ErrorExplainExtensionMessage);
+        post(false, 'VS Code could not apply the edit.');
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-      // Send failure message to webview
-      this._panel?.webview.postMessage({
-        type: 'applyFixResult',
-        success: false,
-        error: errorMessage,
-      } as ErrorExplainExtensionMessage);
-
+      post(false, error instanceof Error ? error.message : 'Unknown error');
       console.error('Apply fix error:', error);
     }
   }
@@ -334,6 +387,7 @@ export class ErrorViewProvider implements vscode.Disposable {
     this._panel?.dispose();
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
-    this.pendingRequests.clear();
+    this._currentAbort?.abort();
+    this._currentRequestId = undefined;
   }
 }

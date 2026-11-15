@@ -70,6 +70,7 @@ body {
 
 .complexity-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
   border-radius: 6px;
   overflow: hidden;
@@ -152,6 +153,26 @@ body {
   border-radius: 3px;
   font-family: var(--vscode-editor-font-family);
   font-size: 0.95em;
+}
+
+#explanation-content table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  display: block;
+  overflow-x: auto;
+}
+
+#explanation-content th,
+#explanation-content td {
+  border: 1px solid var(--vscode-panel-border);
+  padding: 4px 8px;
+  text-align: left;
+}
+
+#explanation-content hr {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border);
+  margin: 12px 0;
 }
 
 #explanation-content pre {
@@ -400,7 +421,7 @@ function initializeDOM() {
       <div class="empty-state" id="empty-state">
         <div class="empty-state-icon">&lt;/&gt;</div>
         <div class="empty-state-title">Ready to explain</div>
-        <div class="empty-state-hint">Highlight code in the editor and run <kbd>Sidekick: Explain Selection</kbd> from the command palette or right-click menu.</div>
+        <div class="empty-state-hint">Highlight code in the editor and run <kbd>Sidekick: Explain Selected Code</kbd> from the command palette, or right-click and choose <kbd>Sidekick › Explain Code</kbd>.</div>
       </div>
     </main>
   `;
@@ -500,9 +521,14 @@ function handleExtensionMessage(event: MessageEvent) {
 
   switch (message.type) {
     case 'loadCode':
-      // Store code and file context, then request explanation
+      // Store code and file context, then request explanation at the level
+      // the command asked for (falls back to the panel's last level).
       state.code = message.code;
       state.fileContext = message.fileContext;
+      if (message.complexity) {
+        state.complexity = message.complexity;
+        renderComplexityBar();
+      }
       state.isLoading = true;
       state.error = undefined;
       saveState();
@@ -611,6 +637,13 @@ function renderExplanation(markdown: string) {
       'li',
       'blockquote',
       'span',
+      'table',
+      'thead',
+      'tbody',
+      'tr',
+      'th',
+      'td',
+      'hr',
     ],
     ALLOWED_ATTR: ['class'],
   });

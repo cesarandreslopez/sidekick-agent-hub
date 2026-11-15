@@ -31,6 +31,12 @@ let currentExplanation: ErrorExplanation | undefined;
 let currentFixSuggestion: FixSuggestion | undefined;
 let isLoading = false;
 let errorMessage: string | undefined;
+/** The newest request; replies for any other id are dropped. */
+let currentRequestId: string | undefined;
+let currentMode: 'explain' | 'fix' | undefined;
+let cancelled = false;
+let fixApplied = false;
+let applyFixError: string | undefined;
 
 // Initialize DOM after load
 document.addEventListener('DOMContentLoaded', () => {
@@ -343,6 +349,49 @@ body {
   font-size: 13px;
 }
 
+.retry-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 3px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.retry-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.cancelled-state {
+  display: none;
+  color: var(--vscode-descriptionForeground);
+  padding: 16px;
+  margin: 20px 0;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+}
+
+.cancelled-state.visible {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.apply-fix-error {
+  display: none;
+  margin-top: 8px;
+  color: var(--vscode-errorForeground);
+  font-size: 12px;
+}
+
+.apply-fix-error.visible {
+  display: block;
+}
+
 .empty-state {
   display: none;
   text-align: center;
@@ -416,6 +465,12 @@ function initializeDOM() {
       <div class="error-state" id="error-state" role="alert">
         <div class="error-state-title">Analysis Failed</div>
         <div class="error-state-details" id="error-state-details"></div>
+        <button type="button" class="retry-btn" id="retry-btn">Try Again</button>
+      </div>
+
+      <div class="cancelled-state" id="cancelled-state" role="status">
+        <div class="cancelled-state-text">Cancelled.</div>
+        <button type="button" class="retry-btn" id="retry-cancelled-btn">Run Again</button>
       </div>
 
       <div id="explanation-content" class="sk-hidden" role="region" aria-label="Error explanation">
@@ -439,12 +494,13 @@ function initializeDOM() {
         <div class="fix-preview-title">Suggested Fix</div>
         <div class="fix-code-block" id="fix-code-block"></div>
         <button class="apply-fix-btn" id="apply-fix-btn" aria-label="Apply suggested fix">Apply Fix</button>
+        <div class="apply-fix-error" id="apply-fix-error" role="alert"></div>
       </div>
 
       <div class="empty-state" id="empty-state">
         <div class="empty-state-icon">\u26A0</div>
         <div class="empty-state-text">Ready to diagnose</div>
-        <div class="empty-state-hint">Click on an error or warning squiggle in the editor, then right-click and choose "Explain Error" or "Fix Error".</div>
+        <div class="empty-state-hint">Put the cursor on an error or warning in the editor, press <kbd>Ctrl+.</kbd> (<kbd>Cmd+.</kbd> on macOS), and choose "Explain Error" or "Fix Error".</div>
       </div>
     </main>
   `;
@@ -457,14 +513,19 @@ function setupEventListeners() {
   // Listen for messages from extension
   window.addEventListener('message', handleExtensionMessage);
 
-  // Apply fix button
+  const retry = () => {
+    vscode.postMessage({ type: 'retry' } as ErrorExplainWebviewMessage);
+  };
+  document.getElementById('retry-btn')?.addEventListener('click', retry);
+  document.getElementById('retry-cancelled-btn')?.addEventListener('click', retry);
+
+  // Apply fix button: the host holds the fix and checks the document version.
   const applyFixBtn = document.getElementById('apply-fix-btn');
   applyFixBtn?.addEventListener('click', () => {
     if (currentFixSuggestion) {
-      vscode.postMessage({
-        type: 'applyFix',
-        fixSuggestion: currentFixSuggestion,
-      } as ErrorExplainWebviewMessage);
+      applyFixError = undefined;
+      renderApplyFixError();
+      vscode.postMessage({ type: 'applyFix' } as ErrorExplainWebviewMessage);
 
       // Show applying state with animation
       if (applyFixBtn instanceof HTMLButtonElement) {
@@ -482,20 +543,30 @@ function setupEventListeners() {
 function handleExtensionMessage(event: MessageEvent) {
   const message: ErrorExplainExtensionMessage = event.data;
 
+  // Results from a superseded request never reach the screen.
+  if ('requestId' in message && message.type !== 'loadError' && message.requestId !== currentRequestId) {
+    return;
+  }
+
   switch (message.type) {
     case 'loadError':
-      // Store error context and code
+      // A new request replaces everything the panel was showing.
+      currentRequestId = message.requestId;
+      currentMode = message.mode;
       currentErrorContext = message.errorContext;
       currentCode = message.code;
       currentExplanation = undefined;
       currentFixSuggestion = undefined;
+      fixApplied = false;
+      applyFixError = undefined;
+      cancelled = false;
       isLoading = true;
       errorMessage = undefined;
       updateUI();
       break;
 
     case 'explanationResult':
-      // Display explanation
+      if (currentMode !== 'explain') break;
       currentExplanation = message.explanation;
       isLoading = false;
       errorMessage = undefined;
@@ -503,7 +574,7 @@ function handleExtensionMessage(event: MessageEvent) {
       break;
 
     case 'fixReady':
-      // Display fix suggestion
+      if (currentMode !== 'fix') break;
       currentFixSuggestion = message.fixSuggestion;
       isLoading = false;
       errorMessage = undefined;
@@ -511,26 +582,36 @@ function handleExtensionMessage(event: MessageEvent) {
       break;
 
     case 'explanationError':
-      // Show error
       errorMessage = message.error;
       isLoading = false;
       updateUI();
       break;
 
+    case 'cancelled':
+      cancelled = true;
+      isLoading = false;
+      errorMessage = undefined;
+      updateUI();
+      break;
+
     case 'applyFixResult': {
-      // Re-enable apply button and clear applying state
       const applyFixBtn = document.getElementById('apply-fix-btn');
       if (applyFixBtn instanceof HTMLButtonElement) {
-        applyFixBtn.disabled = false;
         applyFixBtn.classList.remove('applying');
         if (message.success) {
+          // Applied once: the button stays disabled so the range isn't replaced twice.
+          fixApplied = true;
+          applyFixBtn.disabled = true;
           applyFixBtn.textContent = 'Applied';
           applyFixBtn.classList.add('applied');
         } else {
+          applyFixBtn.disabled = false;
           applyFixBtn.textContent = 'Apply Fix';
           applyFixBtn.classList.remove('applied');
         }
       }
+      applyFixError = message.success ? undefined : (message.error ?? 'The fix could not be applied.');
+      renderApplyFixError();
       break;
     }
   }
@@ -546,6 +627,7 @@ function updateUI() {
   const explanationContent = document.getElementById('explanation-content');
   const fixPreview = document.getElementById('fix-preview');
   const emptyState = document.getElementById('empty-state');
+  const cancelledState = document.getElementById('cancelled-state');
 
   // Hide everything first
   errorHeader?.classList.add('sk-hidden');
@@ -554,6 +636,7 @@ function updateUI() {
   explanationContent?.classList.add('sk-hidden');
   fixPreview?.classList.add('sk-hidden');
   emptyState?.classList.remove('visible');
+  cancelledState?.classList.remove('visible');
 
   // Show error header if we have error context
   if (currentErrorContext && currentCode) {
@@ -564,6 +647,8 @@ function updateUI() {
   // Show appropriate content based on state
   if (isLoading) {
     loadingSpinner?.classList.add('visible');
+  } else if (cancelled) {
+    cancelledState?.classList.add('visible');
   } else if (errorMessage) {
     errorState?.classList.add('visible');
     const errorDetails = document.getElementById('error-state-details');
@@ -637,7 +722,19 @@ function renderFixPreview(fixSuggestion: FixSuggestion) {
   }
 
   if (applyFixBtn instanceof HTMLButtonElement) {
-    applyFixBtn.disabled = false;
-    applyFixBtn.textContent = 'Apply Fix';
+    applyFixBtn.disabled = fixApplied;
+    applyFixBtn.textContent = fixApplied ? 'Applied' : 'Apply Fix';
+    applyFixBtn.classList.toggle('applied', fixApplied);
   }
+  renderApplyFixError();
+}
+
+/**
+ * Show (or clear) the reason the last Apply Fix failed.
+ */
+function renderApplyFixError() {
+  const el = document.getElementById('apply-fix-error');
+  if (!el) return;
+  el.textContent = applyFixError ?? '';
+  el.classList.toggle('visible', Boolean(applyFixError));
 }

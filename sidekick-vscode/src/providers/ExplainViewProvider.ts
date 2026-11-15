@@ -75,6 +75,8 @@ export class ExplainViewProvider implements vscode.Disposable {
       },
     );
 
+    this._panel.title = explainPanelTitle(this._pendingFileContext);
+
     // Set HTML content
     this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
 
@@ -126,11 +128,14 @@ export class ExplainViewProvider implements vscode.Disposable {
    */
   private sendPendingData(): void {
     if (this._pendingCode && this._pendingComplexity && this._pendingFileContext && this._panel) {
+      // The level chosen in the command (or the setting) drives this request.
       this._panel.webview.postMessage({
         type: 'loadCode',
         code: this._pendingCode,
         fileContext: this._pendingFileContext,
+        complexity: this._pendingComplexity,
       } as ExplainExtensionMessage);
+      this._panel.title = explainPanelTitle(this._pendingFileContext);
 
       // Keep pending data for potential complexity changes
       // Only clear when panel is disposed
@@ -234,4 +239,10 @@ export class ExplainViewProvider implements vscode.Disposable {
     this._disposables = [];
     this.pendingRequests.clear();
   }
+}
+
+/** Panel title naming the file being explained. */
+export function explainPanelTitle(fileContext?: FileContext): string {
+  const name = fileContext?.fileName?.split(/[\\/]/).pop();
+  return name ? `Explain: ${name}` : 'Code Explanation';
 }

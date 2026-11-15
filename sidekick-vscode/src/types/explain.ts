@@ -54,7 +54,7 @@ export interface ExplainState {
  * Messages sent from extension to webview
  */
 export type ExplainExtensionMessage =
-  | { type: 'loadCode'; code: string; fileContext?: FileContext }
+  | { type: 'loadCode'; code: string; fileContext?: FileContext; complexity?: ComplexityLevel }
   | { type: 'explanationResult'; requestId: string; explanation: string }
   | { type: 'explanationError'; requestId: string; error: string }
   | { type: 'complexityChanged'; complexity: ComplexityLevel };
