@@ -1040,6 +1040,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       stats,
       analysisData,
       this._getContextWindowLimit(),
+      { lastActivityMs: this._lastActivityMs },
     );
 
     try {
@@ -1137,6 +1138,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * @param timeoutOverride - Optional timeout override in ms (for retry after timeout)
    */
   private async _handleGenerateNarrative(timeoutOverride?: number): Promise<void> {
+    // The narrative describes the session on screen: build its summary if
+    // the cache was cleared by a session switch.
+    if (this._authService && (!this._cachedSummary || this._sessionMonitor.isActive())) {
+      this._buildSummary();
+    }
     if (!this._authService || !this._cachedSummary) {
       this._postMessage({ type: 'narrativeError', error: 'Summary data or auth not available.' });
       return;
@@ -1195,28 +1201,35 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Handles session summary request from webview.
    */
   private _handleRequestSessionSummary(): void {
-    if (this._cachedSummary) {
+    // A live session changes under the summary, so rebuild it; an ended one
+    // can reuse the summary built when it ended.
+    if (this._cachedSummary && !this._sessionMonitor.isActive()) {
       this._postMessage({ type: 'updateSessionSummary', summary: this._cachedSummary });
       return;
     }
-    // Build fresh summary if possible
     this._buildAndSendSummary();
   }
 
-  /**
-   * Builds full session summary and sends to webview.
-   */
-  private _buildAndSendSummary(): void {
-    if (!this._sessionAnalyzer) return;
-
+  /** Builds the full session summary into the cache (null without an analyzer). */
+  private _buildSummary(): SessionSummaryData | null {
+    if (!this._sessionAnalyzer) return null;
     const stats = this._sessionMonitor.getStats();
     const analysisData = this._sessionAnalyzer.getCachedData();
     this._cachedSummary = this._summaryService.generateSummary(
       stats,
       analysisData,
       this._getContextWindowLimit(),
+      { lastActivityMs: this._lastActivityMs },
     );
-    this._postMessage({ type: 'updateSessionSummary', summary: this._cachedSummary });
+    return this._cachedSummary;
+  }
+
+  /**
+   * Builds full session summary and sends to webview.
+   */
+  private _buildAndSendSummary(): void {
+    const summary = this._buildSummary();
+    if (summary) this._postMessage({ type: 'updateSessionSummary', summary });
   }
 
   /**
@@ -1772,6 +1785,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._currentContextSize = 0;
     this._recentUsage = [];
     this._lastActivityMs = 0;
+    // A summary describes one session; never show it for the next.
+    this._cachedSummary = null;
   }
 
   /**

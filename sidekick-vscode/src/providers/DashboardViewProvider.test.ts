@@ -313,6 +313,54 @@ describe('DashboardViewProvider live session panels', () => {
     provider.dispose();
   });
 
+  it('rebuilds the summary for a live session and never shows one session for the next', () => {
+    const monitor = makeSessionMonitor();
+    monitor.getStats.mockReturnValue({ ...liveStatsView(), lastUpdated: new Date() } as never);
+    (monitor as unknown as { getAggregatedMetrics: () => unknown }).getAggregatedMetrics = vi.fn(
+      aggregatedMetrics,
+    );
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+      undefined,
+      undefined,
+      undefined,
+      { getCachedData: () => ({ errors: [], recoveryPatterns: [] }) } as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    const internals = provider as unknown as {
+      _summaryService: { generateSummary: (...args: unknown[]) => unknown };
+      _handleDashboardWebviewMessage(message: unknown): void;
+      _handleSessionEnd(): void;
+      _handleSessionStart(path: string): void;
+      _cachedSummary: unknown;
+    };
+    let built = 0;
+    const generate = vi
+      .spyOn(internals._summaryService, 'generateSummary')
+      .mockImplementation(() => ({ id: ++built }) as never);
+
+    // Live: every request rebuilds.
+    monitor.isActive.mockReturnValue(true);
+    internals._handleDashboardWebviewMessage({ type: 'requestSessionSummary' });
+    internals._handleDashboardWebviewMessage({ type: 'requestSessionSummary' });
+    expect(generate).toHaveBeenCalledTimes(2);
+
+    // Ended: the summary built at the end is reused...
+    monitor.isActive.mockReturnValue(false);
+    internals._handleSessionEnd();
+    internals._handleDashboardWebviewMessage({ type: 'requestSessionSummary' });
+    expect(generate).toHaveBeenCalledTimes(3);
+
+    // ...until the next session starts, which drops it.
+    internals._handleSessionStart('/sessions/b.jsonl');
+    expect(internals._cachedSummary).toBeNull();
+    internals._handleDashboardWebviewMessage({ type: 'requestSessionSummary' });
+    expect(generate).toHaveBeenCalledTimes(4);
+    provider.dispose();
+  });
+
   it('re-seeds tok/min from its own samples when the view re-syncs', () => {
     const { monitor, provider, postMessage } = liveProvider();
     monitor.getStats.mockReturnValue({

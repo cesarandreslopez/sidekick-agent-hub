@@ -51,6 +51,60 @@ const TOOL_COST_WEIGHTS: Record<string, number> = {
 
 const DEFAULT_TOOL_WEIGHT = 1;
 
+/** A session counts as live while its newest event is at most this old. */
+export const SESSION_IDLE_AFTER_MS = 5 * 60_000;
+
+/** Newest event time in a session's timeline (ms epoch), or 0 when it has none. */
+export function newestActivityMs(stats: Pick<SessionStats, 'timeline'>): number {
+  const timeline = stats.timeline ?? [];
+  let newest = 0;
+  // Most recent first, but read both ends rather than trust the order.
+  for (const event of [timeline[0], timeline[timeline.length - 1]]) {
+    if (!event) continue;
+    const ms = Date.parse(String(event.timestamp));
+    if (Number.isFinite(ms) && ms > newest) newest = ms;
+  }
+  return newest;
+}
+
+/**
+ * Session duration: start to now while the session is live, start to its
+ * last event once it has been idle for {@link SESSION_IDLE_AFTER_MS}. A past
+ * session no longer reads as days long because the wall clock moved on.
+ */
+export function sessionDurationMs(
+  start: Date | null | undefined,
+  lastActivityMs: number,
+  now: number = Date.now(),
+): number {
+  if (!start) return 0;
+  const end = lastActivityMs > 0 && now - lastActivityMs > SESSION_IDLE_AFTER_MS ? lastActivityMs : now;
+  return Math.max(0, end - start.getTime());
+}
+
+/** Largest context the session reached (tokens): the timeline, pre-compaction sizes, and now. */
+export function peakContextTokens(
+  stats: Pick<SessionStats, 'currentContextSize' | 'contextTimeline' | 'compactionEvents'>,
+): number {
+  let peak = stats.currentContextSize || 0;
+  for (const point of stats.contextTimeline ?? []) {
+    if (point.inputTokens > peak) peak = point.inputTokens;
+  }
+  for (const compaction of stats.compactionEvents ?? []) {
+    if (compaction.contextBefore > peak) peak = compaction.contextBefore;
+  }
+  return peak;
+}
+
+/** API calls the way the Session tab counts them: the per-model call counts. */
+export function modelCallCount(stats: Pick<SessionStats, 'modelUsage'>): number {
+  let calls = 0;
+  stats.modelUsage?.forEach((usage) => {
+    calls += usage.calls || 0;
+  });
+  return calls;
+}
+
 /**
  * Computes a task's duration based on its status.
  *
@@ -85,8 +139,10 @@ export class SessionSummaryService {
     stats: SessionStats,
     analysisData: SessionAnalysisData,
     contextWindowLimit: number = 200_000,
+    options: { lastActivityMs?: number } = {},
   ): SessionSummaryData {
-    const duration = stats.sessionStartTime ? Date.now() - stats.sessionStartTime.getTime() : 0;
+    const lastActivityMs = Math.max(options.lastActivityMs ?? 0, newestActivityMs(stats));
+    const duration = sessionDurationMs(stats.sessionStartTime, lastActivityMs);
 
     const totalTokens = summarizeTokens({
       inputTokens: stats.totalInputTokens,
@@ -97,8 +153,11 @@ export class SessionSummaryService {
     // One pricing pass, the same one the dashboard and historical records use.
     const pricedModels = priceSessionModelUsage(stats.modelUsage);
     const totalCost = pricedModels.totalCost;
-    const apiCalls = stats.messageCount;
-    const contextPeak = (stats.currentContextSize / contextWindowLimit) * 100;
+    // Model calls, as the Session tab counts them (messageCount counts every event).
+    const apiCalls = modelCallCount(stats);
+    // The peak, not the size after the latest compaction.
+    const contextPeak =
+      contextWindowLimit > 0 ? (peakContextTokens(stats) / contextWindowLimit) * 100 : 0;
 
     // Tasks
     const tasks = this._buildTaskSummaries(stats.taskState, totalCost, stats.toolCalls);
@@ -263,9 +322,7 @@ export class SessionSummaryService {
     recentEvents: ReadonlyArray<{ timestamp: Date; tokens: number }> = stats.recentUsageEvents,
   ): AdvancedBurnRateData {
     const currentRate = burnRateCalculator.calculateBurnRate();
-    const sessionDuration = stats.sessionStartTime
-      ? Date.now() - stats.sessionStartTime.getTime()
-      : 0;
+    const sessionDuration = sessionDurationMs(stats.sessionStartTime, newestActivityMs(stats));
 
     // Per-model rate approximation: distribute overall rate by model share.
     // Uses the same cache-inclusive total the per-model `tokens` accumulate.

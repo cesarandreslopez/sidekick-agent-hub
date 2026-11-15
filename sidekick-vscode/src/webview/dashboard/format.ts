@@ -33,6 +33,28 @@ export function axisCost(value: number): string {
   return `${sign}$${abs.toFixed(2).replace(/\.?0+$/, '') || '0'}`;
 }
 
+/** A session counts as live while its newest event is at most this old (matches the host). */
+export const SESSION_IDLE_AFTER_MS = 5 * 60_000;
+
+/**
+ * Session duration text (`12m`, `1h 4m`): start to now while live, start to
+ * the last event once idle for {@link SESSION_IDLE_AFTER_MS}, so a past or
+ * idle session stops counting.
+ */
+export function sessionDurationText(
+  startIso: string | null | undefined,
+  lastActivityIso: string | null | undefined,
+  now: number = Date.now(),
+): string {
+  const start = startIso ? Date.parse(startIso) : NaN;
+  if (!Number.isFinite(start)) return '0m';
+  const last = lastActivityIso ? Date.parse(lastActivityIso) : NaN;
+  const end = Number.isFinite(last) && now - last > SESSION_IDLE_AFTER_MS ? last : now;
+  const minutes = Math.max(0, Math.floor((end - start) / 60_000));
+  const hours = Math.floor(minutes / 60);
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}
+
 /** `1 file` / `3 files`. */
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
   return `${count} ${count === 1 ? singular : pluralForm}`;

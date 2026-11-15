@@ -15,6 +15,7 @@ import { tokenMetricDisplay } from './tokens';
 import { quotaCardVisibility, quotaSectionTooltip, renderQuotaExtrasHtml } from './quotaWindows';
 import { blockCostText, formatCost as formatCostText, modelLabel, rowCostText, totalCostText, unpricedNote } from './cost';
 import { highlightMatches } from './text';
+import { compactNumber, exactNumber, plural, sessionDurationText, statusLabel } from './format';
 import type { DashboardInit } from '../../types/dashboard';
 import type { LegacyHelpers } from './helpers';
 
@@ -2589,10 +2590,18 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             break;
           }
 
-          case 'sessionStart':
+          case 'sessionStart': {
             statusEl.textContent = 'Active';
             statusEl.className = 'status active';
+            // The Summary tab describes one session: clear it (and any
+            // narrative), and rebuild it if it is the tab on screen.
+            resetSummaryView();
+            const summaryTabBtn = document.querySelector('.tab-btn[data-tab="summary"]');
+            if (summaryTabBtn && summaryTabBtn.getAttribute('aria-selected') === 'true') {
+              vscode.postMessage({ type: 'requestSessionSummary' });
+            }
             break;
+          }
 
           case 'sessionEnd':
             statusEl.textContent = 'Ended';
@@ -2601,14 +2610,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
           case 'updateBurnRate':
             sessionState.burnRate = Math.round(message.burnRate);
-            if (message.sessionStartTime) {
-              const start = new Date(message.sessionStartTime);
-              const now = new Date();
-              const minutes = Math.floor((now - start) / 60000);
-              const hours = Math.floor(minutes / 60);
-              const mins = minutes % 60;
-              sessionState.sessionDuration = hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm';
-            }
+            // Stops at the last event once the session is idle (or a past one is viewed).
+            sessionState.sessionDuration = sessionDurationText(message.sessionStartTime, message.lastActivityTime);
             updateInlineStats();
             break;
 
@@ -3129,6 +3132,17 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         return min + 'm';
       }
 
+      function resetSummaryView() {
+        const empty = document.getElementById('summary-empty');
+        const content = document.getElementById('summary-content');
+        const narrativeEl = document.getElementById('narrative-display');
+        const narrativeErrEl = document.getElementById('narrative-error');
+        if (empty) empty.style.display = '';
+        if (content) content.style.display = 'none';
+        if (narrativeEl) { narrativeEl.textContent = ''; narrativeEl.style.display = 'none'; }
+        if (narrativeErrEl) { narrativeErrEl.textContent = ''; narrativeErrEl.style.display = 'none'; }
+      }
+
       function renderSessionSummary(summary) {
         const empty = document.getElementById('summary-empty');
         const content = document.getElementById('summary-content');
@@ -3146,15 +3160,26 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         const compEl = document.getElementById('sum-completion');
 
         if (durEl) durEl.textContent = formatDurationMs(summary.duration);
-        if (tokEl) tokEl.textContent = formatNumber(summary.totalTokens);
+        if (tokEl) {
+          // Compact so a large session fits the card; exact in the tooltip.
+          tokEl.textContent = compactNumber(summary.totalTokens);
+          tokEl.title = exactNumber(summary.totalTokens) + ' tokens';
+        }
         const summaryUnpriced = summary.unpricedModelIds || [];
         if (costEl) {
           costEl.textContent = totalCostText(summary.totalCost, summaryUnpriced.length);
           costEl.title = summaryUnpriced.length ? unpricedNote(summaryUnpriced.length) + ': ' + summaryUnpriced.join(', ') : '';
         }
-        if (apiEl) apiEl.textContent = formatNumber(summary.apiCalls);
+        if (apiEl) {
+          apiEl.textContent = compactNumber(summary.apiCalls);
+          apiEl.title = exactNumber(summary.apiCalls) + ' model calls';
+        }
         if (ctxEl) ctxEl.textContent = Math.round(summary.contextPeak) + '%';
-        if (compEl) compEl.textContent = Math.round(summary.taskCompletionRate * 100) + '%';
+        // No tasks is not 0% done.
+        if (compEl) {
+          compEl.textContent = summary.tasks.length === 0 ? '—' : Math.round(summary.taskCompletionRate * 100) + '%';
+          compEl.title = summary.tasks.length === 0 ? 'No tasks were tracked in this session' : '';
+        }
 
         // Tasks table
         const tasksEl = document.getElementById('sum-tasks-content');
@@ -3165,7 +3190,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             let html = '<table class="summary-task-table"><tr><th>Task</th><th>Status</th><th>Duration</th><th>Tools</th></tr>';
             summary.tasks.forEach(function(t) {
               html += '<tr><td>' + escapeHtml(t.subject) + '</td>' +
-                '<td><span class="status-icon ' + t.status + '"></span>' + t.status + '</td>' +
+                '<td><span class="status-icon ' + escapeHtml(t.status) + '"></span>' + escapeHtml(statusLabel(t.status)) + '</td>' +
                 '<td>' + formatDurationMs(t.duration) + '</td>' +
                 '<td>' + t.toolCallCount + '</td></tr>';
             });
@@ -3180,7 +3205,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           if (summary.filesChanged.length === 0) {
             filesEl.innerHTML = '<div style="color:var(--vscode-descriptionForeground);font-size:11px;">No files changed</div>';
           } else {
-            let fhtml = '<div style="margin-bottom:6px;font-size:11px;">' + summary.totalFilesChanged + ' files | <span style="color:var(--vscode-charts-green,#4caf50)">+' + summary.totalAdditions + '</span> / <span style="color:var(--vscode-charts-red,#f44336)">-' + summary.totalDeletions + '</span> · ' + (summary.codeImpact.costPerChangedLine == null ? '—' : formatCost(summary.codeImpact.costPerChangedLine)) + '/line</div>';
+            let fhtml = '<div style="margin-bottom:6px;font-size:11px;">' + plural(summary.totalFilesChanged, 'file') + ' | <span style="color:var(--vscode-charts-green,#4caf50)">+' + summary.totalAdditions + '</span> / <span style="color:var(--vscode-charts-red,#f44336)">-' + summary.totalDeletions + '</span> · ' + (summary.codeImpact.costPerChangedLine == null ? '—' : formatCost(summary.codeImpact.costPerChangedLine)) + '/line</div>';
             fhtml += '<table class="summary-file-table"><tr><th>File</th><th>+/-</th></tr>';
             summary.filesChanged.slice(0, 15).forEach(function(f) {
               fhtml += '<tr><td style="font-family:var(--vscode-editor-font-family)">' + escapeHtml(f.path) + '</td>' +
@@ -3255,7 +3280,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           html += '<table class="summary-task-table"><tr><th>Task</th><th>Status</th><th>Tools</th></tr>';
           data.tasks.forEach(function(t) {
             html += '<tr><td>' + escapeHtml(t.subject) + '</td>' +
-              '<td><span class="status-icon ' + t.status + '"></span>' + t.status + '</td>' +
+              '<td><span class="status-icon ' + escapeHtml(t.status) + '"></span>' + escapeHtml(statusLabel(t.status)) + '</td>' +
               '<td>' + t.toolCallCount + '</td></tr>';
           });
           html += '</table>';
