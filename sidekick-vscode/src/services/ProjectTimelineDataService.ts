@@ -17,6 +17,7 @@ import type {
   TimelineRange,
 } from '../types/projectTimeline';
 import { log } from './Logger';
+import { SESSION_LIVE_WINDOW_MS } from '../utils/sessionLiveness';
 
 /**
  * Cached session metadata with mtime for invalidation.
@@ -31,12 +32,6 @@ interface CachedDetail {
   detail: TimelineSessionDetail;
   mtime: number;
 }
-
-/**
- * A session counts as live while its file changed this recently. Matches the
- * session list's activity window so both views agree on "Live".
- */
-export const TIMELINE_LIVE_WINDOW_MS = 2 * 60 * 1000;
 
 /**
  * Data service that scans session files to build timeline entries.
@@ -200,7 +195,7 @@ export class ProjectTimelineDataService {
   }
 
   private _isLive(isCurrent: boolean, mtime: number): boolean {
-    return isCurrent && Date.now() - mtime < TIMELINE_LIVE_WINDOW_MS;
+    return isCurrent && Date.now() - mtime < SESSION_LIVE_WINDOW_MS;
   }
 
   /**

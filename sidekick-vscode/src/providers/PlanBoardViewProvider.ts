@@ -21,20 +21,31 @@ import type {
 import type { PlanState } from '../types/claudeSession';
 import type { PersistedPlan } from '../types/plan';
 import { readClaudeCodePlanFiles } from 'sidekick-shared';
+import { formatCost, formatDurationMs, formatTokenCount } from 'sidekick-shared/browser';
 import { log } from '../services/Logger';
+import { getSessionLiveness, SESSION_LIVENESS_LABELS } from '../utils/sessionLiveness';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 
 /**
  * WebviewViewProvider for the session plan board.
  */
+type RawPlanFile = Awaited<ReturnType<typeof readClaudeCodePlanFiles>>[number];
+
 export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   public static readonly viewType = 'sidekick.planBoard';
+  /** Trailing throttle for tool-call bursts. */
+  private static readonly BOARD_UPDATE_MS = 250;
 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
   private _state: PlanBoardState;
-  private _claudeCodePlans: PersistedPlan[] = [];
+  private _claudeCodePlans: RawPlanFile[] = [];
+  private _boardTimer?: ReturnType<typeof setTimeout>;
+  /** Set when a session change arrived while the view was hidden. */
+  private _dirty = false;
+  /** Serialized form of the last state posted, to skip identical posts. */
+  private _lastPosted = '';
   private _claudeCodePlansLoaded = false;
   private _planLoadGeneration = 0;
 
@@ -102,7 +113,11 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     webviewView.onDidChangeVisibility(
       () => {
         if (webviewView.visible) {
-          this._sendStateToWebview();
+          if (this._dirty) {
+            this._dirty = false;
+            this._syncFromSessionMonitor();
+          }
+          this._sendStateToWebview(true);
         }
       },
       undefined,
@@ -111,7 +126,10 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
     webviewView.onDidDispose(
       () => {
-        if (this._view === webviewView) this._view = undefined;
+        if (this._view === webviewView) {
+          this._view = undefined;
+          this._lastPosted = '';
+        }
       },
       undefined,
       this._disposables,
@@ -121,6 +139,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   dispose(): void {
+    if (this._boardTimer) clearTimeout(this._boardTimer);
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
   }
@@ -129,7 +148,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     switch (message.type) {
       case 'webviewReady':
         log('Plan board webview ready, sending initial state');
-        this._sendStateToWebview();
+        this._sendStateToWebview(true);
         break;
 
       case 'refresh':
@@ -139,7 +158,10 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       case 'copyPlanMarkdown': {
         const markdown = this._findPlanMarkdown(message.planId);
         if (markdown) {
-          vscode.env.clipboard.writeText(markdown);
+          void vscode.env.clipboard.writeText(markdown).then(() => {
+            vscode.window.setStatusBarMessage('Plan markdown copied', 2000);
+            this._postMessage({ type: 'copied', planId: message.planId });
+          });
         }
         break;
       }
@@ -163,7 +185,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       this._claudeCodePlans = plans;
       this._claudeCodePlansLoaded = true;
       this._syncFromSessionMonitor();
-      this._sendStateToWebview();
+      this._sendStateToWebview(true);
     } catch {
       if (generation !== this._planLoadGeneration) return;
       this._claudeCodePlansLoaded = true;
@@ -171,12 +193,22 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   private _updateBoard(): void {
-    this._syncFromSessionMonitor();
-    this._sendStateToWebview();
+    // A hidden view syncs when it becomes visible again.
+    if (!this._view?.visible) {
+      this._dirty = true;
+      return;
+    }
+    // Trailing throttle: a burst of tool calls rebuilds the board once.
+    if (this._boardTimer) return;
+    this._boardTimer = setTimeout(() => {
+      this._boardTimer = undefined;
+      this._syncFromSessionMonitor();
+      this._sendStateToWebview();
+    }, PlanBoardViewProvider.BOARD_UPDATE_MS);
   }
 
   private _syncFromSessionMonitor(): void {
-    const stats = this._sessionMonitor.getStats();
+    const stats = this._sessionMonitor.getStatsView();
     const planState = stats.planState;
 
     // Active plan from current session
@@ -185,39 +217,24 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       activePlan = this._planStateToDisplay(planState);
     }
 
-    // Historical plans from persistence + raw Claude Code plan files
-    const historicalPlans: PlanHistoryEntry[] = [];
-    const activeSessionId = this._getActiveSessionPrefix();
-    const seenIds = new Set<string>();
-
-    if (this._planPersistence) {
-      const persisted = this._planPersistence.getPlans();
-      for (const p of persisted) {
-        if (activeSessionId && p.sessionId.startsWith(activeSessionId)) continue;
-        seenIds.add(p.id);
-        historicalPlans.push(this._persistedToHistoryEntry(p));
-      }
-    }
-
-    // Merge raw Claude Code plan files (deduplicate by sessionId)
-    for (const p of this._claudeCodePlans) {
-      if (seenIds.has(p.id)) continue;
-      if (activeSessionId && p.sessionId.startsWith(activeSessionId)) continue;
-      historicalPlans.push(this._persistedToHistoryEntry(p));
-    }
+    const persisted = this._planPersistence?.getPlans() ?? [];
+    const activeSessionId = this._getActiveSessionId();
+    const historicalPlans = mergePlanHistory(persisted, this._claudeCodePlans, activeSessionId).map(
+      (entry) => this._persistedToHistoryEntry(entry.plan, entry.rawOnly),
+    );
 
     this._state = {
       activePlan,
       historicalPlans,
       sessionActive: this._sessionMonitor.isActive(),
+      sessionStatus: SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)],
     };
   }
 
-  private _getActiveSessionPrefix(): string | null {
+  private _getActiveSessionId(): string | null {
     const sessionPath = this._sessionMonitor.getSessionPath();
     if (!sessionPath) return null;
-    const sessionId = this._sessionMonitor.getProvider().getSessionId(sessionPath);
-    return sessionId.substring(0, 8);
+    return this._sessionMonitor.getProvider().getSessionId(sessionPath) || null;
   }
 
   private _planStateToDisplay(planState: PlanState): ActivePlanDisplay {
@@ -242,7 +259,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     };
   }
 
-  private _persistedToHistoryEntry(plan: PersistedPlan): PlanHistoryEntry {
+  private _persistedToHistoryEntry(plan: PersistedPlan, rawOnly = false): PlanHistoryEntry {
     const steps: PlanStepCard[] = plan.steps.map((s) => ({
       id: s.id,
       description: s.description,
@@ -265,11 +282,21 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       totalToolCalls: plan.totalToolCalls,
       totalCostUsd: plan.totalCostUsd,
       rawMarkdown: plan.rawMarkdown,
+      rawOnly,
+      durationLabel: plan.totalDurationMs
+        ? formatDurationMs(plan.totalDurationMs, { invalid: '' })
+        : undefined,
+      tokensLabel: plan.totalTokensUsed ? formatTokenCount(plan.totalTokensUsed) : undefined,
+      costLabel: plan.totalCostUsd ? formatCost(plan.totalCostUsd) : undefined,
     };
   }
 
-  private _sendStateToWebview(): void {
+  /** Posts the state; an unchanged state is skipped unless `force`. */
+  private _sendStateToWebview(force = false): void {
     if (!this._view?.visible) return;
+    const serialized = JSON.stringify(this._state);
+    if (!force && serialized === this._lastPosted) return;
+    this._lastPosted = serialized;
     this._postMessage({ type: 'updatePlanBoard', state: this._state });
   }
 
@@ -397,6 +424,10 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       animation: sk-fade-in 0.25s ease-out both;
     }
 
+    .plan-card.no-enter-animation {
+      animation: none;
+    }
+
     .plan-card:hover {
       transform: translateY(-1px);
       box-shadow: var(--sk-shadow-md);
@@ -432,10 +463,19 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       font-weight: 600;
     }
 
-    .chip.completed { background: var(--vscode-gitDecoration-addedResourceForeground, #2d8a4b); color: #fff; }
-    .chip.in_progress { background: var(--vscode-gitDecoration-modifiedResourceForeground, #c59f1a); color: #000; }
-    .chip.failed { background: var(--vscode-errorForeground, #f14c4c); color: #fff; }
-    .chip.abandoned { background: var(--vscode-gitDecoration-ignoredResourceForeground, #888); color: #fff; }
+    /* Status chips are outlined: text and border in the status colour keep
+       contrast in light, dark and high-contrast themes. */
+    .chip.completed,
+    .chip.in_progress,
+    .chip.failed,
+    .chip.abandoned {
+      background: transparent;
+      border: 1px solid currentColor;
+    }
+    .chip.completed { color: var(--vscode-testing-iconPassed, #2d8a4b); }
+    .chip.in_progress { color: var(--vscode-editorWarning-foreground, #c59f1a); }
+    .chip.failed { color: var(--vscode-errorForeground, #f14c4c); }
+    .chip.abandoned { color: var(--vscode-descriptionForeground); }
 
     .progress-bar-container {
       width: 100%;
@@ -481,6 +521,12 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       min-width: 0;
     }
 
+    .history-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     .collapsible-header {
       cursor: pointer;
       user-select: none;
@@ -488,10 +534,27 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       align-items: center;
       gap: 6px;
       padding: 4px 0;
+      flex: 1;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
     }
 
     .collapsible-header:hover {
       opacity: 0.8;
+    }
+
+    .collapsible-header:focus-visible,
+    .filter-chip:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: 1px;
+    }
+
+    .collapsible-header .plan-title {
+      margin-bottom: 0;
     }
 
     .collapsible-content {
@@ -516,6 +579,15 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       font-size: 9px;
       padding: 2px 5px;
       margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .metrics-line {
+      margin-bottom: 8px;
+    }
+
+    .empty-state .link-button {
+      margin-top: 8px;
     }
 
     .search-container {
@@ -548,6 +620,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     .filter-chip {
+      font-family: var(--vscode-font-family);
       font-size: 9px;
       font-weight: 600;
       padding: 2px 7px;
@@ -590,51 +663,68 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       font-size: 12px;
       max-width: 240px;
     }
+
+    .empty-state-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <img src="${iconUri}" alt="Sidekick icon" />
     <h1>Plans</h1>
-    <span id="status" class="status" aria-live="polite">Idle</span>
+    <span id="status" class="status">No session</span>
     <div class="header-actions">
       <button id="refresh" class="icon-button">Refresh</button>
     </div>
   </div>
   <div class="search-container">
-    <input id="search" type="text" placeholder="Search plans..." />
+    <input id="search" type="text" placeholder="Search plans..." aria-label="Search plans" />
   </div>
-  <div class="filter-bar" id="filterBar">
-    <span class="filter-chip active" data-filter="date" data-value="all">All</span>
-    <span class="filter-chip" data-filter="date" data-value="today">Today</span>
-    <span class="filter-chip" data-filter="date" data-value="7d">7d</span>
-    <span class="filter-chip" data-filter="date" data-value="30d">30d</span>
-    <span class="filter-divider"></span>
-    <span class="filter-chip" data-filter="source" data-value="claude-code">claude-code</span>
-    <span class="filter-chip" data-filter="source" data-value="opencode">opencode</span>
-    <span class="filter-chip" data-filter="source" data-value="codex">codex</span>
-    <span class="filter-divider"></span>
-    <span class="filter-chip" data-filter="status" data-value="completed">completed</span>
-    <span class="filter-chip" data-filter="status" data-value="failed">failed</span>
-    <span class="filter-chip" data-filter="status" data-value="abandoned">abandoned</span>
+  <div class="filter-bar" id="filterBar" role="toolbar" aria-label="Filter plans">
+    <button type="button" class="filter-chip active" data-filter="date" data-value="all" aria-pressed="true">All</button>
+    <button type="button" class="filter-chip" data-filter="date" data-value="today" aria-pressed="false">Today</button>
+    <button type="button" class="filter-chip" data-filter="date" data-value="7d" aria-pressed="false">7d</button>
+    <button type="button" class="filter-chip" data-filter="date" data-value="30d" aria-pressed="false">30d</button>
+    <span class="filter-divider" aria-hidden="true"></span>
+    <button type="button" class="filter-chip" data-filter="source" data-value="claude-code" aria-pressed="false">claude-code</button>
+    <button type="button" class="filter-chip" data-filter="source" data-value="opencode" aria-pressed="false">opencode</button>
+    <button type="button" class="filter-chip" data-filter="source" data-value="codex" aria-pressed="false">codex</button>
+    <span class="filter-divider" aria-hidden="true"></span>
+    <button type="button" class="filter-chip" data-filter="status" data-value="completed" aria-pressed="false">completed</button>
+    <button type="button" class="filter-chip" data-filter="status" data-value="failed" aria-pressed="false">failed</button>
+    <button type="button" class="filter-chip" data-filter="status" data-value="abandoned" aria-pressed="false">abandoned</button>
   </div>
   <div id="content" class="content"></div>
   <div id="empty" class="empty-state" hidden>
-    <p>No plans yet. Plans will appear here when your agent enters plan mode during a session.</p>
+    <div class="empty-state-inner">
+      <p id="empty-text">No plans yet. Plans will appear here when your agent enters plan mode during a session.</p>
+      <button type="button" id="clear-filters" class="icon-button link-button" hidden>Clear filters</button>
+    </div>
   </div>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const contentEl = document.getElementById('content');
     const emptyEl = document.getElementById('empty');
+    const emptyTextEl = document.getElementById('empty-text');
+    const clearFiltersBtn = document.getElementById('clear-filters');
     const statusEl = document.getElementById('status');
     const refreshBtn = document.getElementById('refresh');
     const searchInput = document.getElementById('search');
     const filterBar = document.getElementById('filterBar');
 
+    var DEFAULT_FILTERS = { date: 'all', source: null, status: null };
+    var saved = vscode.getState() || {};
     var lastState = null;
-    var currentSearchQuery = '';
-    var activeFilters = { date: 'all', source: null, status: null };
+    var currentSearchQuery = typeof saved.search === 'string' ? saved.search : '';
+    var activeFilters = Object.assign({}, DEFAULT_FILTERS, saved.filters || {});
+    // History cards the user opened, kept across re-renders.
+    var openPlans = {};
+    (saved.openPlans || []).forEach(function(id) { openPlans[id] = true; });
+    var hasRendered = false;
 
     const STATUS_ICONS = {
       completed: '\\u2713',
@@ -652,26 +742,38 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       skipped: 'var(--vscode-gitDecoration-ignoredResourceForeground, #888)'
     };
 
+    const STATUS_LABELS = {
+      completed: 'Completed',
+      in_progress: 'In Progress',
+      failed: 'Failed',
+      abandoned: 'Abandoned'
+    };
+
+    function persist() {
+      vscode.setState({
+        search: currentSearchQuery,
+        filters: activeFilters,
+        openPlans: Object.keys(openPlans)
+      });
+    }
+
+    function filtersActive() {
+      return Boolean(currentSearchQuery) || activeFilters.date !== 'all' || Boolean(activeFilters.source) || Boolean(activeFilters.status);
+    }
+
+    function syncFilterChips() {
+      filterBar.querySelectorAll('.filter-chip').forEach(function(chip) {
+        var on = activeFilters[chip.dataset.filter] === chip.dataset.value;
+        chip.classList.toggle('active', on);
+        chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+
     function formatDate(value) {
       if (!value) return '';
       var d = new Date(value);
       if (Number.isNaN(d.getTime())) return '';
-      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
-    }
-
-    function formatDuration(ms) {
-      if (!ms) return '';
-      var secs = ms / 1000;
-      if (secs < 60) return secs.toFixed(1) + 's';
-      var mins = Math.floor(secs / 60);
-      var rem = Math.floor(secs % 60);
-      return mins + 'm' + rem + 's';
-    }
-
-    function fmtNum(n) {
-      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-      return n.toLocaleString();
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
     function matchesSearch(plan, query) {
@@ -705,7 +807,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
         if (!matchesSearch(plan, currentSearchQuery)) return false;
         if (!matchesDateFilter(plan, activeFilters.date)) return false;
         if (activeFilters.source && plan.source !== activeFilters.source) return false;
-        if (activeFilters.status && plan.status !== activeFilters.status) return false;
+        if (activeFilters.status && (plan.rawOnly || plan.status !== activeFilters.status)) return false;
         return true;
       });
     }
@@ -714,13 +816,19 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (!state) return;
       lastState = state;
 
-      statusEl.textContent = state.sessionActive ? 'Active' : 'Idle';
-      statusEl.classList.toggle('active', state.sessionActive);
+      statusEl.textContent = state.sessionStatus || (state.sessionActive ? 'Viewing' : 'No session');
+      statusEl.classList.toggle('active', state.sessionStatus === 'Live');
 
-      var filtered = state.historicalPlans ? filterHistoricalPlans(state.historicalPlans) : [];
+      var allHistory = state.historicalPlans || [];
+      var filtered = filterHistoricalPlans(allHistory);
       var hasPlans = state.activePlan || filtered.length > 0;
 
       if (!hasPlans) {
+        var filteredOut = allHistory.length > 0 && filtersActive();
+        emptyTextEl.textContent = filteredOut
+          ? 'No plans match these filters.'
+          : 'No plans yet. Plans will appear here when your agent enters plan mode during a session.';
+        clearFiltersBtn.hidden = !filteredOut;
         emptyEl.hidden = false;
         emptyEl.style.display = 'flex';
         contentEl.style.display = 'none';
@@ -732,7 +840,6 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       contentEl.style.display = 'flex';
       contentEl.innerHTML = '';
 
-      // Active plan
       if (state.activePlan) {
         var sectionTitle = document.createElement('div');
         sectionTitle.className = 'section-title';
@@ -742,7 +849,6 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
         contentEl.appendChild(renderActivePlan(state.activePlan));
       }
 
-      // Historical plans (filtered)
       if (filtered.length > 0) {
         var histTitle = document.createElement('div');
         histTitle.className = 'section-title';
@@ -753,6 +859,28 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
           contentEl.appendChild(renderHistoryCard(plan));
         });
       }
+
+      // Only the first paint fades cards in; updates must not re-animate.
+      if (hasRendered) {
+        contentEl.querySelectorAll('.plan-card').forEach(function(card) {
+          card.classList.add('no-enter-animation');
+        });
+      }
+      hasRendered = true;
+    }
+
+    function makeCopyButton(label, planId) {
+      var copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'icon-button copy-btn';
+      copyBtn.textContent = label;
+      copyBtn.dataset.copyPlan = planId;
+      copyBtn.dataset.label = label;
+      copyBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        vscode.postMessage({ type: 'copyPlanMarkdown', planId: planId });
+      });
+      return copyBtn;
     }
 
     function renderActivePlan(plan) {
@@ -774,7 +902,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       }
       var statusChip = document.createElement('span');
       statusChip.className = 'chip ' + (plan.active ? 'in_progress' : 'completed');
-      statusChip.textContent = plan.active ? 'Active' : 'Done';
+      statusChip.textContent = plan.active ? 'In Progress' : 'Done';
       meta.appendChild(statusChip);
 
       var rateText = document.createElement('span');
@@ -782,7 +910,6 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       meta.appendChild(rateText);
       card.appendChild(meta);
 
-      // Progress bar
       var barContainer = document.createElement('div');
       barContainer.className = 'progress-bar-container';
       var barFill = document.createElement('div');
@@ -791,19 +918,9 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       barContainer.appendChild(barFill);
       card.appendChild(barContainer);
 
-      // Steps
       card.appendChild(renderStepList(plan.steps));
 
-      // Copy button
-      if (plan.rawMarkdown) {
-        var copyBtn = document.createElement('button');
-        copyBtn.className = 'icon-button copy-btn';
-        copyBtn.textContent = 'Copy Markdown';
-        copyBtn.addEventListener('click', function() {
-          vscode.postMessage({ type: 'copyPlanMarkdown', planId: 'active' });
-        });
-        card.appendChild(copyBtn);
-      }
+      if (plan.rawMarkdown) card.appendChild(makeCopyButton('Copy Markdown', 'active'));
 
       return card;
     }
@@ -811,41 +928,42 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     function renderHistoryCard(plan) {
       var card = document.createElement('div');
       card.className = 'plan-card';
+      var isOpen = !!openPlans[plan.id];
+      var contentId = 'plan-body-' + String(plan.id).replace(/[^a-zA-Z0-9_-]/g, '_');
 
-      // Collapsible header
-      var header = document.createElement('div');
+      // Header row: a disclosure button plus a sibling Copy button.
+      var headerRow = document.createElement('div');
+      headerRow.className = 'history-header';
+
+      var header = document.createElement('button');
+      header.type = 'button';
       header.className = 'collapsible-header';
+      header.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      header.setAttribute('aria-controls', contentId);
 
       var arrow = document.createElement('span');
-      arrow.className = 'collapse-arrow';
+      arrow.className = 'collapse-arrow' + (isOpen ? ' open' : '');
+      arrow.setAttribute('aria-hidden', 'true');
       arrow.textContent = '\\u25B6';
       header.appendChild(arrow);
 
       var title = document.createElement('span');
       title.className = 'plan-title';
-      title.style.marginBottom = '0';
       title.textContent = plan.title;
       header.appendChild(title);
 
-      var statusChip = document.createElement('span');
-      statusChip.className = 'chip ' + plan.status;
-      statusChip.textContent = plan.status.replace('_', ' ');
-      header.appendChild(statusChip);
-
-      if (plan.rawMarkdown) {
-        var copyBtn = document.createElement('button');
-        copyBtn.className = 'icon-button copy-btn';
-        copyBtn.textContent = 'Copy';
-        copyBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          vscode.postMessage({ type: 'copyPlanMarkdown', planId: plan.id });
-        });
-        header.appendChild(copyBtn);
+      // A raw plan file has no recorded run, so it gets no status chip.
+      if (!plan.rawOnly) {
+        var statusChip = document.createElement('span');
+        statusChip.className = 'chip ' + plan.status;
+        statusChip.textContent = STATUS_LABELS[plan.status] || String(plan.status).replace('_', ' ');
+        header.appendChild(statusChip);
       }
 
-      card.appendChild(header);
+      headerRow.appendChild(header);
+      if (plan.rawMarkdown) headerRow.appendChild(makeCopyButton('Copy', plan.id));
+      card.appendChild(headerRow);
 
-      // Meta
       var meta = document.createElement('div');
       meta.className = 'plan-meta';
       var srcChip = document.createElement('span');
@@ -853,9 +971,11 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       srcChip.textContent = plan.source;
       meta.appendChild(srcChip);
 
-      var rateText = document.createElement('span');
-      rateText.textContent = Math.round(plan.completionRate * 100) + '%';
-      meta.appendChild(rateText);
+      if (!plan.rawOnly || (plan.steps && plan.steps.length > 0)) {
+        var rateText = document.createElement('span');
+        rateText.textContent = Math.round(plan.completionRate * 100) + '%';
+        meta.appendChild(rateText);
+      }
 
       var dateText = document.createElement('span');
       dateText.textContent = formatDate(plan.createdAt);
@@ -863,26 +983,23 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
       card.appendChild(meta);
 
-      // Collapsible content
       var content = document.createElement('div');
-      content.className = 'collapsible-content';
+      content.className = 'collapsible-content' + (isOpen ? ' open' : '');
+      content.id = contentId;
 
-      // Metrics
       var metrics = [];
-      if (plan.totalDurationMs) metrics.push('Duration: ' + formatDuration(plan.totalDurationMs));
-      if (plan.totalTokensUsed) metrics.push('Tokens: ' + fmtNum(plan.totalTokensUsed));
-      if (plan.totalCostUsd) metrics.push('Cost: $' + plan.totalCostUsd.toFixed(4));
+      if (plan.durationLabel) metrics.push('Duration: ' + plan.durationLabel);
+      if (plan.tokensLabel) metrics.push('Tokens: ' + plan.tokensLabel);
+      if (plan.costLabel) metrics.push('Cost: ' + plan.costLabel);
       if (plan.totalToolCalls) metrics.push('Tool calls: ' + plan.totalToolCalls);
 
       if (metrics.length > 0) {
         var metricsEl = document.createElement('div');
-        metricsEl.className = 'plan-meta';
-        metricsEl.style.marginBottom = '8px';
+        metricsEl.className = 'plan-meta metrics-line';
         metricsEl.textContent = metrics.join(' | ');
         content.appendChild(metricsEl);
       }
 
-      // Progress bar
       var barContainer = document.createElement('div');
       barContainer.className = 'progress-bar-container';
       var barFill = document.createElement('div');
@@ -891,15 +1008,17 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       barContainer.appendChild(barFill);
       content.appendChild(barContainer);
 
-      // Steps
       content.appendChild(renderStepList(plan.steps));
 
       card.appendChild(content);
 
-      // Toggle collapse
       header.addEventListener('click', function() {
-        var isOpen = content.classList.toggle('open');
-        arrow.classList.toggle('open', isOpen);
+        var nowOpen = content.classList.toggle('open');
+        arrow.classList.toggle('open', nowOpen);
+        header.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+        if (nowOpen) openPlans[plan.id] = true;
+        else delete openPlans[plan.id];
+        persist();
       });
 
       return card;
@@ -937,6 +1056,13 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
         case 'updatePlanBoard':
           render(message.state);
           break;
+        case 'copied':
+          contentEl.querySelectorAll('[data-copy-plan]').forEach(function(btn) {
+            if (btn.dataset.copyPlan !== message.planId) return;
+            btn.textContent = 'Copied';
+            setTimeout(function() { btn.textContent = btn.dataset.label || 'Copy'; }, 1500);
+          });
+          break;
         case 'sessionStart':
         case 'sessionEnd':
           break;
@@ -947,8 +1073,19 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       vscode.postMessage({ type: 'refresh' });
     });
 
+    searchInput.value = currentSearchQuery;
     searchInput.addEventListener('input', function() {
       currentSearchQuery = this.value.toLowerCase();
+      persist();
+      render(lastState);
+    });
+
+    clearFiltersBtn.addEventListener('click', function() {
+      currentSearchQuery = '';
+      searchInput.value = '';
+      activeFilters = Object.assign({}, DEFAULT_FILTERS);
+      syncFilterChips();
+      persist();
       render(lastState);
     });
 
@@ -959,34 +1096,65 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       var filterValue = chip.dataset.value;
       if (!filterType || !filterValue) return;
 
-      // Date filters are exclusive (radio behavior)
       if (filterType === 'date') {
+        // Date filters are exclusive (radio behaviour).
         activeFilters.date = filterValue;
-        filterBar.querySelectorAll('[data-filter="date"]').forEach(function(c) {
-          c.classList.toggle('active', c.dataset.value === filterValue);
-        });
+      } else if (activeFilters[filterType] === filterValue) {
+        // Source/status filters toggle.
+        activeFilters[filterType] = null;
       } else {
-        // Source/status filters are toggles
-        var key = filterType;
-        if (activeFilters[key] === filterValue) {
-          activeFilters[key] = null;
-          chip.classList.remove('active');
-        } else {
-          // Deactivate other chips in the same group
-          filterBar.querySelectorAll('[data-filter="' + key + '"]').forEach(function(c) {
-            c.classList.remove('active');
-          });
-          activeFilters[key] = filterValue;
-          chip.classList.add('active');
-        }
+        activeFilters[filterType] = filterValue;
       }
 
+      syncFilterChips();
+      persist();
       render(lastState);
     });
 
+    syncFilterChips();
     vscode.postMessage({ type: 'webviewReady' });
   </script>
 </body>
 </html>`;
   }
+}
+
+/**
+ * Merges persisted plans (recorded runs, with metrics) with raw Claude Code
+ * plan files. A raw file is dropped when a persisted plan or the active
+ * session already covers one of its sessions, or when its markdown matches a
+ * persisted plan. Persisted plans from the active session are left to the
+ * Active Plan card.
+ */
+export function mergePlanHistory(
+  persisted: readonly PersistedPlan[],
+  raw: readonly (PersistedPlan & { sessionIds?: string[] })[],
+  activeSessionId: string | null,
+): Array<{ plan: PersistedPlan; rawOnly: boolean }> {
+  const result: Array<{ plan: PersistedPlan; rawOnly: boolean }> = [];
+  const coveredSessions = new Set<string>();
+  const persistedMarkdown = new Set<string>();
+
+  for (const plan of persisted) {
+    if (plan.rawMarkdown) persistedMarkdown.add(plan.rawMarkdown.trim());
+    coveredSessions.add(plan.sessionId);
+    if (activeSessionId && plan.sessionId === activeSessionId) continue;
+    // Older records may carry an 8-character session prefix.
+    if (activeSessionId && plan.sessionId.length < activeSessionId.length && activeSessionId.startsWith(plan.sessionId)) continue;
+    result.push({ plan, rawOnly: false });
+  }
+
+  const isCovered = (sessionId: string) =>
+    sessionId === activeSessionId ||
+    coveredSessions.has(sessionId) ||
+    [...coveredSessions].some((covered) => covered.length < sessionId.length && sessionId.startsWith(covered));
+
+  for (const plan of raw) {
+    const sessions = plan.sessionIds ?? [];
+    if (sessions.some(isCovered)) continue;
+    if (plan.rawMarkdown && persistedMarkdown.has(plan.rawMarkdown.trim())) continue;
+    result.push({ plan, rawOnly: true });
+  }
+
+  return result;
 }

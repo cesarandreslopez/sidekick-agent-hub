@@ -35,18 +35,27 @@ export interface PlanHistoryEntry {
   totalToolCalls?: number;
   totalCostUsd?: number;
   rawMarkdown?: string;
+  /** A raw plan file with no recorded run: it has no meaningful status. */
+  rawOnly?: boolean;
+  /** Host-formatted metrics (shared formatters). */
+  durationLabel?: string;
+  tokensLabel?: string;
+  costLabel?: string;
 }
 
 export interface PlanBoardState {
   activePlan: ActivePlanDisplay | null;
   historicalPlans: PlanHistoryEntry[];
   sessionActive: boolean;
+  /** Live / Viewing / No session label for the attached session. */
+  sessionStatus?: string;
 }
 
 export type PlanBoardMessage =
   | { type: 'updatePlanBoard'; state: PlanBoardState }
   | { type: 'sessionStart'; sessionPath: string }
-  | { type: 'sessionEnd' };
+  | { type: 'sessionEnd' }
+  | { type: 'copied'; planId: string };
 
 export type WebviewPlanBoardMessage =
   | { type: 'webviewReady' }
