@@ -14,6 +14,7 @@ import { GitService } from './GitService';
 import { AuthService } from './AuthService';
 import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
+import { formatTimeoutSeconds } from '../utils/formatTimeout';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
 import { estimateTokens, truncateDiffIntelligently } from '../utils/tokenEstimator';
@@ -37,6 +38,8 @@ export interface CommitMessageResult {
    * caller can offer a retry. Absent for no changes, timeouts, and cancellation.
    */
   cause?: unknown;
+  /** Set when the user cancelled, including declining a timeout retry; report nothing. */
+  cancelled?: boolean;
   /** Whether the diff was from staged or unstaged changes */
   diffType?: 'staged' | 'unstaged';
   /** Path to the repository where changes were found */
@@ -188,14 +191,17 @@ export class CommitMessageService implements vscode.Disposable {
       });
 
       if (!result.success) {
+        if (result.timedOut && result.retryDeclined) {
+          return { message: null, cancelled: true };
+        }
         if (result.timedOut) {
           return {
             message: null,
-            error: `Request timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
+            error: `Request timed out after ${formatTimeoutSeconds(result.timeoutMs)}. Try again or increase the timeout in settings.`,
           };
         }
         if (result.error?.name === 'AbortError') {
-          return { message: null }; // User cancelled
+          return { message: null, cancelled: true };
         }
         return {
           message: null,

@@ -92,13 +92,24 @@ describe('CommitMessageService failure cause', () => {
 
     executeWithTimeout.mockResolvedValueOnce({ success: false, timedOut: true, timeoutMs: 5000 });
     const timedOut = await makeService(() => Promise.resolve('')).generateCommitMessage();
-    expect(timedOut.error).toMatch(/^Request timed out after 5000ms/);
+    expect(timedOut.error).toMatch(/^Request timed out after 5s/);
     expect(timedOut).not.toHaveProperty('cause');
 
     const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
     const cancelled = await makeService(() => Promise.reject(abort)).generateCommitMessage();
-    expect(cancelled).toEqual({ message: null });
+    expect(cancelled).toEqual({ message: null, cancelled: true });
     expect(cancelled).not.toHaveProperty('cause');
+  });
+
+  it('treats a declined timeout retry as a cancellation, not a second error', async () => {
+    executeWithTimeout.mockResolvedValueOnce({
+      success: false,
+      timedOut: true,
+      retryDeclined: true,
+      timeoutMs: 5000,
+    });
+    const declined = await makeService(() => Promise.resolve('')).generateCommitMessage();
+    expect(declined).toEqual({ message: null, cancelled: true });
   });
 });
 

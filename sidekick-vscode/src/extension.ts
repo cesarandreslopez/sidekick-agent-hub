@@ -117,6 +117,7 @@ import { resolveModel } from './services/ModelResolver';
 import { featureEffort, PROVIDER_DISPLAY_NAMES } from './types/inferenceProvider';
 import { getNonce } from './utils/nonce';
 import { resolveDiagnosticAtSelection } from './utils/diagnosticAtSelection';
+import { formatTimeoutSeconds } from './utils/formatTimeout';
 import type { AccountProviderId, SyncReport } from 'sidekick-shared';
 import {
   AutoSwitchController,
@@ -2151,6 +2152,11 @@ export async function activate(context: vscode.ExtensionContext) {
             abortController.signal,
           );
 
+          if (result.cancelled || token.isCancellationRequested) {
+            statusBarManager?.setConnected();
+            return;
+          }
+
           if (result.error) {
             statusBarManager?.setError(result.error);
             // Not awaited, so the progress closes while the notification is open.
@@ -2241,62 +2247,42 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Reviewing changes with AI...',
-          cancellable: true,
-        },
-        async (progress, token) => {
-          // Handle cancellation
-          const abortController = new AbortController();
-          token.onCancellationRequested(() => {
-            abortController.abort();
-          });
+      // The service shows the one cancellable progress notification; an outer
+      // one stacked a second toast whose Cancel did not stop the request.
+      try {
+        const result = await preCommitReviewService.reviewChanges();
 
-          try {
-            progress.report({ increment: 30, message: 'Analyzing diff...' });
+        if (result.cancelled) {
+          return;
+        }
 
-            const result = await preCommitReviewService!.reviewChanges();
+        if (result.error) {
+          void showProviderFailure(`Review failed: ${result.error}`, result.cause, () =>
+            vscode.commands.executeCommand('sidekick.reviewChanges'),
+          );
+          return;
+        }
 
-            if (token.isCancellationRequested) {
-              return;
-            }
-
-            progress.report({ increment: 100 });
-
-            if (result.error) {
-              // Not awaited, so the progress closes while the notification is open.
-              void showProviderFailure(`Review failed: ${result.error}`, result.cause, () =>
-                vscode.commands.executeCommand('sidekick.reviewChanges'),
-              );
-              return;
-            }
-
-            if (result.issueCount === 0) {
-              vscode.window.showInformationMessage('AI Review complete: No issues found!');
-            } else {
-              vscode.window
-                .showInformationMessage(
-                  `AI Review complete: ${result.issueCount} suggestion${result.issueCount === 1 ? '' : 's'}. Check Problems panel.`,
-                  'Clear Review',
-                )
-                .then((action) => {
-                  if (action === 'Clear Review') {
-                    vscode.commands.executeCommand('sidekick.clearReview');
-                  }
-                });
-            }
-          } catch (error) {
-            if (!token.isCancellationRequested) {
-              const message = error instanceof Error ? error.message : 'Unknown error';
-              void showProviderFailure(`Review failed: ${message}`, error, () =>
-                vscode.commands.executeCommand('sidekick.reviewChanges'),
-              );
-            }
-          }
-        },
-      );
+        if (result.issueCount === 0) {
+          vscode.window.showInformationMessage('AI Review complete: No issues found!');
+        } else {
+          vscode.window
+            .showInformationMessage(
+              `AI Review complete: ${result.issueCount} suggestion${result.issueCount === 1 ? '' : 's'}. Check Problems panel.`,
+              'Clear Review',
+            )
+            .then((action) => {
+              if (action === 'Clear Review') {
+                vscode.commands.executeCommand('sidekick.clearReview');
+              }
+            });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        void showProviderFailure(`Review failed: ${message}`, error, () =>
+          vscode.commands.executeCommand('sidekick.reviewChanges'),
+        );
+      }
     }),
   );
 
@@ -2316,54 +2302,40 @@ export async function activate(context: vscode.ExtensionContext) {
    *   failed attempt used, so the user is not asked for it again
    */
   async function generatePrDescriptionWithProgress(baseBranch?: string): Promise<void> {
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Generating PR description...',
-        cancellable: true,
-      },
-      async (progress, token) => {
-        try {
-          progress.report({ increment: 20, message: 'Getting commits...' });
+    // The service shows the one cancellable progress notification.
+    try {
+      const result = await prDescriptionService!.generatePrDescription(baseBranch);
 
-          const result = await prDescriptionService!.generatePrDescription(baseBranch);
+      if (result.cancelled) {
+        return;
+      }
 
-          if (token.isCancellationRequested) {
-            return;
-          }
+      if (result.error) {
+        void showProviderFailure(`PR description failed: ${result.error}`, result.cause, () =>
+          generatePrDescriptionWithProgress(result.baseBranch ?? baseBranch),
+        );
+        return;
+      }
 
-          progress.report({ increment: 100 });
-
-          if (result.error) {
-            // Not awaited, so the progress closes while the notification is open.
-            void showProviderFailure(`PR description failed: ${result.error}`, result.cause, () =>
-              generatePrDescriptionWithProgress(result.baseBranch ?? baseBranch),
-            );
-            return;
-          }
-
-          if (result.description) {
-            vscode.window
-              .showInformationMessage(
-                `PR description copied to clipboard! (${result.commitCount} commit${result.commitCount === 1 ? '' : 's'} analyzed)`,
-                'Open GitHub',
-              )
-              .then((action) => {
-                if (action === 'Open GitHub') {
-                  vscode.env.openExternal(vscode.Uri.parse('https://github.com'));
-                }
-              });
-          }
-        } catch (error) {
-          if (!token.isCancellationRequested) {
-            const message = error instanceof Error ? error.message : 'Unknown error';
-            void showProviderFailure(`PR description failed: ${message}`, error, () =>
-              generatePrDescriptionWithProgress(baseBranch),
-            );
-          }
+      if (result.description) {
+        const message = `PR description copied to clipboard! (${result.commitCount} commit${result.commitCount === 1 ? '' : 's'} analyzed)`;
+        const compareUrl = result.compareUrl;
+        if (compareUrl) {
+          vscode.window.showInformationMessage(message, 'Open Pull Request').then((action) => {
+            if (action === 'Open Pull Request') {
+              vscode.env.openExternal(vscode.Uri.parse(compareUrl));
+            }
+          });
+        } else {
+          vscode.window.showInformationMessage(message);
         }
-      },
-    );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      void showProviderFailure(`PR description failed: ${message}`, error, () =>
+        generatePrDescriptionWithProgress(baseBranch),
+      );
+    }
   }
 
   // Register generate PR description command
@@ -2471,10 +2443,15 @@ export async function activate(context: vscode.ExtensionContext) {
           });
 
           if (!result.success) {
+            if (result.timedOut && result.retryDeclined) {
+              // The user already saw the timeout and chose not to retry.
+              statusBarManager?.setConnected();
+              return;
+            }
             if (result.timedOut) {
               statusBarManager?.setError('Timeout');
               vscode.window.showErrorMessage(
-                `Transform timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
+                `Transform timed out after ${formatTimeoutSeconds(result.timeoutMs)}. Try again or increase the timeout in settings.`,
               );
               return;
             }
@@ -2545,74 +2522,61 @@ export async function activate(context: vscode.ExtensionContext) {
 
       statusBarManager?.setLoading('Generating docs');
 
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Generating documentation...',
-          cancellable: true,
-        },
-        async (_progress, token) => {
-          // Wire VS Code CancellationToken to AbortController for the service
-          const abortController = new AbortController();
-          token.onCancellationRequested(() => abortController.abort());
+      // The service shows the one cancellable progress notification.
+      try {
+        const result = await documentationService.generateDocumentation(originalEditor);
 
-          try {
-            const result = await documentationService!.generateDocumentation(
-              originalEditor,
-              abortController.signal,
-            );
+        if (result.cancelled) {
+          statusBarManager?.setConnected();
+          return;
+        }
 
-            if (result.error) {
-              statusBarManager?.setError(result.error);
-              // Not awaited, so the progress closes while the notification is
-              // open. Retry re-runs the command on the editor active then.
-              void showProviderFailure(
-                `Documentation generation failed: ${result.error}`,
-                result.cause,
-                () => vscode.commands.executeCommand('sidekick.generateDocs'),
-              );
-              return;
-            }
+        if (result.error) {
+          statusBarManager?.setError(result.error);
+          // Retry re-runs the command on the editor active then.
+          void showProviderFailure(
+            `Documentation generation failed: ${result.error}`,
+            result.cause,
+            () => vscode.commands.executeCommand('sidekick.generateDocs'),
+          );
+          return;
+        }
 
-            if (result.documentation && result.insertLine !== undefined) {
-              // Verify we're still in the same editor and position hasn't changed drastically
-              if (vscode.window.activeTextEditor !== originalEditor) {
-                vscode.window.showWarningMessage(
-                  'Editor changed during generation. Please try again.',
-                );
-                statusBarManager?.setConnected();
-                return;
-              }
-
-              // Insert documentation above the function/class
-              const insertPosition = new vscode.Position(result.insertLine, 0);
-              const success = await originalEditor.edit((editBuilder) => {
-                editBuilder.insert(insertPosition, result.documentation!);
-              });
-
-              if (success) {
-                statusBarManager?.setConnected();
-                log('Documentation generated and inserted successfully');
-              } else {
-                statusBarManager?.setError('Insert failed');
-                vscode.window.showErrorMessage('Failed to insert documentation');
-              }
-            } else {
-              statusBarManager?.setConnected();
-              vscode.window.showWarningMessage(
-                'Could not generate documentation. Try selecting the code to document.',
-              );
-            }
-          } catch (error) {
-            logError('Documentation generation failed', error);
-            const message = error instanceof Error ? error.message : 'Unknown error';
-            statusBarManager?.setError(message);
-            void showProviderFailure(`Documentation generation failed: ${message}`, error, () =>
-              vscode.commands.executeCommand('sidekick.generateDocs'),
-            );
+        if (result.documentation && result.insertLine !== undefined) {
+          // Verify we're still in the same editor and position hasn't changed drastically
+          if (vscode.window.activeTextEditor !== originalEditor) {
+            vscode.window.showWarningMessage('Editor changed during generation. Please try again.');
+            statusBarManager?.setConnected();
+            return;
           }
-        },
-      );
+
+          // Insert documentation above the function/class
+          const insertPosition = new vscode.Position(result.insertLine, 0);
+          const success = await originalEditor.edit((editBuilder) => {
+            editBuilder.insert(insertPosition, result.documentation!);
+          });
+
+          if (success) {
+            statusBarManager?.setConnected();
+            log('Documentation generated and inserted successfully');
+          } else {
+            statusBarManager?.setError('Insert failed');
+            vscode.window.showErrorMessage('Failed to insert documentation');
+          }
+        } else {
+          statusBarManager?.setConnected();
+          vscode.window.showWarningMessage(
+            'Could not generate documentation. Try selecting the code to document.',
+          );
+        }
+      } catch (error) {
+        logError('Documentation generation failed', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        statusBarManager?.setError(message);
+        void showProviderFailure(`Documentation generation failed: ${message}`, error, () =>
+          vscode.commands.executeCommand('sidekick.generateDocs'),
+        );
+      }
     }),
   );
 
@@ -2691,24 +2655,8 @@ export async function activate(context: vscode.ExtensionContext) {
     if (!resolved) return;
     const { diagnostic } = resolved;
     const document = await vscode.workspace.openTextDocument(resolved.uri);
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Explaining error...',
-        cancellable: true,
-      },
-      async (_progress, token) => {
-        const abortController = new AbortController();
-        token.onCancellationRequested(() => abortController.abort());
-        await errorViewProvider.showErrorExplanation(
-          document,
-          diagnostic,
-          'explain',
-          complexity,
-          abortController.signal,
-        );
-      },
-    );
+    // The explanation service shows the one cancellable progress notification.
+    await errorViewProvider.showErrorExplanation(document, diagnostic, 'explain', complexity);
   };
 
   // Register explain error commands (base + complexity levels)
@@ -2760,24 +2708,8 @@ export async function activate(context: vscode.ExtensionContext) {
         if (!resolved) return;
         const { diagnostic } = resolved;
         const document = await vscode.workspace.openTextDocument(resolved.uri);
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: 'Generating fix...',
-            cancellable: true,
-          },
-          async (_progress, token) => {
-            const abortController = new AbortController();
-            token.onCancellationRequested(() => abortController.abort());
-            await errorViewProvider.showErrorExplanation(
-              document,
-              diagnostic,
-              'fix',
-              undefined,
-              abortController.signal,
-            );
-          },
-        );
+        // The explanation service shows the one cancellable progress notification.
+        await errorViewProvider.showErrorExplanation(document, diagnostic, 'fix');
       },
     ),
   );

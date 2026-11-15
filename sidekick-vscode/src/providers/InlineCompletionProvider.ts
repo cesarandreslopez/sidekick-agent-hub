@@ -122,7 +122,7 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
           if (error instanceof TimeoutError) {
             vscode.window
               .showWarningMessage(
-                `Completion timed out (${Math.round(error.timeoutMs / 1000)}s). Claude servers may be slow. Try again or increase timeout in settings.`,
+                `Completion timed out (${Math.round(error.timeoutMs / 1000)}s). The provider may be slow. Try again or increase the inlineCompletion timeout in settings.`,
                 'Open Settings',
                 'View Logs',
               )
@@ -130,7 +130,7 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
                 if (action === 'Open Settings') {
                   vscode.commands.executeCommand(
                     'workbench.action.openSettings',
-                    'sidekick.inlineTimeout',
+                    'sidekick.timeouts',
                   );
                 } else if (action === 'View Logs') {
                   vscode.commands.executeCommand('sidekick.showLogs');

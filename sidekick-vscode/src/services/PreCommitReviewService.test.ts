@@ -75,12 +75,12 @@ describe('PreCommitReviewService failure cause', () => {
   it('sets no cause for timeouts or cancellation', async () => {
     executeWithTimeout.mockResolvedValueOnce({ success: false, timedOut: true, timeoutMs: 5000 });
     const timedOut = await makeService(() => Promise.resolve('')).reviewChanges();
-    expect(timedOut.error).toMatch(/^Review timed out after 5000ms/);
+    expect(timedOut.error).toMatch(/^Review timed out after 5s/);
     expect(timedOut).not.toHaveProperty('cause');
 
     const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
     const cancelled = await makeService(() => Promise.reject(abort)).reviewChanges();
-    expect(cancelled).toEqual({ issueCount: 0, error: 'Review cancelled' });
+    expect(cancelled).toEqual({ issueCount: 0, cancelled: true });
     expect(cancelled).not.toHaveProperty('cause');
   });
 });

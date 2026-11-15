@@ -13,6 +13,7 @@ import { GitService } from './GitService';
 import { AuthService } from './AuthService';
 import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
+import { formatTimeoutSeconds } from '../utils/formatTimeout';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
 import { truncateDiffIntelligently } from '../utils/tokenEstimator';
@@ -32,6 +33,8 @@ export interface ReviewResult {
    * caller can offer a retry. Absent for no changes, timeouts, and cancellation.
    */
   cause?: unknown;
+  /** Set when the user cancelled, including declining a timeout retry; report nothing. */
+  cancelled?: boolean;
 }
 
 /**
@@ -76,9 +79,10 @@ export class PreCommitReviewService implements vscode.Disposable {
   /**
    * Reviews current git changes and creates diagnostics for issues found.
    *
+   * @param signal - Optional AbortSignal for external cancellation
    * @returns Promise resolving to review result
    */
-  async reviewChanges(): Promise<ReviewResult> {
+  async reviewChanges(signal?: AbortSignal): Promise<ReviewResult> {
     try {
       log('PreCommitReviewService: Starting review');
 
@@ -143,19 +147,23 @@ export class PreCommitReviewService implements vscode.Disposable {
         contextSize,
         showProgress: true,
         cancellable: true,
+        externalSignal: signal,
         onTimeout: (timeoutMs: number, contextKb: number) =>
           this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
       });
 
       if (!result.success) {
+        if (result.timedOut && result.retryDeclined) {
+          return { issueCount: 0, cancelled: true };
+        }
         if (result.timedOut) {
           return {
             issueCount: 0,
-            error: `Review timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
+            error: `Review timed out after ${formatTimeoutSeconds(result.timeoutMs)}. Try again or increase the timeout in settings.`,
           };
         }
         if (result.error?.name === 'AbortError') {
-          return { issueCount: 0, error: 'Review cancelled' };
+          return { issueCount: 0, cancelled: true };
         }
         return {
           issueCount: 0,

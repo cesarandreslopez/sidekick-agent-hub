@@ -15,7 +15,8 @@ vi.mock('./TimeoutManager', () => ({
   }),
 }));
 
-import { PrDescriptionService } from './PrDescriptionService';
+import * as vscode from 'vscode';
+import { PrDescriptionService, githubCompareUrl } from './PrDescriptionService';
 import { ProviderRequestError } from '../utils/providerFailure';
 
 /** Runs the task the way TimeoutManager does: a rejection comes back as `error`. */
@@ -102,12 +103,67 @@ describe('PrDescriptionService failure cause', () => {
   it('sets no cause for a timeout or cancellation', async () => {
     executeWithTimeout.mockResolvedValueOnce({ success: false, timedOut: true, timeoutMs: 5000 });
     const timedOut = await makeFailingService(overloaded()).service.generatePrDescription();
-    expect(timedOut.error).toMatch(/^Request timed out after 5000ms/);
+    expect(timedOut.error).toMatch(/^Request timed out after 5s/);
     expect(timedOut).not.toHaveProperty('cause');
 
     const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
     const cancelled = await makeFailingService(abort).service.generatePrDescription();
-    expect(cancelled).toEqual({ description: null, error: 'Request cancelled' });
+    expect(cancelled).toEqual({ description: null, cancelled: true });
     expect(cancelled).not.toHaveProperty('cause');
+  });
+});
+
+describe('PrDescriptionService base-branch prompt', () => {
+  it('cancels without calling the AI when the prompt is dismissed', async () => {
+    const repository = { rootUri: { fsPath: '/tmp/repo' } };
+    const gitService = {
+      getActiveRepository: vi.fn(() => repository),
+      // No upstream, so the user is asked for a base branch.
+      execGit: vi.fn(async () => {
+        throw new Error('no upstream');
+      }),
+      getBranchCommits: vi.fn(async () => ['feat: a']),
+    };
+    vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce(undefined);
+    const service = new PrDescriptionService(gitService as never, {} as never);
+
+    expect(await service.generatePrDescription()).toEqual({ description: null, cancelled: true });
+    expect(gitService.getBranchCommits).not.toHaveBeenCalled();
+  });
+
+  it('keeps main for an empty answer', async () => {
+    const repository = { rootUri: { fsPath: '/tmp/repo' } };
+    const gitService = {
+      getActiveRepository: vi.fn(() => repository),
+      execGit: vi.fn(async () => {
+        throw new Error('no upstream');
+      }),
+      getBranchCommits: vi.fn(async () => []),
+    };
+    vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce('');
+    await new PrDescriptionService(gitService as never, {} as never).generatePrDescription();
+    expect(gitService.getBranchCommits).toHaveBeenCalledWith(repository, 'main');
+  });
+});
+
+describe('githubCompareUrl', () => {
+  it('builds the compare page from HTTPS and SSH remotes', () => {
+    expect(githubCompareUrl('https://github.com/acme/app.git\n', 'main', 'feat/x')).toBe(
+      'https://github.com/acme/app/compare/main...feat/x?expand=1',
+    );
+    expect(githubCompareUrl('git@github.com:acme/app.git', 'origin/develop', 'fix')).toBe(
+      'https://github.com/acme/app/compare/develop...fix?expand=1',
+    );
+  });
+
+  it('lets GitHub pick the base when the upstream is the same branch', () => {
+    expect(githubCompareUrl('https://github.com/acme/app', 'origin/feat/x', 'feat/x')).toBe(
+      'https://github.com/acme/app/compare/feat/x?expand=1',
+    );
+  });
+
+  it('returns undefined for other hosts or a detached HEAD', () => {
+    expect(githubCompareUrl('git@gitlab.com:acme/app.git', 'main', 'x')).toBeUndefined();
+    expect(githubCompareUrl('https://github.com/acme/app.git', 'main', 'HEAD')).toBeUndefined();
   });
 });

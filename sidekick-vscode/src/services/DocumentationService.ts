@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
 import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
+import { formatTimeoutSeconds } from '../utils/formatTimeout';
 import {
   getDocGenerationSystemPrompt,
   getDocGenerationUserPrompt,
@@ -35,6 +36,8 @@ export interface DocumentationResult {
    * timeouts, and cancellation.
    */
   cause?: unknown;
+  /** Set when the user cancelled, including declining a timeout retry; report nothing. */
+  cancelled?: boolean;
 }
 
 /**
@@ -156,13 +159,16 @@ export class DocumentationService implements vscode.Disposable {
       });
 
       if (!timeoutResult.success) {
+        if (timeoutResult.timedOut && timeoutResult.retryDeclined) {
+          return { cancelled: true };
+        }
         if (timeoutResult.timedOut) {
           return {
-            error: `Request timed out after ${timeoutResult.timeoutMs}ms. Try again or increase timeout in settings.`,
+            error: `Request timed out after ${formatTimeoutSeconds(timeoutResult.timeoutMs)}. Try again or increase the timeout in settings.`,
           };
         }
         if (timeoutResult.error?.name === 'AbortError') {
-          return { error: 'Request cancelled' };
+          return { cancelled: true };
         }
         return {
           error: timeoutResult.error?.message ?? 'Unknown error',

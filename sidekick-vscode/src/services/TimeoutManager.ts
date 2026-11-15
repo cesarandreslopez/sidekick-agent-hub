@@ -41,6 +41,12 @@ export interface TimeoutResult<T> {
   error?: Error;
   /** Whether the operation timed out */
   timedOut: boolean;
+  /**
+   * Set on a timeout when the user was offered a retry and declined it
+   * (Cancel, Open Settings, or dismissing the prompt). The user already saw
+   * the timeout, so callers should not report it again.
+   */
+  retryDeclined?: boolean;
   /** The timeout used in milliseconds */
   timeoutMs: number;
   /** Context size in KB if provided */
@@ -226,6 +232,7 @@ export class TimeoutManager {
           log(`TimeoutManager: Retrying ${operation} with timeout=${timeoutMs}ms`);
           continue;
         }
+        return { ...result, retryDeclined: true };
       }
 
       // No retry - return timeout result
@@ -399,7 +406,7 @@ export class TimeoutManager {
     const contextInfo = contextSizeKb > 1 ? ` (context: ${contextSizeKb.toFixed(1)}KB)` : '';
 
     const action = await vscode.window.showWarningMessage(
-      `${operation} timed out after ${timeoutSec}s${contextInfo}. Claude servers may be slow.`,
+      `${operation} timed out after ${timeoutSec}s${contextInfo}. The provider may be slow.`,
       { modal: false },
       `Retry (${newTimeoutSec}s)`,
       'Open Settings',

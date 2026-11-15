@@ -12,6 +12,7 @@ import { GitService } from './GitService';
 import { AuthService } from './AuthService';
 import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
+import { formatTimeoutSeconds } from '../utils/formatTimeout';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
 import { truncateDiffIntelligently } from '../utils/tokenEstimator';
@@ -35,6 +36,35 @@ export interface PrDescriptionResult {
   commitCount?: number;
   /** Base branch the failed request compared against; pass it back to retry against the same base */
   baseBranch?: string;
+  /** Set when the user cancelled, including declining a timeout retry; report nothing. */
+  cancelled?: boolean;
+  /** GitHub "open a pull request" page for this branch, when the remote is on GitHub */
+  compareUrl?: string;
+}
+
+/**
+ * Builds the GitHub compare page for opening a pull request, or `undefined`
+ * when the remote is not a github.com repository.
+ *
+ * @param remoteUrl - `git remote get-url` output (HTTPS or SSH form)
+ * @param base - Base branch; a remote prefix such as `origin/` is dropped
+ * @param head - Current branch name
+ */
+export function githubCompareUrl(
+  remoteUrl: string,
+  base: string,
+  head: string,
+): string | undefined {
+  const match = remoteUrl
+    .trim()
+    .match(/^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
+  if (!match || !head || head === 'HEAD') return undefined;
+  const baseName = base.replace(/^[^/]+\//, (prefix) => (prefix === 'origin/' || prefix === 'upstream/' ? '' : prefix));
+  const enc = (ref: string) => ref.split('/').map(encodeURIComponent).join('/');
+  const repo = `https://github.com/${match[1]}/${match[2]}`;
+  // An upstream of the same branch is no base; let GitHub pick the default branch.
+  if (!baseName || baseName === head) return `${repo}/compare/${enc(head)}?expand=1`;
+  return `${repo}/compare/${enc(baseName)}...${enc(head)}?expand=1`;
 }
 
 /**
@@ -78,9 +108,10 @@ export class PrDescriptionService implements vscode.Disposable {
    *
    * @param base - Base branch to compare against; detected (possibly by
    *   prompting) when omitted
+   * @param signal - Optional AbortSignal for external cancellation
    * @returns Promise resolving to PR description result
    */
-  async generatePrDescription(base?: string): Promise<PrDescriptionResult> {
+  async generatePrDescription(base?: string, signal?: AbortSignal): Promise<PrDescriptionResult> {
     let baseBranch: string | undefined;
     try {
       log('PrDescriptionService: Starting generation');
@@ -91,8 +122,11 @@ export class PrDescriptionService implements vscode.Disposable {
         return { description: null, error: 'No Git repository found' };
       }
 
-      // Detect base branch
+      // Detect base branch; undefined means the user dismissed the prompt
       baseBranch = base ?? (await this.detectBaseBranch(repository.rootUri.fsPath));
+      if (baseBranch === undefined) {
+        return { description: null, cancelled: true };
+      }
       log(`PrDescriptionService: Using base branch '${baseBranch}'`);
 
       // Get commits on this branch
@@ -148,19 +182,24 @@ export class PrDescriptionService implements vscode.Disposable {
         contextSize,
         showProgress: true,
         cancellable: true,
+        externalSignal: signal,
         onTimeout: (timeoutMs: number, contextKb: number) =>
           this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
       });
 
       if (!result.success) {
+        if (result.timedOut && result.retryDeclined) {
+          return { description: null, cancelled: true };
+        }
         if (result.timedOut) {
           return {
             description: null,
-            error: `Request timed out after ${result.timeoutMs}ms. Try again or increase timeout in settings.`,
+            error: `Request timed out after ${formatTimeoutSeconds(result.timeoutMs)}. Try again or increase the timeout in settings.`,
+            baseBranch,
           };
         }
         if (result.error?.name === 'AbortError') {
-          return { description: null, error: 'Request cancelled' };
+          return { description: null, cancelled: true };
         }
         return {
           description: null,
@@ -186,6 +225,7 @@ export class PrDescriptionService implements vscode.Disposable {
       return {
         description,
         commitCount: commits.length,
+        compareUrl: await this.findCompareUrl(repository.rootUri.fsPath, baseBranch),
       };
     } catch (error) {
       logError('PrDescriptionService: Generation failed', error);
@@ -201,7 +241,7 @@ export class PrDescriptionService implements vscode.Disposable {
    * @param repoPath - The repository root path
    * @returns Promise resolving to base branch name
    */
-  private async detectBaseBranch(repoPath: string): Promise<string> {
+  private async detectBaseBranch(repoPath: string): Promise<string | undefined> {
     try {
       // Try to get upstream tracking branch
       // execGit accepts repoPath string directly (no type casting needed)
@@ -222,7 +262,22 @@ export class PrDescriptionService implements vscode.Disposable {
         value: 'main',
         placeHolder: 'main, master, develop...',
       });
-      return branch || 'main';
+      // Escape cancels; an empty answer keeps the 'main' default.
+      if (branch === undefined) return undefined;
+      return branch.trim() || 'main';
+    }
+  }
+
+  /** GitHub compare page for this branch, or undefined when it can't be derived. */
+  private async findCompareUrl(repoPath: string, baseBranch: string): Promise<string | undefined> {
+    try {
+      const [remote, head] = await Promise.all([
+        this.gitService.execGit(repoPath, ['remote', 'get-url', 'origin']),
+        this.gitService.execGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']),
+      ]);
+      return githubCompareUrl(remote, baseBranch, head.trim());
+    } catch {
+      return undefined;
     }
   }
 

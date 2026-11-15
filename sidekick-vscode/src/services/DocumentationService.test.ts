@@ -75,14 +75,14 @@ describe('DocumentationService failure cause', () => {
     const timedOut = await makeService(() => Promise.resolve('')).generateDocumentation(
       editor as never,
     );
-    expect(timedOut.error).toMatch(/^Request timed out after 5000ms/);
+    expect(timedOut.error).toMatch(/^Request timed out after 5s/);
     expect(timedOut).not.toHaveProperty('cause');
 
     const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
     const cancelled = await makeService(() => Promise.reject(abort)).generateDocumentation(
       editor as never,
     );
-    expect(cancelled).toEqual({ error: 'Request cancelled' });
+    expect(cancelled).toEqual({ cancelled: true });
     expect(cancelled).not.toHaveProperty('cause');
   });
 });
