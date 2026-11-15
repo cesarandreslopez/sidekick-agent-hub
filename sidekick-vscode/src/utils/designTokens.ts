@@ -116,6 +116,14 @@ export function getDesignTokenCSS(): string {
     outline-offset: 2px;
   }
 
+  /* ── hidden attribute ──
+     An author display rule (.sk-empty-state, .am-controls, …) beats the
+     browser's own [hidden] { display: none }, so an element toggled with
+     el.hidden would stay visible. */
+  [hidden] {
+    display: none !important;
+  }
+
   /* ── Reduced Motion ── */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
