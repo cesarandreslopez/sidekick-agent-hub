@@ -44,12 +44,18 @@ export function registerAccountCommands(
 ): void {
   const { accountService, loginRunner } = deps;
 
+  /**
+   * Asks which account to act on. `reason` says why there is no `view`: the
+   * user dismissed the picker (say nothing), no account is saved at all, or
+   * accounts exist but none fits this command (e.g. no other one to switch to).
+   */
   const pickAccount = async (
     placeHolder: string,
     filter: (view: AccountView) => boolean = () => true,
-  ): Promise<AccountView | null> => {
-    const views = accountService.listAccountsWithHealth().filter(filter);
-    if (views.length === 0) return null;
+  ): Promise<{ view?: AccountView; reason?: 'cancelled' | 'none' | 'filtered' }> => {
+    const all = accountService.listAccountsWithHealth();
+    const views = all.filter(filter);
+    if (views.length === 0) return { reason: all.length === 0 ? 'none' : 'filtered' };
     const items = views.map((view) => ({
       label: `${healthIcon(view)} ${accountDisplayName(view)}`,
       description: `${PROVIDER_LABELS[view.providerId]}${view.email && view.email !== accountDisplayName(view) ? ` · ${view.email}` : ''}${view.isActive ? ' (current)' : ''}`,
@@ -60,7 +66,7 @@ export function registerAccountCommands(
       placeHolder,
       matchOnDescription: true,
     });
-    return picked?.view ?? null;
+    return picked ? { view: picked.view } : { reason: 'cancelled' };
   };
 
   const extensionHostRunning = (providerId: AccountProviderId): boolean =>
@@ -324,12 +330,12 @@ export function registerAccountCommands(
         await addAccount();
         return;
       case 'terminal': {
-        const view = await pickAccount('Open a terminal as which account?');
+        const { view } = await pickAccount('Open a terminal as which account?');
         if (view) await openTerminalAs(view);
         return;
       }
       case 'signInAgain': {
-        const view = await pickAccount('Sign in again to which account?');
+        const { view } = await pickAccount('Sign in again to which account?');
         if (view) await signInAgain(view.providerId, view.id);
         return;
       }
@@ -347,18 +353,26 @@ export function registerAccountCommands(
       placeHolder: string,
       handler: (view: AccountView) => Promise<void>,
       filter?: (view: AccountView) => boolean,
+      filteredMessage = 'No saved account fits this action.',
     ) =>
     async (element?: unknown): Promise<void> => {
-      const view = viewFromElement(element) ?? (await pickAccount(placeHolder, filter));
-      if (!view) {
-        const action = await vscode.window.showInformationMessage(
-          'No accounts saved yet.',
-          'Add Account…',
-        );
-        if (action) await addAccount();
+      const fromView = viewFromElement(element);
+      if (fromView) {
+        await handler(fromView);
         return;
       }
-      await handler(view);
+      const { view, reason } = await pickAccount(placeHolder, filter);
+      if (view) {
+        await handler(view);
+        return;
+      }
+      // Escape in the picker is not "no accounts": say nothing.
+      if (reason === 'cancelled') return;
+      const action = await vscode.window.showInformationMessage(
+        reason === 'none' ? 'No accounts saved yet.' : filteredMessage,
+        'Add Account…',
+      );
+      if (action) await addAccount();
     };
 
   context.subscriptions.push(
@@ -366,7 +380,12 @@ export function registerAccountCommands(
     vscode.commands.registerCommand('sidekick.accounts.add', () => addAccount()),
     vscode.commands.registerCommand(
       'sidekick.accounts.switch',
-      withView('Switch to which account?', switchTo, (view) => !view.isActive),
+      withView(
+        'Switch to which account?',
+        switchTo,
+        (view) => !view.isActive,
+        'No other saved account to switch to.',
+      ),
     ),
     vscode.commands.registerCommand(
       'sidekick.accounts.signInAgain',
