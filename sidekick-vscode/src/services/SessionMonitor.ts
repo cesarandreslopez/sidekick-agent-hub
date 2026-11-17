@@ -2685,7 +2685,7 @@ export class SessionMonitor implements vscode.Disposable {
     // Hook and memory signals exist for the activity map alone: every other
     // consumer (aggregator, timeline, event stream, audit log) skips them.
     if (isHookActivitySystemEvent(event) || isMemoryAttachmentSystemEvent(event)) {
-      this.activity.observe(event);
+      this.observeActivity(event);
       this.stats.lastUpdated = new Date();
       return;
     }
@@ -2703,7 +2703,7 @@ export class SessionMonitor implements vscode.Disposable {
     const prevCompactionCount = this.aggregator.getCompactionEvents().length;
     const prevTruncationCount = this.aggregator.getTruncationEvents().length;
     this.aggregator.processEvent(event);
-    this.activity.observe(event);
+    this.observeActivity(event);
 
     // During replay, skip expensive VS Code event firing — views will get
     // a batch update via onSessionStart after replay completes.
@@ -2884,12 +2884,16 @@ export class SessionMonitor implements vscode.Disposable {
       if (hasContextSignal) {
         this.addContextTimelinePoint(event.timestamp, newContextSize, this.currentTurnIndex);
         // The same numbers the dashboard's context gauge shows.
-        this.activity.observeContext({
-          at: Date.parse(event.timestamp),
-          usedTokens: newContextSize,
-          windowTokens:
-            this.provider.getContextWindowLimit?.(usage.model) ?? DEFAULT_CONTEXT_WINDOW,
-        });
+        try {
+          this.activity.observeContext({
+            at: Date.parse(event.timestamp),
+            usedTokens: newContextSize,
+            windowTokens:
+              this.provider.getContextWindowLimit?.(usage.model) ?? DEFAULT_CONTEXT_WINDOW,
+          });
+        } catch (error) {
+          this.reportActivityFailure(error);
+        }
       }
 
       // Attribute tokens to active plan step
@@ -4184,6 +4188,28 @@ export class SessionMonitor implements vscode.Disposable {
     this.resetTaskState();
     this.aggregator.reset();
     this.resetActivity();
+  }
+
+  /**
+   * Feeds the activity map. It is an auxiliary consumer: if it throws (say, on
+   * a shell command it can't classify) the event must still reach every other
+   * view, and the rest of a replayed batch must still be read.
+   */
+  private observeActivity(event: SessionEvent): void {
+    try {
+      this.activity.observe(event);
+    } catch (error) {
+      this.reportActivityFailure(error);
+    }
+  }
+
+  private activityFailureReported = false;
+
+  /** Logs the first activity-map failure; later ones would only repeat it. */
+  private reportActivityFailure(error: unknown): void {
+    if (this.activityFailureReported) return;
+    this.activityFailureReported = true;
+    logError('SessionMonitor: activity map skipped an event it could not read', error);
   }
 
   /** Retains useful structured metadata while bounding large tool payloads. */

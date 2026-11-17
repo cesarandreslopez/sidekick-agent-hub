@@ -337,3 +337,26 @@ describe('SessionMonitor activity log', () => {
     expect(station(malformed.monitor, 'shell')?.count).toBe(1);
   });
 });
+
+describe('SessionMonitor when the activity map fails', () => {
+  it('keeps aggregating the rest of the batch after the activity map throws on one event', async () => {
+    fs.writeFileSync(file, SESSION);
+    const { monitor, internals } = monitorOn(file);
+    const store = monitor.getActivityStore();
+    const realObserve = store.observe.bind(store);
+    let calls = 0;
+    // Throw on the first event only, as the classifier did for a shell command
+    // naming `constructor`.
+    vi.spyOn(store, 'observe').mockImplementation((event) => {
+      calls++;
+      if (calls === 1) throw new TypeError('NET_SUBCOMMANDS[program]?.has is not a function');
+      return realObserve(event);
+    });
+
+    await internals.readInitialContent();
+
+    const tools = monitor.getStats().toolCalls.map((call) => call.name);
+    expect(tools).toEqual(['Read', 'Bash']);
+    expect(station(monitor, 'shell')?.count).toBe(1);
+  });
+});
