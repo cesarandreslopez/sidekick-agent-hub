@@ -121,6 +121,7 @@ import { resolveDiagnosticAtSelection } from './utils/diagnosticAtSelection';
 import { PROVIDER_LABELS, accountDisplayName } from './commands/accountQuickPick';
 import { formatTimeoutSeconds } from './utils/formatTimeout';
 import { currentFirst } from './utils/pickerOrder';
+import { locateEditRange, relocateInsertLine, type EditTarget } from './utils/editRange';
 import { buildReportCsp } from './utils/reportCsp';
 import type { AccountProviderId, SyncReport } from 'sidekick-shared';
 import {
@@ -2539,9 +2540,15 @@ export async function activate(context: vscode.ExtensionContext) {
       );
       const suffix = editor.document.getText(suffixRange);
 
-      // Capture selection state before async operation
+      // Capture where the request was made: the user can move the cursor,
+      // switch editors or keep typing while the transform runs.
       const originalSelection = editor.selection;
       const selectedText = editor.document.getText(originalSelection);
+      const target: EditTarget = {
+        document: editor.document,
+        range: new vscode.Range(originalSelection.start, originalSelection.end),
+        version: editor.document.version,
+      };
 
       // One request; a retryable provider failure offers to run it again.
       const attempt = async (): Promise<void> => {
@@ -2612,19 +2619,23 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
           }
 
-          // Verify selection hasn't changed
-          if (!editor.selection.isEqual(originalSelection)) {
-            vscode.window.showWarningMessage(
-              'Selection changed during transform. Please try again.',
-            );
+          // Place the result where the code is now; a moved cursor doesn't
+          // matter, but edited code means the result can't be placed safely.
+          const range = locateEditRange(target, selectedText);
+          if (!range) {
             statusBarManager?.setConnected();
+            const copy = 'Copy Result';
+            const action = await vscode.window.showWarningMessage(
+              'The selected code changed while it was being transformed, so the result was not applied.',
+              copy,
+            );
+            if (action === copy) await vscode.env.clipboard.writeText(cleaned);
             return;
           }
 
-          // Apply the edit
-          const success = await editor.edit((editBuilder) => {
-            editBuilder.replace(originalSelection, cleaned);
-          });
+          const workspaceEdit = new vscode.WorkspaceEdit();
+          workspaceEdit.replace(target.document.uri, range, cleaned);
+          const success = await vscode.workspace.applyEdit(workspaceEdit);
 
           if (success) {
             statusBarManager?.setConnected();
@@ -2691,18 +2702,45 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         if (result.documentation && result.insertLine !== undefined) {
-          // Verify we're still in the same editor and position hasn't changed drastically
-          if (vscode.window.activeTextEditor !== originalEditor) {
-            vscode.window.showWarningMessage('Editor changed during generation. Please try again.');
+          // The user may have switched editors or typed above the function
+          // while the docs were generated: find the function again.
+          const document = originalEditor.document;
+          const insertLine = result.anchor
+            ? relocateInsertLine(document, {
+                version: result.anchor.version,
+                anchorLine: result.anchor.line,
+                anchorText: result.anchor.text,
+                insertLine: result.insertLine,
+              })
+            : result.insertLine;
+          if (insertLine === undefined) {
             statusBarManager?.setConnected();
+            const copy = 'Copy Documentation';
+            const action = await vscode.window.showWarningMessage(
+              'The code changed while its documentation was generated, so it was not inserted.',
+              copy,
+            );
+            if (action === copy) await vscode.env.clipboard.writeText(result.documentation);
             return;
           }
 
-          // Insert documentation above the function/class
-          const insertPosition = new vscode.Position(result.insertLine, 0);
-          const success = await originalEditor.edit((editBuilder) => {
-            editBuilder.insert(insertPosition, result.documentation!);
-          });
+          const workspaceEdit = new vscode.WorkspaceEdit();
+          if (insertLine >= document.lineCount) {
+            // A Python body that doesn't exist yet, at the very end of the file.
+            const lastLine = document.lineAt(document.lineCount - 1);
+            workspaceEdit.insert(
+              document.uri,
+              lastLine.range.end,
+              '\n' + result.documentation.replace(/\n$/, ''),
+            );
+          } else {
+            workspaceEdit.insert(
+              document.uri,
+              new vscode.Position(insertLine, 0),
+              result.documentation,
+            );
+          }
+          const success = await vscode.workspace.applyEdit(workspaceEdit);
 
           if (success) {
             statusBarManager?.setConnected();

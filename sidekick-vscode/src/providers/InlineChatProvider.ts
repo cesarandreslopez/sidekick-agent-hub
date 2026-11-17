@@ -12,42 +12,11 @@ import { InlineChatService } from '../services/InlineChatService';
 import type { InlineChatRequest } from '../types/inlineChat';
 import { log, logError } from '../services/Logger';
 import { showProviderFailure } from '../utils/providerRetryPrompt';
+import { locateEditRange, type EditTarget } from '../utils/editRange';
 
-/**
- * Where an edit request was made. Captured before the AI call, because the
- * user can move the cursor or keep typing while the response is generated.
- */
-export interface EditTarget {
-  document: vscode.TextDocument;
-  range: vscode.Range;
-  version: number;
-}
-
-/**
- * Finds where a suggested edit should land now.
- *
- * Returns the captured range when the document is unchanged, or when the
- * originally selected text is still at that range. Otherwise it re-locates
- * the selected text when it occurs exactly once. Returns `undefined` when the
- * edit can no longer be placed safely (including an insertion point in a
- * document that has since changed).
- */
-export function locateEditRange(
-  target: EditTarget,
-  selectedText: string,
-): vscode.Range | undefined {
-  const { document } = target;
-  if (document.version === target.version) return target.range;
-  if (!selectedText) return undefined;
-  if (document.getText(target.range) === selectedText) return target.range;
-  const text = document.getText();
-  const first = text.indexOf(selectedText);
-  if (first === -1 || text.indexOf(selectedText, first + 1) !== -1) return undefined;
-  return new vscode.Range(
-    document.positionAt(first),
-    document.positionAt(first + selectedText.length),
-  );
-}
+// Moved to utils so Transform and Generate Docs place their edits the same way;
+// re-exported for existing importers.
+export { locateEditRange, type EditTarget } from '../utils/editRange';
 
 /**
  * InlineChatProvider - Orchestrates inline chat interactions.

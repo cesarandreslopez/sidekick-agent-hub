@@ -86,3 +86,51 @@ describe('DocumentationService failure cause', () => {
     expect(cancelled).not.toHaveProperty('cause');
   });
 });
+
+describe('DocumentationService Python docstrings', () => {
+  beforeEach(() => {
+    executeWithTimeout.mockReset();
+    executeWithTimeout.mockImplementation(runTask);
+  });
+
+  function pythonEditor(code: string, cursorLine: number) {
+    const lines = code.split('\n');
+    return {
+      document: {
+        languageId: 'python',
+        version: 7,
+        lineCount: lines.length,
+        getText: () => code,
+        lineAt: (line: number) => ({
+          text: lines[line] ?? '',
+          firstNonWhitespaceCharacterIndex: (lines[line] ?? '').search(/\S|$/),
+        }),
+      },
+      selection: { isEmpty: true, start: { line: cursorLine }, active: { line: cursorLine } },
+    };
+  }
+
+  it('inserts the docstring inside the body, indented like it', async () => {
+    const code = 'import os\n\n\ndef add(a, b):\n    return a + b\n';
+    const result = await makeService(async () => '"""Add two numbers."""').generateDocumentation(
+      pythonEditor(code, 3) as never,
+    );
+
+    expect(result).toMatchObject({
+      insertLine: 4,
+      documentation: '    """Add two numbers."""\n',
+      anchor: { line: 3, text: 'def add(a, b):', version: 7 },
+    });
+  });
+
+  it('reports an existing body docstring without calling the AI', async () => {
+    const complete = vi.fn(async () => '"""x"""');
+    const code = 'def add(a, b):\n    """Already here."""\n    return a + b';
+    const result = await makeService(complete).generateDocumentation(
+      pythonEditor(code, 0) as never,
+    );
+
+    expect(result.error).toBe('This definition already has a docstring.');
+    expect(executeWithTimeout).not.toHaveBeenCalled();
+  });
+});

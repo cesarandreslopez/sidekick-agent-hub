@@ -8,7 +8,9 @@ Automatically generate JSDoc/docstrings for functions, classes, and methods.
 
 1. Place your cursor in a function or select code
 2. Press `Ctrl+K Ctrl+G` (`Cmd+K Cmd+G` on Mac)
-3. Documentation is inserted above the function
+3. Documentation is inserted where the language expects it: a doc comment above the function, or for Python a docstring as the first line of the body
+
+If you keep editing while the documentation is generated, it is still inserted at the function you asked about. If that function changed so much that it can't be found again, you're offered a copy instead.
 
 ## Supported Languages
 

@@ -12,6 +12,7 @@ import { AuthService } from './AuthService';
 import { resolveModel } from './ModelResolver';
 import { TimeoutManager, getTimeoutManager, type RetryAttempt } from './TimeoutManager';
 import { formatTimeoutSeconds } from '../utils/formatTimeout';
+import { findPythonDocTarget } from '../utils/pythonDocstring';
 import {
   getDocGenerationSystemPrompt,
   getDocGenerationUserPrompt,
@@ -28,6 +29,12 @@ export interface DocumentationResult {
   documentation?: string;
   /** Line number where documentation should be inserted, or undefined if failed */
   insertLine?: number;
+  /**
+   * The line the insertion is anchored to (the function/class line) and its
+   * text when the request was made, so the caller can find the right place
+   * again if the document changed while the request ran.
+   */
+  anchor?: { line: number; text: string; version: number };
   /** Error message if generation failed */
   error?: string;
   /**
@@ -112,13 +119,41 @@ export class DocumentationService implements vscode.Disposable {
       insertLine = detected.startLine;
     }
 
-    // Check if documentation already exists
-    if (insertLine > 0) {
+    // The line the insertion is anchored to; for Python, the def/class line.
+    let anchorLine = insertLine;
+    // Python docstrings go inside the body, indented like it.
+    let pythonIndent: string | undefined;
+    if (language === 'python') {
+      const target = findPythonDocTarget(this.documentLines(document), insertLine);
+      if (target.kind === 'oneLiner') {
+        return {
+          error:
+            'This definition is on one line, so a docstring has nowhere to go. Move its body to its own line first.',
+        };
+      }
+      if (target.kind === 'documented') {
+        return { error: 'This definition already has a docstring.' };
+      }
+      if (target.kind === 'insert') {
+        insertLine = target.insertLine;
+        anchorLine = target.defLine;
+        pythonIndent = target.indent;
+      }
+      // A selection that isn't a definition keeps the generic behaviour below.
+    }
+
+    // Check if documentation already exists (comment-style docs sit above the code)
+    if (pythonIndent === undefined && insertLine > 0) {
       const lineAbove = document.lineAt(insertLine - 1).text.trim();
       if (lineAbove.endsWith('*/') || lineAbove.endsWith('"""') || lineAbove.endsWith("'''")) {
         return { error: 'Documentation already exists above this code block.' };
       }
     }
+    const anchor = {
+      line: anchorLine,
+      text: document.lineAt(anchorLine).text,
+      version: document.version,
+    };
 
     try {
       log(`Generating documentation for ${language} code (${code.length} chars)`);
@@ -182,20 +217,28 @@ export class DocumentationService implements vscode.Disposable {
         return { error: 'Could not generate valid documentation. Please try again.' };
       }
 
-      // Add proper indentation based on the target line
-      const targetLine = document.lineAt(insertLine);
-      const indent = targetLine.text.match(/^(\s*)/)?.[1] ?? '';
+      // Add proper indentation based on the target line (Python: the body's).
+      const indent = pythonIndent ?? document.lineAt(insertLine).text.match(/^(\s*)/)?.[1] ?? '';
       const indentedDoc = this.indentDocumentation(cleaned, indent, language);
 
       return {
         documentation: indentedDoc + '\n',
         insertLine,
+        anchor,
       };
     } catch (error) {
       logError('Documentation generation failed', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
       return { error: message, cause: error };
     }
+  }
+
+  /** The document's lines (bounded), for pure helpers that work on text. */
+  private documentLines(document: vscode.TextDocument): string[] {
+    const count = Math.min(document.lineCount, 20_000);
+    const lines: string[] = [];
+    for (let i = 0; i < count; i++) lines.push(document.lineAt(i).text);
+    return lines;
   }
 
   /**
