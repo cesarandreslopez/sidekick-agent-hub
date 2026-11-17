@@ -78,6 +78,7 @@ describe('collectSessionItems', () => {
       id: 'claude-code',
       displayName: 'Claude Code',
       extractSessionLabel: vi.fn((p: string) => labels[p] ?? null),
+      getSessionId: vi.fn((p: string) => p.replace(/^.*\//, '').replace(/\.jsonl$/, '')),
       findSessionFiles: vi.fn(() => []),
       findAllSessions: vi.fn(() => []),
       getProjectsBaseDir: vi.fn(() => ''),
@@ -121,7 +122,7 @@ describe('collectSessionItems', () => {
     expect(items[0].label).toBe('Untitled session');
   });
 
-  it('marks sessions active when mtime < 60s ago', async () => {
+  it('marks sessions active within the two-minute live window', async () => {
     const { statSync } = await import('fs');
     const mocked = vi.mocked(statSync);
     mocked.mockImplementation((() => ({
@@ -136,6 +137,13 @@ describe('collectSessionItems', () => {
 
     expect(items[0].isActive).toBe(true);
     expect(items[0].age).toBe('just now');
+
+    // 90 s ago is still Live: the picker uses the same two-minute rule as
+    // the rest of Sidekick, not the 60 s it used to.
+    mocked.mockImplementation((() => ({ mtime: new Date('2026-02-20T11:58:30Z') })) as never);
+    expect(collectSessionItems(['/sessions/live.jsonl'], provider, now)[0].isActive).toBe(true);
+    mocked.mockImplementation((() => ({ mtime: new Date('2026-02-20T11:57:30Z') })) as never);
+    expect(collectSessionItems(['/sessions/live.jsonl'], provider, now)[0].isActive).toBe(false);
   });
 
   it('caps at 50 items', async () => {
@@ -195,17 +203,26 @@ describe('previewToPickerItem', () => {
     };
   }
 
-  it('maps preview fields and truncates the session id to 8 characters', () => {
+  it('maps preview fields, keeping a Codex id long enough to tell sessions apart', () => {
     const item = previewToPickerItem(preview({}), now);
 
     expect(item).toEqual({
       sessionPath: '/codex/sessions/rollout-2026-02-20-0198a3c2.jsonl',
       label: 'Fix the flaky watcher test',
-      sessionId: '0198a3c2',
+      // UUIDv7: the first group is a coarse timestamp shared by nearby sessions.
+      sessionId: '0198a3c2-9d1e',
       age: '5m ago',
       isActive: false,
       providerId: 'codex',
     });
+  });
+
+  it('truncates other providers\u2019 session ids to 8 characters', () => {
+    const item = previewToPickerItem(
+      preview({ provider: 'claude-code', sessionId: '3fa85f64-5717-4562-b3fc-2c963f66afa6' }),
+      now,
+    );
+    expect(item.sessionId).toBe('3fa85f64');
   });
 
   it('keeps short session ids untouched', () => {

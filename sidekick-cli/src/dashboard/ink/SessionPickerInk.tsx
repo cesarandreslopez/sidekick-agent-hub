@@ -16,6 +16,8 @@ import {
 import { BRAND_INLINE, LOGO_ART } from '../branding';
 import { parseBlessedTags } from './parseBlessedTags';
 import { displayWidth } from '../blessedText';
+import { TooSmallOverlay } from './TooSmallOverlay';
+import { useTerminalSize } from './useTerminalSize';
 
 /** Cut to `max` terminal columns (wide characters count as two). */
 function truncateToWidth(text: string, max: number): string {
@@ -91,13 +93,84 @@ interface SessionPickerInkProps {
   onSelect: (sessionPath: string | null) => void;
 }
 
+/** Smallest terminal the picker lays out in; below it the too-small notice shows. */
+const PICKER_MIN_COLUMNS = 60;
+const PICKER_MIN_ROWS = 15;
+/** The logo costs six rows; below this height they go to the list instead. */
+const PICKER_LOGO_MIN_ROWS = 22;
+/** Below this width the age and id columns are dropped so titles stay readable. */
+const PICKER_DETAIL_MIN_COLUMNS = 70;
+const AGE_WIDTH = 9;
+
+export interface PickerLayout {
+  tooSmall: boolean;
+  showLogo: boolean;
+  /** List rows that fit between the chrome. */
+  viewportHeight: number;
+  /** Whether the age and id columns are shown. */
+  showDetails: boolean;
+  /** Width of the session title column. */
+  labelWidth: number;
+  /** Width of the id column (the longest id shown). */
+  idWidth: number;
+}
+
+/**
+ * Lay the picker out for a `columns` × `rows` terminal, from the chrome it
+ * actually draws: the logo (one blank row and five lines), the list's border
+ * and title row (three), and the status bar (one). The old fixed `rows - 15`
+ * left blank rows on tall terminals and overflowed short ones.
+ */
+export function pickerLayout(
+  columns: number,
+  rows: number,
+  items: readonly SessionPickerItem[],
+): PickerLayout {
+  const tooSmall = columns < PICKER_MIN_COLUMNS || rows < PICKER_MIN_ROWS;
+  const showLogo = rows >= PICKER_LOGO_MIN_ROWS;
+  const chrome = (showLogo ? 1 + LOGO_ART.length : 0) + 3 + 1;
+  const viewportHeight = Math.max(1, rows - chrome);
+  const showDetails = columns >= PICKER_DETAIL_MIN_COLUMNS;
+  const idWidth = Math.max(8, ...items.map((item) => displayWidth(item.sessionId)));
+  // Margins (2 + 2), border (1 + 1), marker (2), badge (5), dot (2), LIVE (5).
+  const fixed = 6 + 2 + 5 + 2 + 5 + (showDetails ? 1 + AGE_WIDTH + 1 + idWidth : 0);
+  return {
+    tooSmall,
+    showLogo,
+    viewportHeight,
+    showDetails,
+    labelWidth: Math.max(10, columns - fixed),
+    idWidth,
+  };
+}
+
+/**
+ * The selection change for one keystroke. Ink delivers a run of typed
+ * characters as one input (a held `j` arrives as "jjj"), so a run of the same
+ * navigation letter moves by its length instead of being ignored.
+ */
+export function pickerNavigationDelta(
+  input: string,
+  key: { downArrow?: boolean; upArrow?: boolean },
+): number {
+  if (key.downArrow) return 1;
+  if (key.upArrow) return -1;
+  if (/^j+$/.test(input)) return input.length;
+  if (/^k+$/.test(input)) return -input.length;
+  return 0;
+}
+
 export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): React.ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const { exit } = useApp();
+  const { columns, rows } = useTerminalSize();
 
   const { isRawModeSupported } = useStdin();
   const grouped = buildGroupedRows(items);
   const totalItems = items.length + 1;
+  const layout = pickerLayout(columns, rows, items);
+  const { viewportHeight } = layout;
+  const clamp = (index: number) => Math.max(0, Math.min(totalItems - 1, index));
 
   useInput(
     (input, key) => {
@@ -106,13 +179,22 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
         return;
       }
 
-      if (input === 'j' || key.downArrow) {
-        setSelectedIndex((prev) => Math.min(prev + 1, totalItems - 1));
+      const delta = pickerNavigationDelta(input, key);
+      if (delta !== 0) {
+        setSelectedIndex((prev) => clamp(prev + delta));
         return;
       }
-
-      if (input === 'k' || key.upArrow) {
-        setSelectedIndex((prev) => Math.max(prev - 1, 0));
+      if (key.pageDown || key.pageUp) {
+        const step = Math.max(1, viewportHeight - 1) * (key.pageDown ? 1 : -1);
+        setSelectedIndex((prev) => clamp(prev + step));
+        return;
+      }
+      if (input === 'g' || key.home) {
+        setSelectedIndex(0);
+        return;
+      }
+      if (input === 'G' || key.end) {
+        setSelectedIndex(totalItems - 1);
         return;
       }
 
@@ -124,15 +206,20 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
     { isActive: isRawModeSupported },
   );
 
-  const rows = process.stdout.rows || 24;
-  const viewportHeight = Math.max(5, rows - 15);
+  if (layout.tooSmall) return <TooSmallOverlay columns={columns} rows={rows} />;
 
-  /** Render a single session item row. */
+  /**
+   * One row. The selection is marked with a pointer as well as inverse video:
+   * NO_COLOR sets chalk to level 0, which drops inverse, and the selected row
+   * was then indistinguishable from the others.
+   */
   function renderSessionRow(i: number, isSelected: boolean): React.ReactElement {
+    const marker = isSelected ? '▸ ' : '  ';
     if (i === items.length) {
       return (
         <Box key="wait">
-          <Text inverse={isSelected}>
+          <Text inverse={isSelected} wrap="truncate-end">
+            {marker}
             <Text color="yellow">+</Text> Wait for a new session to start...
           </Text>
         </Box>
@@ -140,17 +227,27 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
     }
 
     const item = items[i];
-    const dot = item.isActive ? '\u25CF' : '\u25CB';
+    const dot = item.isActive ? '●' : '○';
     const dotColor = item.isActive ? 'green' : undefined;
     const badge = item.providerId ? PROVIDER_BADGES[item.providerId] : null;
-    const truncLabel = padToWidth(truncateToWidth(item.label, 40), 40);
+    const truncLabel = padToWidth(
+      truncateToWidth(item.label, layout.labelWidth),
+      layout.labelWidth,
+    );
 
     return (
       <Box key={item.sessionPath}>
-        <Text inverse={isSelected}>
+        <Text inverse={isSelected} wrap="truncate-end">
+          {marker}
           {badge && <Text color={badge.color}>[{badge.badge}]</Text>}{' '}
-          <Text color={dotColor}>{dot}</Text> {truncLabel}{' '}
-          <Text dimColor>{item.age.padEnd(9)}</Text> <Text dimColor>{item.sessionId}</Text>
+          <Text color={dotColor}>{dot}</Text> {truncLabel}
+          {layout.showDetails && (
+            <>
+              {' '}
+              <Text dimColor>{item.age.padEnd(AGE_WIDTH)}</Text>{' '}
+              <Text dimColor>{padToWidth(item.sessionId, layout.idWidth)}</Text>
+            </>
+          )}
           {item.isActive ? <Text color="green"> LIVE</Text> : ''}
         </Text>
       </Box>
@@ -195,12 +292,13 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
           const badge = PROVIDER_BADGES[row.providerId as ProviderId];
           elements.push(
             <Box key={`hdr-${row.providerId}`}>
-              <Text dimColor>{'\u2500\u2500'} </Text>
-              {badge && <Text color={badge.color}>{name}</Text>}
-              {!badge && <Text>{name}</Text>}
-              <Text dimColor>
-                {' '}
-                {'\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500'}
+              <Text wrap="truncate-end">
+                <Text dimColor>{'──'} </Text>
+                {badge ? <Text color={badge.color}>{name}</Text> : name}
+                <Text dimColor>
+                  {' '}
+                  {'──────────'}
+                </Text>
               </Text>
             </Box>,
           );
@@ -228,15 +326,19 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
   }
 
   return (
-    <Box flexDirection="column" width="100%" height={rows}>
+    <Box flexDirection="column" width={columns} height={rows}>
       {/* Logo */}
-      <Box justifyContent="center" marginTop={1}>
-        <Box flexDirection="column" width={50}>
-          {LOGO_ART.map((line, i) => (
-            <Text key={`logo-${i}`}>{parseBlessedTags(line)}</Text>
-          ))}
+      {layout.showLogo && (
+        <Box justifyContent="center" marginTop={1} flexShrink={0}>
+          <Box flexDirection="column" width={50}>
+            {LOGO_ART.map((line, i) => (
+              <Text key={`logo-${i}`} wrap="truncate-end">
+                {parseBlessedTags(line)}
+              </Text>
+            ))}
+          </Box>
         </Box>
-      </Box>
+      )}
 
       {/* Session list */}
       <Box
@@ -245,20 +347,25 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
         borderColor="magenta"
         marginX={2}
         flexGrow={1}
+        overflow="hidden"
       >
-        <Text color="magenta"> Sessions ({items.length}) </Text>
+        <Text color="magenta" wrap="truncate-end">
+          {' '}
+          Sessions ({items.length}){' '}
+        </Text>
         {renderList()}
       </Box>
 
       {/* Status bar */}
-      <Box height={1}>
-        <Text>
+      <Box height={1} flexShrink={0}>
+        <Text wrap="truncate-end">
           {' '}
           {parseBlessedTags(BRAND_INLINE)} <Text dimColor>Session Picker</Text>{' '}
           <Text bold>
-            {'\u2191'}/{'\u2193'}
+            {'↑'}/{'↓'}
           </Text>{' '}
-          navigate <Text bold>Enter</Text> select <Text bold>q</Text> quit
+          navigate <Text bold>PgUp/PgDn</Text> page <Text bold>Enter</Text> select{' '}
+          <Text bold>q</Text> quit
         </Text>
       </Box>
     </Box>
