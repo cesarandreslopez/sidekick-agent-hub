@@ -303,7 +303,7 @@ export function applyActivityRecord(state: ActivityState, record: ActivityRecord
       onCompaction(s, record, at);
       return;
     case 'subagentStart':
-      if (!s.agents[record.agentId]) {
+      if (!own(s.agents, record.agentId) && writableKey(record.agentId)) {
         s.agents[record.agentId] = { label: record.label, startedAt: at };
         if (!s.agentsSeen.includes(record.agentId)) {
           s.agentsSeen.push(record.agentId);
@@ -313,7 +313,7 @@ export function applyActivityRecord(state: ActivityState, record: ActivityRecord
       }
       return;
     case 'subagentEnd':
-      delete s.agents[record.agentId];
+      if (own(s.agents, record.agentId)) delete s.agents[record.agentId];
       return;
     case 'turnEnd':
       onTurnEnd(s, record.outcome, record.seq, at);
@@ -483,6 +483,21 @@ function findEntry(s: InternalActivityState, key: string): ActivityEntry | undef
   return undefined;
 }
 
+/**
+ * Model ids, agent ids and call keys come from session files, so the keyed
+ * maps in the state are read as own properties only, and a `__proto__` key is
+ * never written: `s.models['__proto__']` would otherwise hand back
+ * `Object.prototype` and the next `steps++` would change every object in the
+ * process.
+ */
+function own<T>(map: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(map, key) ? map[key] : undefined;
+}
+
+function writableKey(key: string): boolean {
+  return key !== '__proto__';
+}
+
 function callKey(agentId: string | undefined, id: string): string {
   return agentId ? `${agentId}/${id}` : id;
 }
@@ -549,11 +564,11 @@ function onStep(
   const model = record.model;
   const main = record.agentId === undefined;
   if (model) {
-    const known = s.models[model];
+    const known = own(s.models, model);
     if (known) {
       known.steps++;
       known.lastAt = at;
-    } else {
+    } else if (writableKey(model)) {
       s.models[model] = { steps: 1, firstAt: at, lastAt: at };
     }
   }
@@ -604,7 +619,7 @@ function onToolStart(
   at: number,
 ): void {
   const key = callKey(record.agentId, record.id);
-  if (s.running[key]) return;
+  if (own(s.running, key) || !writableKey(key)) return;
   const main = record.agentId === undefined;
   const station = record.station;
   const acc = s.stations[station];
@@ -651,7 +666,7 @@ function onToolEnd(
   at: number,
 ): void {
   const key = callKey(record.agentId, record.id);
-  const running = s.running[key];
+  const running = own(s.running, key);
   if (!running) {
     upgradeToDenied(s, key, record, at);
     return;

@@ -404,7 +404,14 @@ export class JsonlSessionWatcher implements SessionWatcher {
   private handleRawEvent(event: RawSessionEvent): void {
     const onSessionEvent = this.callbacks.onSessionEvent;
     if (onSessionEvent) {
-      for (const sessionEvent of this.sessionEventsOf(event)) onSessionEvent(sessionEvent);
+      // The canonical-event consumer (activity recording, mostly) is auxiliary:
+      // a throw there must not cost this line its follow events, which carry
+      // the tool call and the tokens the dashboard shows.
+      try {
+        for (const sessionEvent of this.sessionEventsOf(event)) onSessionEvent(sessionEvent);
+      } catch (error) {
+        this.callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
+      }
     }
     // For codex, raw events don't match RawSessionEvent shape exactly, but
     // JsonlParser parses any JSON object. Cast to Record for codex normalizer.

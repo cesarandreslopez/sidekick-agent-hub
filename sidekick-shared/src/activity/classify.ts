@@ -34,7 +34,7 @@ import {
   identifierLabel,
   readableName,
 } from './labels';
-import type { ActivityStationId } from './stations';
+import { isActivityStationId, type ActivityStationId } from './stations';
 import { DEFAULT_ACTIVITY_STRINGS, type ActivityLabelKey } from './strings';
 import type {
   ActivityClassification,
@@ -314,23 +314,23 @@ const NET_WORDS: ReadonlySet<string> = new Set([
   'wrangler',
 ]);
 /** Commands that reach the network only with some subcommands. */
-const NET_SUBCOMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
-  git: new Set(['push', 'pull', 'fetch', 'clone', 'ls-remote']),
-  npm: new Set(['install', 'i', 'ci', 'add', 'update', 'publish', 'view', 'audit', 'outdated']),
-  pnpm: new Set(['install', 'i', 'add', 'update', 'publish', 'outdated']),
-  yarn: new Set(['install', 'add', 'upgrade', 'publish']),
-  bun: new Set(['install', 'add', 'update', 'publish']),
-  pip: new Set(['install', 'download']),
-  pip3: new Set(['install', 'download']),
-  uv: new Set(['add', 'sync', 'pip']),
-  poetry: new Set(['add', 'install', 'update']),
-  go: new Set(['get']),
-  gem: new Set(['install']),
-  composer: new Set(['install', 'require', 'update']),
-  docker: new Set(['pull', 'push', 'login']),
-  brew: new Set(['install', 'update', 'upgrade', 'fetch']),
-  cargo: new Set(['install', 'fetch', 'publish', 'update']),
-};
+const NET_SUBCOMMANDS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['git', new Set(['push', 'pull', 'fetch', 'clone', 'ls-remote'])],
+  ['npm', new Set(['install', 'i', 'ci', 'add', 'update', 'publish', 'view', 'audit', 'outdated'])],
+  ['pnpm', new Set(['install', 'i', 'add', 'update', 'publish', 'outdated'])],
+  ['yarn', new Set(['install', 'add', 'upgrade', 'publish'])],
+  ['bun', new Set(['install', 'add', 'update', 'publish'])],
+  ['pip', new Set(['install', 'download'])],
+  ['pip3', new Set(['install', 'download'])],
+  ['uv', new Set(['add', 'sync', 'pip'])],
+  ['poetry', new Set(['add', 'install', 'update'])],
+  ['go', new Set(['get'])],
+  ['gem', new Set(['install'])],
+  ['composer', new Set(['install', 'require', 'update'])],
+  ['docker', new Set(['pull', 'push', 'login'])],
+  ['brew', new Set(['install', 'update', 'upgrade', 'fetch'])],
+  ['cargo', new Set(['install', 'fetch', 'publish', 'update'])],
+]);
 /** Programs that run a script named by their next word. */
 const RUNNERS: ReadonlySet<string> = new Set([
   'python',
@@ -361,13 +361,26 @@ const WRAPPERS: ReadonlySet<string> = new Set([
   'bunx',
   'uvx',
 ]);
+/**
+ * A user-configured station override, read as an own property only. Tool and
+ * server names come from session files, so a name like `constructor` must not
+ * reach `Object.prototype` and come back as a function.
+ */
+function ownStation(
+  overrides: Readonly<Record<string, ActivityStationId>> | undefined,
+  name: string,
+): ActivityStationId | undefined {
+  if (!overrides || !Object.hasOwn(overrides, name)) return undefined;
+  const value: unknown = overrides[name];
+  return isActivityStationId(value) ? value : undefined;
+}
 /** Two-word wrappers (`uv run x`, `pnpm dlx x`, `poetry run x`, `bundle exec x`). */
-const TWO_WORD_WRAPPERS: Readonly<Record<string, string>> = {
-  uv: 'run',
-  pnpm: 'dlx',
-  poetry: 'run',
-  bundle: 'exec',
-};
+const TWO_WORD_WRAPPERS: ReadonlyMap<string, string> = new Map([
+  ['uv', 'run'],
+  ['pnpm', 'dlx'],
+  ['poetry', 'run'],
+  ['bundle', 'exec'],
+]);
 /** Programs whose next word is worth naming (`git status`, `npm test`). */
 const SUBCOMMAND_PROGRAMS: ReadonlySet<string> = new Set([
   'npm',
@@ -449,7 +462,7 @@ function unwrapWords(words: readonly string[]): string[] {
       index += 2;
       continue;
     }
-    const second = TWO_WORD_WRAPPERS[name];
+    const second = TWO_WORD_WRAPPERS.get(name);
     if (second && words[index + 1] === second && index + 2 < words.length) {
       index += 2;
       continue;
@@ -510,7 +523,7 @@ function hintFor(segment: Segment): ActivityHint | undefined {
     if (/^test/.test(target)) return 'test';
     if (/^(?:build|compile|bundle|package)/.test(target)) return 'build';
     if (/^(?:lint|format|check)/.test(target)) return 'lint';
-    if (PACKAGE_MANAGERS.has(program) && NET_SUBCOMMANDS[program]?.has(sub ?? '')) {
+    if (PACKAGE_MANAGERS.has(program) && NET_SUBCOMMANDS.get(program)?.has(sub ?? '')) {
       return 'install';
     }
     if (program === 'make' && (!sub || sub === 'all')) return 'build';
@@ -522,9 +535,9 @@ function hintFor(segment: Segment): ActivityHint | undefined {
   }
   if (BUILD_PROGRAMS.has(program)) return 'build';
   if (LINT_PROGRAMS.has(program)) return 'lint';
-  if (program === 'git') return NET_SUBCOMMANDS.git.has(sub ?? '') ? 'remote' : 'vcs';
+  if (program === 'git') return NET_SUBCOMMANDS.get('git')?.has(sub ?? '') ? 'remote' : 'vcs';
   if (['pip', 'pip3', 'uv', 'poetry', 'gem', 'brew', 'composer'].includes(program)) {
-    if (NET_SUBCOMMANDS[program]?.has(sub ?? '')) return 'install';
+    if (NET_SUBCOMMANDS.get(program)?.has(sub ?? '')) return 'install';
   }
   return undefined;
 }
@@ -550,7 +563,7 @@ function networkLabel(segment: Segment): string {
     const host = url ? activityHostLabel(url.replace(/^["']|["']$/g, '')) : '';
     return host ? `${program} ${host}` : program;
   }
-  if (NET_SUBCOMMANDS[program]) return programLabel(segment);
+  if (NET_SUBCOMMANDS.has(program)) return programLabel(segment);
   if (['gh', 'aws', 'gcloud', 'az', 'kubectl', 'helm', 'terraform'].includes(program)) {
     const sub = subcommandOf(segment);
     return sub ? `${program} ${sub}` : program;
@@ -606,7 +619,7 @@ function classifyShellText(text: string, options: ShellOptions): ShellResult {
   // Anything that reaches the network, also from inside `$(…)`.
   for (const segment of segmentsOf(command, true)) {
     const sub = subcommandOf(segment);
-    if (NET_WORDS.has(segment.program) || NET_SUBCOMMANDS[segment.program]?.has(sub ?? '')) {
+    if (NET_WORDS.has(segment.program) || NET_SUBCOMMANDS.get(segment.program)?.has(sub ?? '')) {
       const hint = hintFor(segment) ?? 'remote';
       if (none) return { station: 'network', ...vocabulary('fetch'), hint };
       return { station: 'network', label: cleanActivityLabel(networkLabel(segment), 48), hint };
@@ -709,8 +722,9 @@ function classifyMcp(
   let station: ActivityStationId = 'network';
   if (overrides) {
     for (const name of serverNames(server)) {
-      if (overrides[name]) {
-        station = overrides[name];
+      const override = ownStation(overrides, name);
+      if (override) {
+        station = override;
         break;
       }
     }
@@ -834,7 +848,7 @@ export function classifyActivityTool(
   const rawName = str(input?._sidekickRawToolName);
   const instant = INSTANT_RAW_TOOLS.has(rawName) ? ({ instant: true } as const) : {};
 
-  const override = options?.stationOverrides?.tools?.[tool];
+  const override = ownStation(options?.stationOverrides?.tools, tool);
 
   // MCP: the full name, or a Codex call that names its server.
   const mcp = parseMcpToolName(tool);

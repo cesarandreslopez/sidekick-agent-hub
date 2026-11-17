@@ -48,6 +48,7 @@ import { activityPathLabel, cleanActivityLabel, identifierLabel } from './labels
 import type { ActivityStationId } from './stations';
 import { DEFAULT_ACTIVITY_STRINGS, type ActivityLabelKey } from './strings';
 import type {
+  ActivityClassification,
   ActivityContextObservation,
   ActivityDeniedBy,
   ActivityEventSource,
@@ -544,6 +545,28 @@ class Recorder implements ActivityRecorder {
     stream.lastActivityAt = at;
   }
 
+  /**
+   * The classifier is pure and total for every name it has been fuzzed with,
+   * but it reads strings straight out of session files. A throw here would
+   * leave the call numbered in `stream.started` with no `toolStart` record,
+   * and a checkpoint with that gap never restores, so a call the classifier
+   * cannot place is drawn at the shell station instead.
+   */
+  private classify(
+    name: string,
+    input: Record<string, unknown> | undefined,
+  ): ActivityClassification {
+    try {
+      return classifyActivityTool(name, input, this.options);
+    } catch {
+      return {
+        station: 'shell',
+        ...vocabularyLabel('tool'),
+        tool: cleanActivityLabel(name, 64) || 'tool',
+      };
+    }
+  }
+
   private startCall(
     block: Record<string, unknown>,
     at: number,
@@ -563,7 +586,7 @@ class Recorder implements ActivityRecorder {
     if (stream.started.has(id) || stream.open.has(id)) return;
     boundedSet(stream.started, id, MAX_SEEN * 4);
 
-    const classified = classifyActivityTool(name, input, this.options);
+    const classified = this.classify(name, input);
     const fileCount = Number(input?._sidekickPatchFileCount);
     const fold =
       patchCallId && Number.isInteger(fileCount) && fileCount > 1 ? fileCount : undefined;

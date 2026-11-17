@@ -128,7 +128,13 @@ export class ProviderReaderSessionWatcher implements SessionWatcher {
       // drop what they built before receiving them.
       if (this.reader.wasTruncated()) this.callbacks.onReset?.();
       for (const event of events) {
-        this.callbacks.onSessionEvent?.(event);
+        // The reader has already advanced past this batch, so a throw from the
+        // auxiliary canonical-event consumer must not cost the rest of it.
+        try {
+          this.callbacks.onSessionEvent?.(event);
+        } catch (err) {
+          this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+        }
         for (const followEvent of toFollowEvents(event, this.provider.id)) {
           this.callbacks.onEvent(followEvent);
         }

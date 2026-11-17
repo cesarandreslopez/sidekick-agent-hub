@@ -134,4 +134,73 @@ describe('onSessionEvent', () => {
     expect(order[0]).toBe('session:user');
     expect(order.indexOf('session:assistant')).toBeLessThan(order.indexOf('follow:assistant'));
   });
+
+  it('JSONL watcher: a throwing session-event consumer keeps the follow events', async () => {
+    const file = tempFile([
+      {
+        type: 'assistant',
+        timestamp: at(3),
+        message: {
+          id: 'm1',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'hi' }],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      },
+    ]);
+    const follow: string[] = [];
+    const errors: Error[] = [];
+    const watcher = new JsonlSessionWatcher('claude-code', file, {
+      onEvent: (event: FollowEvent) => follow.push(event.type),
+      onSessionEvent: () => {
+        throw new Error('consumer failed');
+      },
+      onError: (error) => errors.push(error),
+    });
+    watcher.start(true);
+    await settle();
+    watcher.stop();
+    expect(errors.map((error) => error.message)).toEqual(['consumer failed']);
+    expect(follow).toContain('assistant');
+  });
+
+  it('provider reader watcher: a throwing session-event consumer keeps the rest of the batch', async () => {
+    const file = tempFile([]);
+    const events: SessionEvent[] = [
+      { type: 'user', timestamp: at(1), message: { role: 'user', content: 'go' } },
+      {
+        type: 'assistant',
+        timestamp: at(2),
+        message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+      },
+    ];
+    const reader: SessionReader = {
+      readNew: () => events.splice(0),
+      readAll: () => [],
+      reset: () => undefined,
+      exists: () => true,
+      flush: () => undefined,
+      getPosition: () => 0,
+      seekTo: () => undefined,
+      wasTruncated: () => false,
+    };
+    const provider = {
+      id: 'codex',
+      createReader: () => reader,
+    } as unknown as SessionProviderBase;
+    const follow: string[] = [];
+    const errors: Error[] = [];
+    const watcher = new ProviderReaderSessionWatcher(provider, file, {
+      onEvent: (event) => follow.push(event.type),
+      onSessionEvent: (event) => {
+        if (event.type === 'user') throw new Error('consumer failed');
+      },
+      onError: (error) => errors.push(error),
+    });
+    watcher.start(true);
+    await settle();
+    watcher.stop();
+    expect(errors).toHaveLength(1);
+    expect(follow).toContain('assistant');
+  });
 });
