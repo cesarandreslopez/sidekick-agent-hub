@@ -54,7 +54,7 @@ The dashboard organizes information into five collapsible groups:
 
 ### History Tab
 
-The History tab charts the persisted usage store (`historical-data.json`) over **Today** (hourly buckets), **This Week** and **This Month** (daily), and **All Time** (monthly), with drill-down from months to days and days to hours. Sessions recorded before 0.27.3 keep their old, inflated Claude Code and Codex totals; the store is not rewritten. Three controls shape the chart:
+The History tab charts the persisted usage store (`historical-data.json`) over **Today** (hourly buckets), **Last 7 Days** (a rolling week) and **This Month** (daily), and **All Time** (monthly), with drill-down from months to days and days to hours. Sessions recorded before 0.27.3 keep their old, inflated Claude Code and Codex totals; the store is not rewritten. Three controls shape the chart:
 
 - **Metric** — tokens (cache-inclusive), cost, or messages.
 - **Series** — _Total_, _By model_ (stacked bars per model from the daily and monthly records), or _By tool_ (stacked tool calls; the metric select is disabled because tools carry no token attribution). Hourly buckets record no breakdown, so _Today_ shows totals.
