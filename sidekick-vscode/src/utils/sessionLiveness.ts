@@ -55,3 +55,40 @@ export function getSessionLiveness(monitor: LivenessSource, now = Date.now()): S
   const mtime = sessionMtimeMs(sessionPath, monitor.getProvider());
   return mtime !== null && now - mtime < SESSION_LIVE_WINDOW_MS ? 'live' : 'viewing';
 }
+
+/** How often sidebar views re-check liveness; matches the dashboard's tick. */
+export const LIVENESS_TICK_MS = 30_000;
+
+/**
+ * Re-checks liveness on a fixed tick, so "Live" decays to "Viewing" when a
+ * session simply goes quiet: no monitor event fires for that.
+ *
+ * The callback decides what to do (each view compares the fresh label with
+ * the one it last posted and skips hidden views). `start()` is idempotent, so
+ * a re-resolved view never stacks timers; call `stop()` from the view's
+ * dispose handlers.
+ */
+export class LivenessTicker {
+  private _timer?: ReturnType<typeof setInterval>;
+
+  constructor(
+    private readonly _tick: () => void,
+    private readonly _intervalMs = LIVENESS_TICK_MS,
+  ) {}
+
+  start(): void {
+    this.stop();
+    this._timer = setInterval(() => this._tick(), this._intervalMs);
+  }
+
+  stop(): void {
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = undefined;
+    }
+  }
+
+  get running(): boolean {
+    return this._timer !== undefined;
+  }
+}

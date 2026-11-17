@@ -24,6 +24,8 @@ import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
+import { getSessionLiveness, LivenessTicker, type SessionLiveness } from '../utils/sessionLiveness';
+import type { SessionProvider } from '../types/sessionProvider';
 
 /** True when a session path is a real file (DB-backed providers use synthetic paths). */
 function isRealFile(sessionPath: string): boolean {
@@ -43,7 +45,15 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   private _view?: vscode.WebviewView;
   private _disposables: vscode.Disposable[] = [];
   private _dataService: ProjectTimelineDataService;
+  /** The provider `_dataService` reads; a live provider switch replaces both. */
+  private _dataProvider: SessionProvider;
   private _currentRange: TimelineRange = '7d';
+  /** Bumped per timeline request; an older scan that finishes late is dropped. */
+  private _timelineGeneration = 0;
+  /** Liveness of the attached session when the timeline was last posted. */
+  private _postedLiveness?: SessionLiveness;
+  /** Re-sends the timeline when the attached session's Live/Viewing flips. */
+  private readonly _livenessTicker = new LivenessTicker(() => this._checkLiveness());
   private _refreshTimer?: ReturnType<typeof setTimeout>;
   /** Entries from the last timeline post, used to resolve expand requests. */
   private _lastSessions: TimelineSessionEntry[] = [];
@@ -56,7 +66,8 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     private readonly _sessionMonitor: SessionMonitor,
   ) {
     this._phrases = new PhraseRotationManager((msg) => this._postMessage(msg));
-    this._dataService = new ProjectTimelineDataService(this._sessionMonitor.getProvider());
+    this._dataProvider = this._sessionMonitor.getProvider();
+    this._dataService = new ProjectTimelineDataService(this._dataProvider);
 
     // Subscribe to session events
     this._disposables.push(
@@ -112,12 +123,14 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
           this._refreshTimer = undefined;
         }
         this._phrases.stop();
+        this._livenessTicker.stop();
       },
       undefined,
       this._disposables,
     );
 
     this._phrases.start();
+    this._livenessTicker.start();
     log('Project timeline webview resolved');
   }
 
@@ -137,7 +150,8 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
         this._openSessionFile(message.sessionPath);
         break;
       case 'refresh':
-        this._dataService.clearCache();
+        // Entries are cached by mtime, so changed sessions are re-read anyway;
+        // clearing would re-parse every session on each click.
         this._sendTimeline();
         break;
     }
@@ -153,6 +167,27 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     }, 10000); // 10s debounce for token usage updates
   }
 
+  /**
+   * The data service for the monitor's current provider. A live provider
+   * switch disposes the old provider, so the service is rebuilt around the new
+   * one (with an empty cache) instead of reading the old provider's sessions.
+   */
+  private _currentDataService(): ProjectTimelineDataService {
+    const provider = this._sessionMonitor.getProvider();
+    if (provider !== this._dataProvider) {
+      this._dataProvider = provider;
+      this._dataService = new ProjectTimelineDataService(provider);
+      this._lastSessions = [];
+    }
+    return this._dataService;
+  }
+
+  /** Tick: re-send only when the attached session's Live/Viewing changed. */
+  private _checkLiveness(): void {
+    if (!this._view?.visible) return;
+    if (getSessionLiveness(this._sessionMonitor) !== this._postedLiveness) this._sendTimeline();
+  }
+
   private _sendTimeline(): void {
     if (!this._view?.visible) {
       log('[Timeline] No visible webview view, skipping update');
@@ -166,38 +201,52 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       return;
     }
 
-    try {
-      const currentSessionPath = this._sessionMonitor.getSessionPath();
-      const sessions = this._dataService
-        .getTimelineEntries(workspacePath, this._currentRange, currentSessionPath)
-        .map((entry) => ({
+    const generation = ++this._timelineGeneration;
+    const isStale = () => generation !== this._timelineGeneration || !this._view;
+    const range = this._currentRange;
+    const currentSessionPath = this._sessionMonitor.getSessionPath();
+    const liveness = getSessionLiveness(this._sessionMonitor);
+
+    this._currentDataService()
+      .loadTimelineEntries(workspacePath, range, currentSessionPath, {
+        isStale,
+        onParseStart: () => this._postMessage({ type: 'loading', loading: true }),
+      })
+      .then((entries) => {
+        if (!entries || isStale()) return;
+        const sessions = entries.map((entry) => ({
           ...entry,
           durationLabel: formatDurationMs(entry.durationMs, { invalid: '—' }),
           tokensLabel: formatTokenCount(entry.totalTokens),
           canOpenFile: isRealFile(entry.sessionPath),
         }));
-      this._lastSessions = sessions;
+        this._lastSessions = sessions;
+        this._postedLiveness = liveness;
 
-      const projectName = vscode.workspace.workspaceFolders?.[0]?.name || 'Project';
+        const projectName = vscode.workspace.workspaceFolders?.[0]?.name || 'Project';
 
-      const state: ProjectTimelineState = {
-        sessions,
-        range: this._currentRange,
-        projectName,
-        lastUpdated: new Date().toISOString(),
-      };
+        const state: ProjectTimelineState = {
+          sessions,
+          range,
+          projectName,
+          lastUpdated: new Date().toISOString(),
+        };
 
-      log(`[Timeline] Sending ${sessions.length} sessions to webview`);
-      this._postMessage({ type: 'updateTimeline', state });
-    } catch (error) {
-      log(`[Timeline] Error building timeline: ${error}`);
-    }
+        log(`[Timeline] Sending ${sessions.length} sessions to webview`);
+        this._postMessage({ type: 'updateTimeline', state });
+      })
+      .catch((error) => {
+        log(`[Timeline] Error building timeline: ${error}`);
+        if (!isStale()) this._postMessage({ type: 'loading', loading: false });
+      });
   }
 
   private _sendSessionDetail(sessionId: string): void {
     // Resolve from the list the webview is showing; no rescan per expand.
     const session = this._lastSessions.find((s) => s.sessionId === sessionId);
-    const detail = session ? this._dataService.getSessionDetail(session.sessionPath) : null;
+    const detail = session
+      ? this._currentDataService().getSessionDetail(session.sessionPath)
+      : null;
     if (detail) {
       // The webview keys its cards by the timeline entry's id.
       this._postMessage({ type: 'sessionDetail', detail: { ...detail, sessionId } });
@@ -328,6 +377,8 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
                   box-shadow var(--sk-transition-fast);
       animation: sk-fade-in 0.25s ease-out both;
     }
+    /* Only the first paint fades in; refreshes must not replay it. */
+    .session-card.no-enter-animation { animation: none; }
 
     .session-card:hover {
       border-color: var(--vscode-focusBorder);
@@ -491,7 +542,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
 </head>
 <body>
   <div class="header">
-    <img src="${iconUri}" alt="Sidekick" />
+    <img src="${iconUri}" alt="" />
     <h1>Timeline</h1>
     <div class="range-controls" role="toolbar" aria-label="Time range">
       <button class="range-btn" data-range="24h" aria-pressed="false">24h</button>
@@ -509,7 +560,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     <p id="empty-state-phrase" class="empty-state-phrase">${getRandomPhrase()}</p>
   </div>
 
-  <div id="loading" class="loading" style="display: none;">Loading sessions...</div>
+  <div id="loading" class="loading" role="status">Loading sessions...</div>
 
   <div id="session-list" class="session-list"></div>
 
@@ -523,10 +574,18 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     var loadingEl = document.getElementById('loading');
     var rangeButtons = document.querySelectorAll('.range-btn');
     // Cards the user opened and details already fetched are tracked
-    // separately, so a timeline refresh never closes an open card.
-    var openIds = {};
+    // separately, so a timeline refresh never closes an open card. Open cards
+    // survive the view being hidden and shown again (it is not retained).
+    var saved = vscode.getState() || {};
+    var openIds = (saved.openIds && typeof saved.openIds === 'object') ? saved.openIds : {};
     var detailCache = {};
     var unavailableIds = {};
+    var requestedIds = {};
+    var hasRendered = false;
+
+    function saveState() {
+      vscode.setState({ openIds: openIds });
+    }
 
     function syncRangeButtons(range) {
       rangeButtons.forEach(function(b) {
@@ -546,6 +605,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     document.getElementById('refresh-btn').addEventListener('click', function() {
       detailCache = {};
       unavailableIds = {};
+      requestedIds = {};
       vscode.postMessage({ type: 'refresh' });
     });
 
@@ -592,6 +652,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
         var s = state.sessions[i];
         listed[s.sessionId] = true;
         var cardClass = 'session-card';
+        if (hasRendered) cardClass += ' no-enter-animation';
         if (s.isCurrent && s.isActive) cardClass += ' active-session';
         else if (s.isCurrent) cardClass += ' current';
 
@@ -644,7 +705,37 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
 
       // Forget open cards that left the list (range change).
       Object.keys(openIds).forEach(function(id) { if (!listed[id]) delete openIds[id]; });
+      saveState();
+      var focus = captureFocus();
       sessionListEl.innerHTML = html;
+      hasRendered = true;
+      restoreFocus(focus);
+      // Fetch details for cards restored open from saved state.
+      Object.keys(openIds).forEach(function(id) {
+        if (!detailCache[id] && !unavailableIds[id] && !requestedIds[id]) {
+          requestedIds[id] = true;
+          vscode.postMessage({ type: 'expandSession', sessionId: id });
+        }
+      });
+    }
+
+    // A refresh rebuilds the list; keep keyboard focus on the same control.
+    function captureFocus() {
+      var el = document.activeElement;
+      if (!el || !sessionListEl.contains(el)) return null;
+      var card = el.closest('.session-card');
+      if (!card) return null;
+      return {
+        sessionId: card.dataset.sessionId,
+        selector: el.classList.contains('open-file-btn') ? '.open-file-btn' : '.session-header',
+      };
+    }
+
+    function restoreFocus(focus) {
+      if (!focus) return;
+      var card = findCard(focus.sessionId);
+      var target = card && card.querySelector(focus.selector);
+      if (target) target.focus({ preventScroll: true });
     }
 
     function detailBody(sessionId, canOpen) {
@@ -715,11 +806,13 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       var open = !openIds[sessionId];
       if (open) openIds[sessionId] = true;
       else delete openIds[sessionId];
+      saveState();
       detailEl.classList.toggle('visible', open);
       headerEl.setAttribute('aria-expanded', open ? 'true' : 'false');
       if (open && !detailCache[sessionId]) {
         delete unavailableIds[sessionId];
         detailEl.innerHTML = detailBody(sessionId, card.dataset.canOpen === '1');
+        requestedIds[sessionId] = true;
         vscode.postMessage({ type: 'expandSession', sessionId: sessionId });
       }
     }
@@ -761,10 +854,12 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
           break;
         case 'sessionDetail':
           detailCache[message.detail.sessionId] = message.detail;
+          delete requestedIds[message.detail.sessionId];
           updateDetail(message.detail.sessionId);
           break;
         case 'sessionDetailUnavailable':
           unavailableIds[message.sessionId] = true;
+          delete requestedIds[message.sessionId];
           updateDetail(message.sessionId);
           break;
         case 'loading':
@@ -791,6 +886,7 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
   dispose(): void {
     if (this._refreshTimer) clearTimeout(this._refreshTimer);
     this._phrases.stop();
+    this._livenessTicker.stop();
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
     log('ProjectTimelineViewProvider disposed');

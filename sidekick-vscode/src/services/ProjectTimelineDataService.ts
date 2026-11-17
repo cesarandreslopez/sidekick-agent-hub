@@ -19,6 +19,11 @@ import type {
 import { log } from './Logger';
 import { SESSION_LIVE_WINDOW_MS } from '../utils/sessionLiveness';
 
+/** Lets queued I/O and messages run between two synchronous session reads. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 /**
  * Cached session metadata with mtime for invalidation.
  */
@@ -36,8 +41,8 @@ interface CachedDetail {
 /**
  * Data service that scans session files to build timeline entries.
  *
- * Uses lightweight parsing to extract only the metadata needed for
- * the timeline view (timestamps, token totals, error counts, key files).
+ * Each session is summarised by the provider's stats reader and cached by
+ * mtime, so only new or changed sessions are read again.
  */
 export class ProjectTimelineDataService {
   /** Cache keyed by session path */
@@ -48,36 +53,71 @@ export class ProjectTimelineDataService {
   constructor(private readonly _provider: SessionProvider) {}
 
   /**
-   * Gets timeline entries for the current project, filtered by range.
+   * Loads timeline entries for the current project, filtered by range.
+   *
+   * Every provider is summarised by its own `readSessionStats()` (the shared
+   * aggregator Session Analytics uses), so the cards agree with the dashboard.
+   * A full read of a large session costs ~100 ms, so uncached files are read
+   * one per event-loop turn: the extension host stays responsive while "All"
+   * scans a big project. Sessions whose last write predates the range are
+   * skipped before any read (a session cannot start after its last write).
    *
    * @param workspacePath - Workspace directory path
    * @param range - Time range filter
-   * @returns Sorted session entries (most recent first)
+   * @param currentSessionPath - The monitor's attached session, if any
+   * @param options.isStale - Checked between reads; a true result abandons the
+   *   scan and resolves `null` (a newer request superseded this one)
+   * @param options.onParseStart - Called once, before the first uncached read
+   * @returns Sorted session entries (most recent first), or `null` when stale
    */
-  getTimelineEntries(
+  async loadTimelineEntries(
     workspacePath: string,
     range: TimelineRange,
     currentSessionPath?: string | null,
-  ): TimelineSessionEntry[] {
+    options: { isStale?: () => boolean; onParseStart?: () => void } = {},
+  ): Promise<TimelineSessionEntry[] | null> {
     const sessionPaths = this._provider.findAllSessions(workspacePath);
     log(`[Timeline] Found ${sessionPaths.length} sessions for workspace`);
 
     const cutoff = this._getRangeCutoff(range);
     const entries: TimelineSessionEntry[] = [];
+    const toParse: Array<{ sessionPath: string; mtime: number }> = [];
+    const inRange = (entry: TimelineSessionEntry) =>
+      !cutoff || new Date(entry.startTime).getTime() >= cutoff;
 
     for (const sessionPath of sessionPaths) {
+      const mtime = this._getMtime(sessionPath);
+      if (mtime === null) continue;
+      if (cutoff && mtime < cutoff) continue;
+
+      const cached = this._cache.get(sessionPath);
+      if (cached && cached.mtime === mtime) {
+        // Current/live flags change without the file changing.
+        cached.entry.isCurrent = sessionPath === currentSessionPath;
+        cached.entry.isActive = this._isLive(cached.entry.isCurrent, mtime);
+        if (inRange(cached.entry)) entries.push(cached.entry);
+      } else {
+        toParse.push({ sessionPath, mtime });
+      }
+    }
+
+    if (toParse.length > 0) options.onParseStart?.();
+
+    for (const { sessionPath, mtime } of toParse) {
+      if (options.isStale?.()) return null;
       try {
-        const entry = this._getOrParseEntry(sessionPath, currentSessionPath);
-        if (!entry) continue;
-
-        // Filter by range
-        if (cutoff && new Date(entry.startTime).getTime() < cutoff) continue;
-
-        entries.push(entry);
+        const entry = this._parseSession(sessionPath, currentSessionPath);
+        if (entry) {
+          entry.isActive = this._isLive(entry.isCurrent, mtime);
+          this._cache.set(sessionPath, { entry, mtime });
+          if (inRange(entry)) entries.push(entry);
+        }
       } catch (error) {
         log(`[Timeline] Failed to parse session: ${sessionPath}: ${error}`);
       }
+      await yieldToEventLoop();
     }
+    if (options.isStale?.()) return null;
 
     // Sort by start time descending (most recent first)
     entries.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
@@ -199,242 +239,46 @@ export class ProjectTimelineDataService {
   }
 
   /**
-   * Gets or parses a timeline entry, using cache when mtime hasn't changed.
-   */
-  private _getOrParseEntry(
-    sessionPath: string,
-    currentSessionPath?: string | null,
-  ): TimelineSessionEntry | null {
-    const mtime = this._getMtime(sessionPath);
-    if (mtime === null) return null;
-
-    // Check cache
-    const cached = this._cache.get(sessionPath);
-    if (cached && cached.mtime === mtime) {
-      // Update current/live flags which may change
-      cached.entry.isCurrent = sessionPath === currentSessionPath;
-      cached.entry.isActive = this._isLive(cached.entry.isCurrent, mtime);
-      return cached.entry;
-    }
-
-    // Parse session
-    const entry = this._parseSession(sessionPath, currentSessionPath);
-    if (entry) {
-      entry.isActive = this._isLive(entry.isCurrent, mtime);
-      this._cache.set(sessionPath, { entry, mtime });
-    }
-    return entry;
-  }
-
-  /**
-   * Parses a session file to extract timeline metadata.
-   *
-   * Uses a lightweight two-pass approach:
-   * 1. Read the first 16 KB to extract start time, label, and first model
-   * 2. Read the last 16 KB to extract end time and final stats
-   *
-   * This avoids reading entire multi-MB session files just for the timeline.
+   * Summarises one session through the provider's stats reader. One code path
+   * for every provider: the cards then match Session Analytics (full message
+   * and token counts, TaskCreate calls, failed tool calls).
    */
   private _parseSession(
     sessionPath: string,
     currentSessionPath?: string | null,
   ): TimelineSessionEntry | null {
     const sessionId = this._provider.getSessionId(sessionPath);
+    const stats = this._provider.readSessionStats(sessionPath);
+    if (stats.availability === 'unavailable' || !stats.startTime) return null;
 
-    // Codex rollouts and OpenCode (often DB-backed, with synthetic paths) are
-    // summarised by the provider's own stats reader.
-    if (this._provider.id !== 'claude-code') {
-      try {
-        const stats = this._provider.readSessionStats(sessionPath);
-        if (!stats.startTime) return null;
-        const startMs = new Date(stats.startTime).getTime();
-        const endMs = stats.endTime ? new Date(stats.endTime).getTime() : startMs;
-        const isCurrent = sessionPath === currentSessionPath;
-        return {
-          sessionId,
-          sessionPath,
-          startTime: stats.startTime,
-          endTime: stats.endTime || null,
-          durationMs: endMs - startMs,
-          label: stats.label || sessionId.slice(0, 8),
-          totalTokens: summarizeTokens({
-            inputTokens: stats.tokens.input,
-            outputTokens: stats.tokens.output,
-            cacheWriteTokens: stats.tokens.cacheWrite,
-            cacheReadTokens: stats.tokens.cacheRead,
-          }).total,
-          totalCost: stats.costUsd,
-          messageCount: stats.messageCount,
-          taskCount: stats.toolUsage.TaskCreate || 0,
-          errorCount: Object.values(stats.toolFailures ?? {}).reduce((sum, n) => sum + n, 0),
-          keyFiles: [],
-          isCurrent,
-          isActive: isCurrent,
-          models: Object.keys(stats.modelUsage),
-        };
-      } catch {
-        return null;
-      }
-    }
-
-    let fileSize: number;
-    try {
-      fileSize = fs.statSync(sessionPath).size;
-    } catch {
-      return null;
-    }
-
-    if (fileSize === 0) return null;
-
-    // Read first chunk for start time, label, model
-    const headChunk = this._readChunk(sessionPath, 0, Math.min(16384, fileSize));
-    if (!headChunk) return null;
-
-    const headEvents = this._parseChunkEvents(headChunk);
-    if (headEvents.length === 0) return null;
-
-    // Read tail chunk for end time (skip if file is small enough that head covered it)
-    let tailEvents: Array<Record<string, unknown>> = [];
-    if (fileSize > 16384) {
-      const tailOffset = Math.max(0, fileSize - 16384);
-      const tailChunk = this._readChunk(sessionPath, tailOffset, fileSize - tailOffset);
-      if (tailChunk) {
-        tailEvents = this._parseChunkEvents(tailChunk);
-      }
-    }
-
-    const allSampled = [...headEvents, ...tailEvents];
-
-    let startTime = '';
-    let endTime = '';
-    // Split lines of one response repeat its usage; the last copy per id wins.
-    const usageById = new Map<string, number>();
-    let anonymousUsageTokens = 0;
-    let messageCount = 0;
-    let taskCount = 0;
-    let errorCount = 0;
-    const modelSet = new Set<string>();
-
-    for (const event of allSampled) {
-      const timestamp = typeof event.timestamp === 'string' ? event.timestamp : '';
-      const type = typeof event.type === 'string' ? event.type : '';
-      const message =
-        event.message && typeof event.message === 'object'
-          ? (event.message as Record<string, unknown>)
-          : undefined;
-
-      if (timestamp) {
-        if (!startTime || timestamp < startTime) startTime = timestamp;
-        if (!endTime || timestamp > endTime) endTime = timestamp;
-      }
-
-      if (type === 'assistant' || type === 'user') {
-        messageCount++;
-      }
-
-      const usage =
-        message?.usage && typeof message.usage === 'object'
-          ? (message.usage as Record<string, unknown>)
-          : undefined;
-      if (usage) {
-        const num = (value: unknown) => (typeof value === 'number' ? value : 0);
-        const usageTokens = summarizeTokens({
-          inputTokens: num(usage.input_tokens),
-          outputTokens: num(usage.output_tokens),
-          cacheWriteTokens: num(usage.cache_creation_input_tokens),
-          cacheReadTokens: num(usage.cache_read_input_tokens),
-        }).total;
-        if (typeof message?.id === 'string') usageById.set(message.id, usageTokens);
-        else anonymousUsageTokens += usageTokens;
-      }
-
-      if (typeof message?.model === 'string') {
-        modelSet.add(message.model);
-      }
-
-      const tool =
-        event.tool && typeof event.tool === 'object'
-          ? (event.tool as Record<string, unknown>)
-          : undefined;
-      if (type === 'tool_use' && tool?.name === 'TaskCreate') {
-        taskCount++;
-      }
-
-      const result =
-        event.result && typeof event.result === 'object'
-          ? (event.result as Record<string, unknown>)
-          : undefined;
-      if (type === 'tool_result' && result?.is_error === true) {
-        errorCount++;
-      }
-    }
-
-    if (!startTime) return null;
-
-    const label = this._provider.extractSessionLabel(sessionPath) || sessionId.slice(0, 8);
-    const startMs = new Date(startTime).getTime();
-    const endMs = endTime ? new Date(endTime).getTime() : startMs;
+    const startMs = new Date(stats.startTime).getTime();
+    const endMs = stats.endTime ? new Date(stats.endTime).getTime() : startMs;
     const isCurrent = sessionPath === currentSessionPath;
+    const label =
+      stats.label || this._provider.extractSessionLabel(sessionPath) || sessionId.slice(0, 8);
 
     return {
       sessionId,
       sessionPath,
-      startTime,
-      endTime: endTime || null,
+      startTime: stats.startTime,
+      endTime: stats.endTime || null,
       durationMs: endMs - startMs,
       label,
-      totalTokens: [...usageById.values()].reduce((sum, n) => sum + n, anonymousUsageTokens),
-      totalCost: 0,
-      messageCount,
-      taskCount,
-      errorCount,
+      totalTokens: summarizeTokens({
+        inputTokens: stats.tokens.input,
+        outputTokens: stats.tokens.output,
+        cacheWriteTokens: stats.tokens.cacheWrite,
+        cacheReadTokens: stats.tokens.cacheRead,
+      }).total,
+      totalCost: stats.costUsd,
+      messageCount: stats.messageCount,
+      taskCount: stats.toolUsage.TaskCreate || 0,
+      errorCount: Object.values(stats.toolFailures ?? {}).reduce((sum, n) => sum + n, 0),
       keyFiles: [],
       isCurrent,
       isActive: isCurrent,
-      models: Array.from(modelSet),
+      models: Object.keys(stats.modelUsage),
     };
-  }
-
-  /**
-   * Reads a raw chunk of bytes from a file.
-   */
-  private _readChunk(filePath: string, offset: number, length: number): string | null {
-    try {
-      const fd = fs.openSync(filePath, 'r');
-      const buffer = Buffer.alloc(length);
-      const bytesRead = fs.readSync(fd, buffer, 0, length, offset);
-      fs.closeSync(fd);
-      return buffer.toString('utf-8', 0, bytesRead);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Parses JSONL events from a raw text chunk.
-   * Skips the first and last lines (may be partial).
-   */
-  private _parseChunkEvents(chunk: string): Array<Record<string, unknown>> {
-    const lines = chunk.split('\n');
-    const events: Array<Record<string, unknown>> = [];
-
-    // If chunk starts at offset > 0, the first line may be partial — skip it.
-    // If chunk doesn't end with \n, the last line may be partial — skip it.
-    // For safety, always skip first and last if we have more than 2 lines.
-    const start = lines.length > 2 ? 1 : 0;
-    const end = lines.length > 2 ? lines.length - 1 : lines.length;
-
-    for (let i = start; i < end; i++) {
-      const trimmed = lines[i].trim();
-      if (!trimmed || !trimmed.startsWith('{')) continue;
-      try {
-        events.push(JSON.parse(trimmed) as Record<string, unknown>);
-      } catch {
-        // Skip malformed lines
-      }
-    }
-
-    return events;
   }
 
   /**
