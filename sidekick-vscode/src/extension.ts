@@ -134,7 +134,19 @@ import { hydratePricingCatalog, loadObservedContextWindows } from 'sidekick-shar
 
 /** Status bar manager for multi-state status display */
 /** Set while sidekick.setSessionProvider updates the setting and switches live. */
-let sessionProviderSwitchInFlight = false;
+/**
+ * Live session-provider switches queued or running. While any is pending,
+ * the settings listener must not offer a reload for the setting the switch
+ * itself writes.
+ */
+let pendingProviderSwitches = 0;
+/** Serializes live switches, so two never act on the monitor at once. */
+let providerSwitchQueue: Promise<void> = Promise.resolve();
+
+/** Whether Claude Code is the monitored session provider (quota polling is Claude-only). */
+function isClaudeSessionProvider(): boolean {
+  return sessionMonitor?.getProvider().id === 'claude-code';
+}
 let statusBarManager: StatusBarManager | undefined;
 
 /** Auth service managing Claude API access */
@@ -582,12 +594,13 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     });
 
-    // Create quota service for subscription limits (only for Claude Code provider)
-    if (sessionProvider.id === 'claude-code') {
-      quotaService = new QuotaService();
-      context.subscriptions.push(quotaService);
-      log('QuotaService initialized');
-    }
+    // Claude subscription limits. Created whatever the provider at activation,
+    // so a live switch to Claude Code has quota alerts and a quota card. It
+    // does not poll on its own: the dashboard starts its refresh only while
+    // the session provider is Claude Code.
+    quotaService = new QuotaService();
+    context.subscriptions.push(quotaService);
+    log('QuotaService initialized');
 
     // Create provider status service (public API — useful for all providers)
     providerStatusService = new ProviderStatusService();
@@ -618,8 +631,8 @@ export async function activate(context: vscode.ExtensionContext) {
     if (config.get<boolean>('enableEventLog')) {
       sessionMonitor.setEventLogger(eventLogger);
     }
-    // Apply Settings edits live, as the dashboard's Event Log checkbox does
-    // (setEventLogger is idempotent, so the checkbox's own call is harmless).
+    // Apply Settings edits live. The dashboard's Event Log checkbox writes the
+    // setting too, so this listener is the one place the logger is switched.
     const monitorForEventLog = sessionMonitor;
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -1421,7 +1434,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       const providerChanged =
-        event.affectsConfiguration('sidekick.sessionProvider') && !sessionProviderSwitchInFlight;
+        event.affectsConfiguration('sidekick.sessionProvider') && pendingProviderSwitches === 0;
       if (!enableMonitoring || !providerChanged) return;
       const action = await vscode.window.showInformationMessage(
         'Session provider setting changed. Reload to apply.',
@@ -1490,7 +1503,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }
 
-    quotaService?.fetchQuota();
+    if (isClaudeSessionProvider()) quotaService?.fetchQuota();
     dashboardProvider?.refreshSessionView();
   };
 
@@ -1512,7 +1525,7 @@ export async function activate(context: vscode.ExtensionContext) {
     try {
       accountService.notifyUpdated();
       accountStatusBar.refresh();
-      quotaService?.fetchQuota();
+      if (isClaudeSessionProvider()) quotaService?.fetchQuota();
       const registered = [report?.claude.registered, report?.codex.registered]
         .filter((entry): entry is { id: string; email?: string } => Boolean(entry))
         .map((entry) => entry.email ?? entry.id);
@@ -1755,46 +1768,53 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register session provider switch command
   context.subscriptions.push(
-    vscode.commands.registerCommand('sidekick.setSessionProvider', async (providerId: string) => {
-      if (!sessionMonitor) {
-        showMonitoringRequired();
-        return;
-      }
-
-      if (providerId !== 'claude-code' && providerId !== 'opencode' && providerId !== 'codex') {
-        vscode.window.showErrorMessage(`Unknown session provider: ${providerId}`);
-        return;
-      }
-
-      const currentProviderId = sessionMonitor.getProvider().id;
-      if (currentProviderId === providerId) {
-        return;
-      }
-
-      const config = vscode.workspace.getConfiguration('sidekick');
-      const target = vscode.workspace.workspaceFolders?.length
-        ? vscode.ConfigurationTarget.Workspace
-        : vscode.ConfigurationTarget.Global;
-      // This command switches live, so the settings listener must not also
-      // ask for a reload.
-      sessionProviderSwitchInFlight = true;
-      try {
-        await config.update('sessionProvider', providerId, target);
-
-        const newProvider = detectProvider();
-
-        const switched = await sessionMonitor.switchProvider(newProvider);
-        if (!switched) {
-          log(`Switched session provider to ${providerId}, no active session found yet`);
-        }
-      } finally {
-        sessionProviderSwitchInFlight = false;
-      }
-
-      peakHoursService?.reconcile();
-      dashboardProvider?.refreshSessionView();
+    vscode.commands.registerCommand('sidekick.setSessionProvider', (providerId: string) => {
+      // Queue behind any switch still running: the dashboard's picker can
+      // send several in quick succession, and overlapping switches acted on
+      // one monitor at once.
+      pendingProviderSwitches++;
+      const run = providerSwitchQueue.then(() => switchSessionProvider(providerId));
+      providerSwitchQueue = run.catch(() => undefined);
+      return run.finally(() => {
+        pendingProviderSwitches--;
+      });
     }),
   );
+
+  async function switchSessionProvider(providerId: string): Promise<void> {
+    if (!sessionMonitor) {
+      showMonitoringRequired();
+      return;
+    }
+
+    if (providerId !== 'claude-code' && providerId !== 'opencode' && providerId !== 'codex') {
+      vscode.window.showErrorMessage(`Unknown session provider: ${providerId}`);
+      return;
+    }
+
+    const currentProviderId = sessionMonitor.getProvider().id;
+    if (currentProviderId === providerId) {
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration('sidekick');
+    const target = vscode.workspace.workspaceFolders?.length
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+    // This command switches live; pendingProviderSwitches keeps the
+    // settings listener from also asking for a reload.
+    await config.update('sessionProvider', providerId, target);
+
+    const newProvider = detectProvider();
+
+    const switched = await sessionMonitor.switchProvider(newProvider);
+    if (!switched) {
+      log(`Switched session provider to ${providerId}, no active session found yet`);
+    }
+
+    peakHoursService?.reconcile();
+    dashboardProvider?.refreshSessionView();
+  }
 
   // Register session diagnostics command (helps debug path resolution issues)
   context.subscriptions.push(
