@@ -72,7 +72,8 @@ async function main() {
 
   // Webview context - Activity Map (Browser). The sidebar view and pop-out
   // panel; the document is rendered by src/providers/activityMapTemplate.ts.
-  // Imports only sidekick-shared/activity, which is pure and tree-shakes.
+  // Imports sidekick-shared/activity and the token formatter from
+  // sidekick-shared/browser; both are pure and tree-shake.
   const webviewActivityMapCtx = await esbuild.context({
     entryPoints: ['src/webview/activityMap/index.ts'],
     bundle: true,

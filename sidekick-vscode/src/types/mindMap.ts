@@ -91,6 +91,12 @@ export interface GraphNode {
   /** Duration in ms for this plan step (for tooltip) */
   planStepDurationMs?: number;
 
+  /** Display form of `planStepTokens`, attached by the host with the shared formatter. */
+  planStepTokensLabel?: string;
+
+  /** Display form of `planStepDurationMs`, attached by the host with the shared formatter. */
+  planStepDurationLabel?: string;
+
   /** Error message for failed plan steps (for tooltip) */
   planStepError?: string;
 

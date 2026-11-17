@@ -101,7 +101,7 @@ Do **not** use `mkdocs build` or `mkdocs serve` — use `zensical` instead.
 | `out/webview/chartjs-vendor.js`              | IIFE     | Browser  |
 | `out/webview/d3-vendor.js`                   | IIFE     | Browser  |
 
-Only `vscode` is externalized from the extension-host bundle. Other extension dependencies (including `@anthropic-ai/claude-agent-sdk`, `@opencode-ai/sdk`, and `sidekick-shared`) are bundled by esbuild. The `conditions: ['import']`, `banner`, and `define` settings in `esbuild.js` polyfill `import.meta.url` for ESM deps bundled into CJS. Chart.js and D3.js are bundled into local browser vendor files so the dashboard and mind map work offline. The Activity Map webview (`src/webview/activityMap/`) imports only `sidekick-shared/activity` and renders the shared SVG with `theme: 'css-vars'`.
+Only `vscode` is externalized from the extension-host bundle. Other extension dependencies (including `@anthropic-ai/claude-agent-sdk`, `@opencode-ai/sdk`, and `sidekick-shared`) are bundled by esbuild. The `conditions: ['import']`, `banner`, and `define` settings in `esbuild.js` polyfill `import.meta.url` for ESM deps bundled into CJS. Chart.js and D3.js are bundled into local browser vendor files so the dashboard and mind map work offline. The Activity Map webview (`src/webview/activityMap/`) imports only `sidekick-shared/activity` (plus `formatTokenCount` from `sidekick-shared/browser`) and renders the shared SVG with `theme: 'css-vars'`.
 
 ### Dual Provider System
 
