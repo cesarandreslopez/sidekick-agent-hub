@@ -17,6 +17,7 @@ import type {
 import type { ActivityStore } from '../services/ActivityStore';
 import type { ActivityMapSourceInfo } from '../types/activityMap';
 import type { ActivitySource, Disposable } from './ActivityMapConnection';
+import { getSessionLiveness } from '../utils/sessionLiveness';
 
 type EventSubscribe<T> = (listener: (event: T) => unknown) => Disposable;
 
@@ -25,7 +26,13 @@ export interface LiveActivityMonitor {
   getActivityStore(): ActivityStore;
   isActive(): boolean;
   getSessionPath(): string | null;
-  getProvider(): { id: ProviderId; displayName: string; getSessionId(sessionPath: string): string };
+  getProvider(): {
+    id: ProviderId;
+    displayName: string;
+    getSessionId(sessionPath: string): string;
+    /** DB-backed providers report mtimes for their synthetic session paths. */
+    getSessionMetadata?(sessionPath: string): { mtime: Date } | null;
+  };
   onSessionStart: EventSubscribe<string>;
   onSessionEnd: EventSubscribe<void>;
   onSessionReset: EventSubscribe<unknown>;
@@ -82,8 +89,13 @@ export class LiveActivitySource implements ActivitySource {
     return this.store.recordsFrom(seq);
   }
 
+  /**
+   * Live by the same rule as every other view (the session changed in the
+   * last two minutes), not merely "a session is attached": a past session the
+   * user picked reads Viewing and stops animating "now".
+   */
   isLive(): boolean {
-    return this.monitor.isActive();
+    return getSessionLiveness(this.monitor) === 'live';
   }
 
   snapshot(at?: number): ActivitySnapshot {

@@ -17,6 +17,7 @@ import type {
   ActivityStationId,
 } from 'sidekick-shared';
 import { ACTIVITY_MAP_PROTOCOL } from '../types/activityMap';
+import { LivenessTicker } from '../utils/sessionLiveness';
 import type {
   ActivityMapFocus,
   ActivityMapHostMessage,
@@ -70,6 +71,13 @@ export interface ActivityMapConnectionHooks {
 
 export class ActivityMapConnection implements Disposable {
   private readonly disposables: Disposable[] = [];
+  /**
+   * No source event fires when a session simply goes quiet, so liveness is
+   * re-checked on the views' shared tick (a no-op for an archive source).
+   */
+  private readonly livenessTicker = new LivenessTicker(() => {
+    if (this.ready && this.sent && !this.disposed && this.hooks.isVisible()) this.syncLive();
+  });
   /** What the webview holds; undefined until it has had an init. */
   private sent: { epoch: number; nextSeq: number } | undefined;
   private lastLive: boolean | undefined;
@@ -95,6 +103,7 @@ export class ActivityMapConnection implements Disposable {
         }),
       );
     }
+    if (source.kind === 'live') this.livenessTicker.start();
   }
 
   /** Sends changed drawing options (motion, layout, core name). */
@@ -112,6 +121,7 @@ export class ActivityMapConnection implements Disposable {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.livenessTicker.stop();
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
   }
 

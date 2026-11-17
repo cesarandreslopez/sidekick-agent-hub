@@ -318,4 +318,61 @@ describe('ActivityMapConnection', () => {
     source.add(2);
     expect(webview.sent).toHaveLength(1);
   });
+
+  it('notices on its tick when a session goes quiet (no source event fires)', () => {
+    vi.useFakeTimers();
+    try {
+      const { source, webview, connection, setVisible } = setup();
+      source.add(1);
+      webview.receive({ type: 'activity/ready', protocol: 1 });
+      const sent = webview.sent.length;
+
+      // Still live: the tick posts nothing.
+      vi.advanceTimersByTime(30_000);
+      expect(webview.sent).toHaveLength(sent);
+
+      // Quiet while hidden: nothing until it shows (then the flush syncs).
+      source.live = false;
+      setVisible(false);
+      vi.advanceTimersByTime(30_000);
+      expect(webview.sent).toHaveLength(sent);
+
+      setVisible(true);
+      vi.advanceTimersByTime(30_000);
+      expect(webview.sent.at(-1)).toMatchObject({ type: 'activity/state', live: false });
+
+      connection.dispose();
+      source.live = true;
+      vi.advanceTimersByTime(60_000);
+      expect(webview.sent.at(-1)).toMatchObject({ type: 'activity/state', live: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a live source is Live only while its session changed recently', () => {
+    let mtime = Date.now();
+    const monitor = {
+      getActivityStore: () =>
+        new ActivityStore({
+          recorder: { providerId: 'claude-code', sessionId: 'a', deriveContext: false },
+        }),
+      isActive: () => true,
+      getSessionPath: () => '/sessions/a.jsonl',
+      getProvider: () => ({
+        id: 'claude-code' as const,
+        displayName: 'Claude Code',
+        getSessionId: () => 'a',
+        getSessionMetadata: () => ({ mtime: new Date(mtime) }),
+      }),
+      onSessionStart: () => ({ dispose: () => undefined }),
+      onSessionEnd: () => ({ dispose: () => undefined }),
+      onSessionReset: () => ({ dispose: () => undefined }),
+    };
+    const source = new LiveActivitySource(monitor);
+    expect(source.isLive()).toBe(true);
+    // A past session the user picked: attached, but quiet.
+    mtime = Date.now() - 10 * 60_000;
+    expect(source.isLive()).toBe(false);
+  });
 });

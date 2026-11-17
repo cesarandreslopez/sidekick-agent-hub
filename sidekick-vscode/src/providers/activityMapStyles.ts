@@ -51,8 +51,6 @@ export const ACTIVITY_MAP_STYLES = `
   }
   .am-badge {
     font-size: var(--sk-font-xs, 9px);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
     padding: 1px 6px;
     border-radius: 999px;
     border: 1px solid var(--vscode-panel-border, transparent);

@@ -149,6 +149,8 @@ function main(): void {
   // ── Rendering ──
 
   let frame = 0;
+  /** Set by the first init or empty message; the empty state waits for it. */
+  let heardFromHost = false;
   let lastAnnounce = 0;
   let lastAnnounced = '';
   let lastPlayRender = 0;
@@ -163,16 +165,16 @@ function main(): void {
 
   function render(): void {
     const hasSession = model.hasSession;
-    if (emptyEl) emptyEl.hidden = hasSession;
+    // Until the host answers, neither "no session" nor a map is known yet.
+    if (emptyEl) emptyEl.hidden = hasSession || !heardFromHost;
     if (mainEl) mainEl.hidden = !hasSession;
     if (badgeEl) {
-      badgeEl.textContent = !hasSession
-        ? '—'
-        : model.live
-          ? playback.mode === 'live'
-            ? 'live'
-            : 'replay'
-          : 'ended';
+      badgeEl.textContent = sessionBadge(
+        hasSession,
+        model.source?.kind,
+        model.live,
+        playback.mode === 'live',
+      );
       badgeEl.dataset.live = String(hasSession && model.live && playback.mode === 'live');
     }
     if (sourceEl) sourceEl.textContent = model.source?.label ?? '';
@@ -336,6 +338,7 @@ function main(): void {
     if (!message || typeof message !== 'object') return;
     switch (message.type) {
       case 'activity/init':
+        heardFromHost = true;
         clock.observe(message.hostNow);
         model.init(message);
         if (message.focus?.at !== undefined) playback.seek(message.focus.at, model.range());
@@ -362,6 +365,7 @@ function main(): void {
         scheduleRender();
         return;
       case 'activity/empty':
+        heardFromHost = true;
         model.clear();
         playback.goLive();
         stopLoop();
@@ -445,6 +449,23 @@ function main(): void {
 
 if (typeof document !== 'undefined' && typeof acquireVsCodeApi === 'function') {
   main();
+}
+
+/**
+ * The status badge, in the words every view uses: the monitored session is
+ * Live or Viewing; a replayed past session is Ended; scrubbing back through
+ * either reads Replay.
+ */
+export function sessionBadge(
+  hasSession: boolean,
+  sourceKind: 'live' | 'archive' | undefined,
+  live: boolean,
+  following: boolean,
+): string {
+  if (!hasSession) return 'No session';
+  if (!following) return 'Replay';
+  if (sourceKind === 'archive') return 'Ended';
+  return live ? 'Live' : 'Viewing';
 }
 
 /**

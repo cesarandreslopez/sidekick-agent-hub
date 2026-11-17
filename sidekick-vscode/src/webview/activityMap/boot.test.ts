@@ -78,6 +78,12 @@ describe('activity map webview boot', () => {
     expect(posted[0]).toEqual({ type: 'activity/ready', protocol: 1 });
   });
 
+  it('does not flash "No agent session yet" before the host answers', async () => {
+    await settle();
+    expect(document.getElementById('am-empty')?.hidden).toBe(true);
+    expect(document.getElementById('am-badge')?.textContent).toBe('No session');
+  });
+
   it('shows the empty state until a session arrives, then draws it', async () => {
     send({ type: 'activity/empty', reason: 'noSession' });
     await settle();
@@ -104,7 +110,8 @@ describe('activity map webview boot', () => {
     expect(document.getElementById('am-empty')?.hidden).toBe(true);
     expect(document.querySelector('#am-map svg')).not.toBeNull();
     expect(document.getElementById('am-source')?.textContent).toBe('Claude Code · s1');
-    expect(document.getElementById('am-badge')?.textContent).toBe('ended');
+    // A monitored session that has gone quiet reads Viewing, like every view.
+    expect(document.getElementById('am-badge')?.textContent).toBe('Viewing');
     expect(document.querySelectorAll('#am-feed li').length).toBeGreaterThan(0);
     expect(document.querySelector('#am-insights button.am-row')).not.toBeNull();
     expect(document.getElementById('am-controls')?.hidden).toBe(false);
