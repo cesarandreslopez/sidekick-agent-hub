@@ -28,9 +28,19 @@ function yieldToEventLoop(): Promise<void> {
  * Cached session metadata with mtime for invalidation.
  */
 interface CachedEntry {
-  entry: TimelineSessionEntry;
+  /** `null` for a session with nothing to show, so it isn't re-read every scan. */
+  entry: TimelineSessionEntry | null;
   mtime: number;
+  /** When the file was last read (`Date.now()`), for the live-session throttle. */
+  parsedAt: number;
 }
+
+/**
+ * The live session's file changes on every event; re-reading a large one on
+ * each 10-second refresh blocks the extension host (about 100 ms at 18 MB).
+ * Its card is refreshed at most this often instead.
+ */
+const LIVE_SESSION_REREAD_MS = 60_000;
 
 /** Cached session detail, keyed by path and invalidated by mtime. */
 interface CachedDetail {
@@ -91,10 +101,18 @@ export class ProjectTimelineDataService {
       if (cutoff && mtime < cutoff) continue;
 
       const cached = this._cache.get(sessionPath);
-      if (cached && cached.mtime === mtime) {
+      const isCurrent = sessionPath === currentSessionPath;
+      const reuse =
+        cached &&
+        (cached.mtime === mtime ||
+          (isCurrent &&
+            cached.entry !== null &&
+            Date.now() - cached.parsedAt < LIVE_SESSION_REREAD_MS));
+      if (cached && reuse) {
+        if (!cached.entry) continue;
         // Current/live flags change without the file changing.
-        cached.entry.isCurrent = sessionPath === currentSessionPath;
-        cached.entry.isActive = this._isLive(cached.entry.isCurrent, mtime);
+        cached.entry.isCurrent = isCurrent;
+        cached.entry.isActive = this._isLive(isCurrent, mtime);
         if (inRange(cached.entry)) entries.push(cached.entry);
       } else {
         toParse.push({ sessionPath, mtime });
@@ -107,13 +125,14 @@ export class ProjectTimelineDataService {
       if (options.isStale?.()) return null;
       try {
         const entry = this._parseSession(sessionPath, currentSessionPath);
+        this._cache.set(sessionPath, { entry, mtime, parsedAt: Date.now() });
         if (entry) {
           entry.isActive = this._isLive(entry.isCurrent, mtime);
-          this._cache.set(sessionPath, { entry, mtime });
           if (inRange(entry)) entries.push(entry);
         }
       } catch (error) {
         log(`[Timeline] Failed to parse session: ${sessionPath}: ${error}`);
+        this._cache.set(sessionPath, { entry: null, mtime, parsedAt: Date.now() });
       }
       await yieldToEventLoop();
     }

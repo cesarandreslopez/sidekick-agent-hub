@@ -156,5 +156,30 @@ describe('ProjectTimelineDataService', () => {
     const service = new ProjectTimelineDataService(provider as never);
 
     expect(await service.loadTimelineEntries('/ws', 'all')).toEqual([]);
+    // Remembered by mtime: an unreadable session isn't read again every scan.
+    expect(await service.loadTimelineEntries('/ws', 'all')).toEqual([]);
+    expect(provider.readSessionStats).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads the live session at most once a minute while it keeps changing', async () => {
+    const now = Date.now();
+    const live: FakeSession = {
+      path: '/s/live',
+      mtime: now,
+      startTime: new Date(now).toISOString(),
+    };
+    const provider = fakeProvider([live]);
+    const service = new ProjectTimelineDataService(provider as never);
+
+    await service.loadTimelineEntries('/ws', 'all', '/s/live');
+    live.mtime = now + 5_000; // the agent wrote again
+    const [entry] = (await service.loadTimelineEntries('/ws', 'all', '/s/live'))!;
+    expect(provider.readSessionStats).toHaveBeenCalledTimes(1);
+    expect(entry.isActive).toBe(true);
+
+    // A session that isn't the current one is re-read as soon as it changes.
+    const other = await service.loadTimelineEntries('/ws', 'all', null);
+    expect(provider.readSessionStats).toHaveBeenCalledTimes(2);
+    expect(other).toHaveLength(1);
   });
 });

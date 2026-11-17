@@ -198,16 +198,24 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     if (!workspacePath) {
       log('[Timeline] No workspace folder open');
       this._postMessage({ type: 'noWorkspace' });
+      // Settled for the ticker too: nothing to rescan every 30 s.
+      this._postedLiveness = getSessionLiveness(this._sessionMonitor);
       return;
     }
 
     const generation = ++this._timelineGeneration;
-    const isStale = () => generation !== this._timelineGeneration || !this._view;
+    const dataService = this._currentDataService();
+    // A newer scan, a hidden view, or a provider switch makes this one moot;
+    // re-showing the view or the switch's own refresh starts a fresh scan.
+    const isStale = () =>
+      generation !== this._timelineGeneration ||
+      !this._view?.visible ||
+      this._sessionMonitor.getProvider() !== this._dataProvider;
     const range = this._currentRange;
     const currentSessionPath = this._sessionMonitor.getSessionPath();
     const liveness = getSessionLiveness(this._sessionMonitor);
 
-    this._currentDataService()
+    dataService
       .loadTimelineEntries(workspacePath, range, currentSessionPath, {
         isStale,
         onParseStart: () => this._postMessage({ type: 'loading', loading: true }),
@@ -237,7 +245,10 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
       })
       .catch((error) => {
         log(`[Timeline] Error building timeline: ${error}`);
-        if (!isStale()) this._postMessage({ type: 'loading', loading: false });
+        if (isStale()) return;
+        this._postMessage({ type: 'loading', loading: false });
+        // Don't let the liveness ticker rescan a failing scan every 30 s.
+        this._postedLiveness = liveness;
       });
   }
 
