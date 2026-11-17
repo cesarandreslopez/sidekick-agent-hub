@@ -41,7 +41,9 @@ export function presentProviderStatus(status: ProviderServiceStatus): {
     lines.push(
       `Components: ${incident.componentIds === null ? 'not reported' : incident.componentIds.length === 0 ? 'none reported' : incident.componentIds.map((id) => names.get(id) ?? `${id} (unmapped)`).join(', ')}`,
     );
-    lines.push(`Incident updated: ${incident.updatedAt ?? 'not reported'}`);
+    lines.push(
+      `Incident updated: ${incident.updatedAt ? formatDateTime(incident.updatedAt) : 'not reported'}`,
+    );
     if (incident.url) lines.push(incident.url);
   }
   lines.push(
