@@ -1,76 +1,16 @@
 # Sidekick CLI
 
-Full-screen terminal dashboard for monitoring AI agent sessions — standalone, no VS Code required.
+**See what your AI coding agents are doing, and what they cost**, in your terminal. Live monitoring for Claude Code, Codex and OpenCode sessions, with no VS Code required.
 
-![Sidekick CLI Dashboard](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/sidekick-cli.gif)
+![The Sidekick terminal dashboard following a live session: tokens and context, quota and the billing block, the activity map and its insights, and the accounts overlay](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/demo/v1/cli-dashboard.gif)
 
-Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows) — the same data files the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) writes. Browse sessions, tasks, decisions, knowledge notes, mind maps, and more in an interactive terminal UI.
+Coding agents work out of sight. Tokens burn in the background, the context window fills up without warning, and when a session ends, what it learned is gone. `sidekick` reads the session files your agent already writes and shows you:
 
-## What's New
+- **What it's doing**: every tool call, file and subagent, live, on an activity map (`sidekick dashboard`, `sidekick map --follow`).
+- **What it costs**: tokens, cost, context fill, plan quota and five-hour billing blocks (`sidekick quota`, `sidekick daily`, `sidekick blocks`).
+- **What to keep**: tasks, decisions and knowledge notes that carry across sessions (`sidekick tasks`, `sidekick decisions`, `sidekick notes`), and the handoff the VS Code extension writes when a session ends (`sidekick handoff`).
 
-- **0.33.3: the dashboard keeps the session you chose** — `dashboard --session` starts pinned, and without it the dashboard switches only to a session that starts after it opened, saying so (`Following new session … — p pins`). Codex sessions open from the picker, which fits any terminal, pages with PgUp/PgDn, Home/End and `g`/`G`, and marks LIVE by the same 2-minute rule. `doctor` exits 1 when unhealthy, a signal ends the dashboard and `map --follow` with `128 +` its number, unknown option values and impossible dates are errors, `sidekick tasks` prints the reference `tasks done` accepts, and `sidekick statusline --help` shows the `settings.json` snippet.
-- **0.33.2: a dashboard that fits and keeps your scrollback** — the dashboard and `map --follow` run in the terminal's alternate screen, so your scrollback comes back when you quit. The panel tab bar shortens to abbreviations, then digits (80×24 fits), PgUp/PgDn/Home/End scroll, the filter row shows that `Tab` cycles its modes, the detail tab stays put between items, Plans' `S` source filter works even on an empty list, and `NO_COLOR` is honoured. Token counts read `12.3k`, `4.5M` and `1.2B`, Kanban and task statuses read "In Progress", and `sidekick tasks --status in_progress` works.
-- **0.33.1: no freezes on large sessions** — the dashboard, `daily`/`weekly`/`monthly`/`sessions`, `blocks`, `dump --prompts`, `import`, `search` and `map --follow` read sessions in 1 MiB steps and let the event loop run between them, so the dashboard keeps redrawing and taking keys while a long session is read. Totals and search hits are unchanged, and usage collection takes about 40% less time.
-- **0.33.0: model-unavailable guidance, honest cache-write prices** — inference failures for a model that doesn't exist or isn't enabled for the account say so and ask you to choose another model. `daily`, `weekly`, `monthly`, `sessions`, `blocks` and the dashboard bill Codex cache writes at their own rate (GPT-6.x: 1.25× input), and OpenAI-family cache writes with no listed write rate at the input rate instead of $0.
-- **0.32.2: honest Top Failing Tools** — `sidekick stats` counts each session's failures once (the VS Code extension's error history repeated sessions, often several times too high), and leftover `*.tmp` files from interrupted store writes are cleaned up.
-- **0.32.1: long-context prices in usage reports** — `daily`, `weekly`, `monthly`, `sessions`, `blocks`, `dump --prompts` and the dashboard's billing block no longer bill a Codex token count that spans several calls at long-context rates (rollouts whose token counts carry only the running total, mostly older ones). The usage cache moves to `*.v4.json` and is rebuilt once.
-- **0.32.0: the activity map** — `sidekick map --follow` draws a live map of what your agent is doing in any terminal split: every tool call pulses from the agent to one of eleven stations (files, shell, network, memory, agents, hooks, plan, …), with the context window as a ring, faults, subagents and the route the agent took. `sidekick map --format text|svg|json` exports any session at any moment (`--at 50%`, `--at +15m`), the dashboard gains a **Map** panel (`9`) with an Insights tab (time, errors and context weight per station, retry streaks and edit ↔ test loops), the HTML report includes the map, and the MCP server adds `get_activity_map`. Summaries now use Claude Haiku 5.5, Claude Fable 5.2 and the Mythos models are priced, long prompts on GPT-5.4+ (above 272K tokens) and Haiku 5.5 (above 100K) are priced at their long-context rates, and `report --theme light` now renders light.
-- **0.31.0: project scope you can trust, subagent spend per prompt** — `daily`, `weekly`, `monthly`, `sessions`, and `blocks` with `--project` resolve the path (relative paths work) and count only sessions recorded inside it: folders whose name matches or starts with the same name, and Codex sessions started in a parent folder, no longer count. `dump --prompts` charges a subagent's calls to the prompt that started it (background agents included), with `--signals` a failed Codex command shows as `toolError (exec_command, exit 2)` and markdown or JSON output keeps the end of its output, and Codex follow timelines show when a turn completes. The dashboard's billing block keeps up with a session that is still being written, and the bundle is about 175 KB smaller.
-- **0.30.3: usage credits balance vs spend limit** — `sidekick quota` used to print `Extra usage $0.00 of $40.00 used`, where $40 is the monthly spend limit, not your balance. It now prints `Usage credits $100.00 available` (the prepaid balance) and `Spend limit $0.00 of $40.00 used this month` on separate rows, and `--json` adds `extraUsage.balance`.
-- **0.30.1: update notifications** — one-shot commands such as `sidekick quota` end with an "Update available" line on stderr when a newer `sidekick-agent-hub` is on npm. npm is asked at most every 4 hours, and the request overlaps the command. The same version is announced at most twice a day, never with `--json`, in pipes, in CI, or from `statusline` / `mcp`. `SIDEKICK_NO_UPDATE_NOTIFIER=1` turns it off.
-- **0.30.0: Codex subagents and agents that never report**
-  - **Codex subagents:** the dashboard's Agents tab, mind map and task list show them, linked to their spawn calls and followed to completion.
-  - **Settled agents:** stop markers, post-compaction task status and the subagent's meta file settle background agents that never got a completion notification. An agent whose transcript ended cleanly and stayed quiet for 2 minutes shows "finished (no report)", one in a session idle for more than 6 hours shows "ended", and stopped, killed and failed agents show distinctly.
-  - **Permission mode:** the dashboard's status bar and Summary tab show it, including Claude Code's `auto` and `dontAsk` modes.
-  - **Compressed Codex sessions:** `.jsonl.zst` sessions are read by every command that reads Codex sessions except `extract` and `history --path`, when Node has built-in zstd (22.15 or later).
-  - **Replay:** a truncated Codex file is no longer counted twice, a Claude Code or Codex file rewritten or replaced while followed is replayed from the start and the dashboard then saves a fresh snapshot, and saved snapshots replay once after upgrading.
-  - **Fixes:** Codex subagent counts no longer include the parent history a forked child embeds, and the session-ended toast no longer fires for activity whose summary merely contains "ended".
-- **0.29.1: subagents again and verified resume**
-  - **Subagents:** the dashboard's Agents tab and mind map show them again for current Claude Code, which renamed its subagent tool from `Task` to `Agent`; both names are recognized.
-  - **Background agents:** they stay running until Claude Code reports them finished, failed, killed or stopped, and the timeline shows a short `Agent "…" finished` entry instead of raw notification XML.
-  - **`auto` permission mode:** sessions keep their user lines in the dashboard and `dump`.
-  - **Dashboard resume:** a saved snapshot is used only while the session file is the same file with the same opening content; a replaced or rewritten file is replayed, a response split across the snapshot point is counted once, and existing snapshots replay once after upgrading.
-  - **Model ids:** names such as `constructor` no longer produce a nonsense price or context window.
-- **0.29.0: honest costs and custom prices**
-  - **Cost display:** an unpriced session or billing block reads `—` instead of `$0.0000`. Every report uses one rule: `—` when nothing was priced, `$x (est.)` for catalog estimates, and `$x (partial)` when some calls had no price.
-  - **Pricing catalog:** the usage reports and `blocks` name it in their footer (`pricingCatalog` in `--json`). `doctor` warns when only the built-in table or a stale cache is active.
-  - **Custom prices:** `cli-config.json` `pricing.models` sets your own per-model prices.
-  - **Usage reports:** they add a Reasoning column and merge a model's dated, prefixed and Bedrock spellings into one row.
-  - **Sessions:** `sessions --breakdown` prints its sub-rows and tags Codex subagents `↳ subagent of <parent>`.
-  - **Prompt costs:** `dump --prompts` shows tokens and cost per prompt (`--no-usage` skips it).
-  - **OpenCode:** costs on the OpenAI provider are no longer under-counted.
-  - **Usage cache:** it moves to `*.v3.json` and is rebuilt once.
-- **0.28.3: Claude Ultra and the missing 5-hour limit** — on Ultra (formerly Max 20x), which has no 5-hour session limit since 2026-10-30, `sidekick quota` shows `Subscription Quota (plan: Ultra)` with the 7-Day row and a `Session  no 5-hour limit on Ultra` note, plus extra meters the endpoint reports (such as `7-Day (Fable)`) and an `Extra usage` row, instead of a fake `5-Hour 0%`. The status line leads with `7d 17% resets Fri 01:00`, the dashboard, `blocks`, and `quota history` follow, and cached quota no longer freezes at the pre-change sample. Codex windows read `Weekly` instead of `Primary` (a missing second window is hidden), and a cache whose windows have all reset, such as a months-old z.ai sample, is reported as expired.
-- **0.28.0: custom Claude homes and archived Codex sessions** — with `CLAUDE_CONFIG_DIR` set, `dashboard`, `dump`, `report`, the usage reports, `blocks`, `search`, and `doctor` read the home Claude Code writes to; Codex sessions moved to `archived_sessions/` stay visible; `dashboard` and `dump` read large or rewritten session files in bounded chunks; and the main bundle shrinks from 2.85 MB to 2.47 MB.
-- **0.27.6: one usable copy of every login** — Sidekick no longer causes Claude Code's "Not logged in · Please run /login": Keychain writes over about 4 KB are no longer truncated, the live login keeps no second copy, `accounts switch` saves the outgoing login first and is journaled so an interrupted switch finishes or rolls back, and keep-alive never refreshes a live copy. Codex switches are refused while Codex sessions run (even with `--force`), and keep-alive refreshes through `codex app-server`. `sidekick accounts doctor` is read-only and reports Claude and Codex credential stores; `--fix` repairs them after asking (`--yes` skips, `--json` lists the repairs).
-- **0.27.5: prompts grouped by session** — `sidekick dump --prompts` prints every prompt you typed in Claude Code and Codex sessions, grouped by session: the most recent session with prompts by default, one session with `--session <id-or-prefix>`, or every session of the project and its git worktrees with `--all` (narrowed by `--since` and `--limit`). `--replies` adds the agent's final reply to each prompt, `--signals` adds interrupts, rejected and failed tool calls, compactions, API errors, and rollbacks, and `--format` writes text, markdown, JSON, or JSONL (one session per line). OpenCode is not supported.
-- **0.27.3: accurate token totals and subagent totals** — Claude Code split lines and repeated Codex `token_count` events are no longer double-counted, which fixes `dump`, `report`, the dashboard, `daily`/`weekly`/`monthly`/`sessions`, and `blocks` (the usage cache rebuilds itself). `sidekick dump` and `sidekick report` show the session's subagents and "Session total (incl. subagents)", and `dump --format json` adds a `tokenSummary` block. The dashboard's Tokens section leads with "Total (incl. cache)", lists all four buckets, then subagent and session totals, and its cache-hit rate counts cache writes. Claude subagent transcripts count toward the usage reports under their parent session, and `state.json` gains `context.totalTokens`.
-- **0.27.0: Opus 5.5 pricing and GPT-6 summaries** — cost estimates for Claude Opus 5.5 (`claude-opus-5-5`) sessions use its own rates ($4 / $20 per 1M tokens, $0.20 cache reads) instead of Opus 5's, GPT-6 Sol and Luna sessions are priced, and OpenAI API dashboard summaries use `gpt-6-luna`.
-- **0.26.6: `sidekick accounts`** — an interactive picker plus `list`, `add`, `switch`, `login`, `remove`, `shell`, `env`, `undo`, `doctor`, and `config` subcommands. Logins you already use are registered automatically, every switch is verified against the live credential store and undoable, expired credentials are refused with a sign-in hint, running apps that keep the previous login are named, and `env` / `shell` run a second account side by side on bash, zsh, fish, PowerShell, and cmd. The dashboard gains an accounts overlay (`A`) and a health-coloured status bar account. `sidekick account --…` flags remain as a deprecated alias.
-- **0.26.5: cheaper dashboard watching** — newer-session detection reconciles each watched-file event with one stat, and catch-up polls cost one stat per unchanged directory instead of walking every session file.
-- **0.26.4: sharper authentication and policy guidance** — AI summary failures recognize expired-login and re-authentication messages with guidance matched to the credential kind, distinguish a rejected refresh token from an expired conversation, and treat `Permission denied by policy` (including HTTP 403) as an execution-policy denial.
-- **0.26.3: provider failure diagnosis and status evidence** — AI summary failures distinguish authentication, provider sessions, service, connection, timeout, rate-limit, execution-policy, runtime, and context-limit problems with provider-specific guidance, without signing in, switching providers, or replaying. `sidekick status`, the dashboard, and `doctor` show unavailable or partial public status instead of implying normal operation, and `status --json` adds `serviceStatus` with an `availability` discriminator.
-- **0.26.2: reliable dashboard replay** — complete-line checkpoints preserve Unicode and parser context. Live-only runs leave complete-history caches intact; OpenCode replays history when requested.
-- **Project search and Doctor** — project-scoped searches include Codex and database-only OpenCode sessions; `doctor --provider` focuses diagnostics on the selected session provider.
-- **Usage reports from session logs** — `sidekick daily`, `weekly`, `monthly`, and `sessions` compute tokens and cost for every provider straight from session logs (local calendar days, `--breakdown`, `--by-project`, `--csv`, `--json`), so CLI-only users no longer need the extension's history store; `sidekick import` backfills that store when you want `stats` and `today` to see older sessions.
-- **`sidekick blocks`** — five-hour billing blocks with cache-inclusive totals, cost provenance, burn rate, and end-of-block projections, with the official status-line sample beside the local estimate.
-- **Official quota through the status line** — `sidekick statusline` reads the JSON Claude Code pipes on stdin, appends context %, session cost, and cache hit rate, and persists the official limits; `quota`, `quota --all`, and `mcp get_quota_status` share one resolution order and print a `Source` row naming where the numbers came from.
-- **`state.json`** — a public, versioned snapshot (account, quota with freshness, context including `context.totalTokens`, session cost (`null` when nothing was priced), active billing block) written by `statusline` and the dashboard for tmux status bars and scripts.
-- **Scripting flags** — global `--offline` and `--output-file`, `--csv` on `stats`, `dump --list`, and `quota history`, `quota history --window 5h|7d|max`, and `--json` on the quick-capture commands and `report`; every token total is cache-inclusive and every cost carries its provenance.
-- **`sidekick history`** — list your most recent Codex prompts across every workspace, newest first; `--path <id-or-prefix>` resolves a session to its transcript file for `less`/`jq`, and `--json` emits full ids and timestamps. `sidekick dump --list` and the session picker now read a cheap preview index with a `--limit` bound (default 50), so huge session histories list quickly.
-- **`sidekick statusline`, `today` & `doctor`** — a cache-only one-line account/quota/burn footer, a cache-only daily brief, and cross-provider health diagnostics.
-- **Quick capture** — `sidekick tasks add`, `tasks done`, `note add`, and `decision add` write straight to the shared project stores with atomic merges.
-- **`sidekick mcp`** — a read-only stdio MCP facts server so Claude Code or Codex can inspect quota, burn rate, context pressure, and project stores mid-session.
-- **External handoff** — `sidekick handoff open --url-template` opens a configured deep link with `{sessionId}`, `{provider}`, and `{projectPath}` placeholders.
-- **Codex reset credits** — when Codex quota is refreshed from the API, `sidekick quota` now lists available rate-limit reset credits (`Reset Credits: N available`) and their expirations.
-- **`sidekick quota --provider zai`** — authoritative z.ai Coding Plan quota (5-Hour / Weekly) from z.ai's quota API, using OpenCode's stored z.ai token when available.
-- **`sidekick extract`** — pull URLs, file paths, commands, and plans out of recent Claude Code and Codex chats, with `--json` and an interactive picker.
-
-See the [full changelog](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/CHANGELOG.md) for everything.
-
-## Replay and Recovery
-
-Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.32.0 replay once. A file truncated, rewritten or replaced while the dashboard follows it is also replayed from the start (a truncated Codex file is not counted twice), and once that replay completes the dashboard saves a fresh checkpoint. Otherwise live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
+Monitoring needs no proxy and no wrapper: keep running `claude`, `codex` or `opencode` as you do today. The CLI reads and writes the same store as the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=CesarAndresLopez.sidekick-for-max) (`~/.config/sidekick/`, `%APPDATA%\sidekick\` on Windows), and `sidekick mcp` lets the running agent query the same facts.
 
 ## Installation
 
@@ -100,6 +40,10 @@ OpenCode session data lives in OpenCode's platform-specific data directory:
 - Windows: `%LOCALAPPDATA%\opencode\` (falls back to `%APPDATA%`)
 
 If `sqlite3` is missing or not executable in the current shell environment, Sidekick prints an actionable OpenCode-specific notice instead of silently failing session detection.
+
+## Replay and Recovery
+
+Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.32.0 replay once. A file truncated, rewritten or replaced while the dashboard follows it is also replayed from the start (a truncated Codex file is not counted twice), and once that replay completes the dashboard saves a fresh checkpoint. Otherwise live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested.
 
 ## Usage
 
@@ -216,6 +160,8 @@ The global flag `--project` also applies. List tasks with `sidekick tasks`: open
 
 ## Activity Map
 
+![The Map panel: the live activity map with its activity feed](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/demo/v1/cli-map.png)
+
 ```bash
 sidekick map [options]
 ```
@@ -311,6 +257,8 @@ Codex-only for now (reads the global `~/.codex/history.jsonl`); Claude Code and 
 
 ## HTML Report
 
+![The HTML session report](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/demo/v1/html-report.png)
+
 ```bash
 sidekick report [options]
 ```
@@ -383,6 +331,8 @@ Show whether Claude is currently in peak hours (weekdays 13:00–19:00 UTC — w
 
 ## Quota & Rate Limits
 
+![Quota gauges and the five-hour billing block in the dashboard summary](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/demo/v1/cli-quota.png)
+
 ```bash
 sidekick quota
 ```
@@ -449,6 +399,8 @@ Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex|zai` (`claude-
 History is stored at `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` (mode `0600`, 60-second debounce, 91-day retention). The workspace id is `sha256(realpath)[0..16]`, so the same folder yields the same store whether sampled from the CLI or VS Code.
 
 ## Account Management
+
+![The dashboard accounts overlay](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/demo/v1/cli-accounts.png)
 
 ```bash
 sidekick accounts [command]
@@ -632,3 +584,5 @@ Full documentation at [cesarandreslopez.github.io/sidekick-agent-hub](https://ce
 ## License
 
 MIT
+
+Release notes: [CHANGELOG.md](https://github.com/cesarandreslopez/sidekick-agent-hub/blob/main/sidekick-cli/CHANGELOG.md).
