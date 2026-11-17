@@ -24,8 +24,21 @@ export interface AccountItem {
   view: AccountView;
 }
 
-const HINT_MESSAGE =
-  'Select the arrows icon on an account to switch. Expired accounts need Sign In Again to Account….';
+/**
+ * The view's hint, only when it applies: switching needs an account to
+ * switch to, and Sign In Again needs an expired one.
+ */
+export function accountViewHint(views: readonly AccountView[]): string | undefined {
+  const needsSignIn = (view: AccountView) =>
+    view.health.state === 'expired' || view.health.state === 'missing';
+  const canSwitch = views.some((view) => !view.isActive && !needsSignIn(view));
+  const expired = views.some(needsSignIn);
+  const parts = [
+    canSwitch ? 'Switch with the arrows icon on an account, or right-click it.' : undefined,
+    expired ? 'Expired accounts need Sign In Again (right-click the account).' : undefined,
+  ].filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join(' ') : undefined;
+}
 
 export class AccountTreeProvider
   implements vscode.TreeDataProvider<AccountTreeElement>, vscode.Disposable
@@ -152,7 +165,7 @@ export class AccountTreeProvider
     const expired = views.filter(
       (view) => view.health.state === 'expired' || view.health.state === 'missing',
     ).length;
-    this._treeView.message = views.length > 0 ? HINT_MESSAGE : undefined;
+    this._treeView.message = accountViewHint(views);
     this._treeView.badge = expired
       ? { value: expired, tooltip: `${expired} expired account${expired === 1 ? '' : 's'}` }
       : undefined;

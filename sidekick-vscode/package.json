@@ -1661,9 +1661,19 @@
           "group": "inline@3"
         },
         {
+          "command": "sidekick.accounts.switch",
+          "when": "view == sidekick.accounts && viewItem == account.inactive",
+          "group": "1_manage@1"
+        },
+        {
           "command": "sidekick.accounts.signInAgain",
           "when": "view == sidekick.accounts && viewItem =~ /^account\\./",
           "group": "1_manage@2"
+        },
+        {
+          "command": "sidekick.accounts.openTerminal",
+          "when": "view == sidekick.accounts && viewItem =~ /^account\\./",
+          "group": "1_manage@3"
         },
         {
           "command": "sidekick.accounts.remove",

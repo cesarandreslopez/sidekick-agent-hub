@@ -84,7 +84,7 @@ describe('accountQuickPick', () => {
     ]);
     expect(items[0].kind).toBe(-1);
     expect(items[1].description).toBe('work@example.com · max · (current)');
-    expect(items[3].detail).toBe('Expired — select to sign in again');
+    expect(items[3].detail).toBe('expired · sign in again');
     expect(
       buildAccountQuickPickItems(views, { canUndo: true, now: NOW }).map((i) => i.label),
     ).toContain('$(discard) Undo last switch');

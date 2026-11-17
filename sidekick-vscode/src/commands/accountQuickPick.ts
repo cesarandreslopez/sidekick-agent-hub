@@ -106,10 +106,8 @@ export function buildAccountQuickPickItems(
       items.push({
         label: `${healthIcon(view)} ${name}`,
         description: parts.join(' · ') || undefined,
-        detail:
-          view.health.state === 'expired' || view.health.state === 'missing'
-            ? 'Expired — select to sign in again'
-            : describeHealth(view.health, now),
+        // The same health words as the Accounts view and the status bar.
+        detail: describeHealth(view.health, now),
         action: { kind: 'account', view },
       });
     }

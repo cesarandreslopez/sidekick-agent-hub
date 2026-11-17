@@ -54,7 +54,11 @@ vi.mock('vscode', () => ({
 }));
 vi.mock('../services/Logger', () => ({ log: vi.fn(), logError: vi.fn() }));
 
-import { AccountTreeProvider, type AccountTreeElement } from './AccountTreeProvider';
+import {
+  AccountTreeProvider,
+  accountViewHint,
+  type AccountTreeElement,
+} from './AccountTreeProvider';
 import type { AccountService } from '../services/AccountService';
 
 const NOW = Date.now();
@@ -177,5 +181,35 @@ describe('AccountTreeProvider', () => {
     expect(emptyView.message).toBeUndefined();
     expect(emptyView.badge).toBeUndefined();
     expect(empty.getChildren()).toEqual([]);
+  });
+});
+
+describe('accountViewHint', () => {
+  const expired = (id: string) =>
+    view({
+      id,
+      health: {
+        providerId: 'claude-code',
+        accountId: id,
+        state: 'expired',
+        checkedAt: NOW,
+        isLive: false,
+      },
+    });
+
+  it('says nothing when the only account is the active one', () => {
+    expect(accountViewHint([view({ id: 'work', isActive: true })])).toBeUndefined();
+    expect(accountViewHint([])).toBeUndefined();
+  });
+
+  it('explains switching only when there is an account to switch to', () => {
+    expect(accountViewHint([view({ id: 'work', isActive: true }), view({ id: 'home' })])).toMatch(
+      /^Switch with the arrows icon/,
+    );
+  });
+
+  it('mentions Sign In Again only when an account needs it', () => {
+    const hint = accountViewHint([view({ id: 'work', isActive: true }), expired('old')]);
+    expect(hint).toBe('Expired accounts need Sign In Again (right-click the account).');
   });
 });

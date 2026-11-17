@@ -183,7 +183,9 @@ export function registerAccountCommands(
         return;
       case 'timeout':
         vscode.window.showErrorMessage(
-          'Sign-in timed out before authentication completed. Nothing was saved; run "Sidekick: Add Account…" to try again.',
+          `Sign-in timed out before authentication completed. Nothing was saved; run "Sidekick: ${
+            offerSwitch ? 'Add Account…' : 'Sign In Again to Account…'
+          }" to try again.`,
         );
         return;
       default:
@@ -218,9 +220,7 @@ export function registerAccountCommands(
       ignoreFocusOut: true,
     });
     if (label === undefined) return;
-    vscode.window.showInformationMessage(
-      `Complete the ${PROVIDER_LABELS[providerId]} sign-in in the Sidekick terminal. Your current login is untouched.`,
-    );
+    // The sign-in's own progress notification says where to finish it.
     const run = await loginRunner.run(providerId, label.trim(), { activate: false });
     await reportLogin(
       run.outcome,
