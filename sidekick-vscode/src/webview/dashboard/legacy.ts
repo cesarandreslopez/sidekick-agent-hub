@@ -3296,6 +3296,10 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             'Loading ' + escapeHtml(providerLabel) + ' sessions…' +
             '</div>';
         }
+        // Sent: nothing is waiting any more. A pick made while this switch runs
+        // sets it again; a failed switch then settles on the host's provider
+        // instead of re-sending itself forever.
+        desiredProviderId = null;
         vscode.postMessage({ type: 'setSessionProvider', providerId: providerId });
       }
 

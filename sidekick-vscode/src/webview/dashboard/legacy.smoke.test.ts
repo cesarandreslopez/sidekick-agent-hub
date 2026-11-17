@@ -532,4 +532,25 @@ describe('legacy dashboard script', () => {
     expect(select.value).toBe('opencode');
     expect(errors).toEqual([]);
   });
+
+  it('settles a failed provider switch on the host provider without re-sending it', async () => {
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const select = document.getElementById('session-provider-select') as HTMLSelectElement;
+    const switches = () => posted.filter((m) => m.type === 'setSessionProvider');
+    send({ type: 'updateSessionProvider', providerId: 'claude-code', displayName: 'Claude Code' });
+    const before = switches().length;
+
+    select.value = 'codex';
+    select.dispatchEvent(new Event('change'));
+    await wait(300);
+    expect(switches().slice(before)).toEqual([{ type: 'setSessionProvider', providerId: 'codex' }]);
+
+    // The settings write failed: the host still reports the old provider.
+    send({ type: 'updateSessionProvider', providerId: 'claude-code', displayName: 'Claude Code' });
+    await wait(300);
+    expect(switches().length).toBe(before + 1);
+    expect(select.hasAttribute('aria-busy')).toBe(false);
+    expect(select.value).toBe('claude-code');
+    expect(errors).toEqual([]);
+  });
 });
