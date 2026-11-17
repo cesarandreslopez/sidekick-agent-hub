@@ -78,6 +78,10 @@ export class AccountStatusBar implements vscode.Disposable {
       this.statusBarItem.text = '$(account) No active account';
       this.statusBarItem.tooltip = 'Sidekick: choose an account';
       this.statusBarItem.backgroundColor = undefined;
+      this.statusBarItem.accessibilityInformation = {
+        label: 'Sidekick account: none active',
+        role: 'button',
+      };
       this.statusBarItem.show();
       return;
     }

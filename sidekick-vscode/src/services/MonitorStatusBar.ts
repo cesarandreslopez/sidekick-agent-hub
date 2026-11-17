@@ -24,6 +24,7 @@ import type { TokenUsage } from '../types/claudeSession';
 import type { PermissionMode } from 'sidekick-shared';
 import type { PeakHoursService, PeakHoursState } from './PeakHoursService';
 import { DEFAULT_CONTEXT_WINDOW } from '../constants';
+import { SESSION_LIVENESS_LABELS, getSessionLiveness } from '../utils/sessionLiveness';
 
 /**
  * Status bar service for Claude Code session monitoring.
@@ -249,8 +250,10 @@ export class MonitorStatusBar implements vscode.Disposable {
       permissionIndicator = ' $(circle-slash)';
     }
 
-    // Add skull emoji when context is critically high (>= 80%)
-    const icon = this.contextPercent >= 80 ? '💀' : '$(pulse)';
+    // A past session the user is viewing gets an eye, so it can't pass for a
+    // live one; the skull still wins when context is critically high (>= 80%).
+    const liveness = getSessionLiveness(this.monitor);
+    const icon = this.contextPercent >= 80 ? '💀' : liveness === 'viewing' ? '$(eye)' : '$(pulse)';
     const showPeakHours =
       this.monitor.getProvider().id === 'claude-code' &&
       this.peakHours !== null &&
@@ -267,8 +270,9 @@ export class MonitorStatusBar implements vscode.Disposable {
       auto: ', auto mode',
       dontAsk: ', not asking for permissions',
     };
+    const livenessLabel = SESSION_LIVENESS_LABELS[liveness];
     this.statusBarItem.accessibilityInformation = {
-      label: `Sidekick session: ${tokensFormatted} tokens, context ${this.contextPercent}%${trendWords}${permissionWords[this.permissionMode ?? ''] ?? ''}${showPeakHours ? ', peak hours' : ''}`,
+      label: `Sidekick session (${livenessLabel}): ${tokensFormatted} tokens, context ${this.contextPercent}%${trendWords}${permissionWords[this.permissionMode ?? ''] ?? ''}${showPeakHours ? ', peak hours' : ''}`,
       role: 'button',
     };
 
@@ -289,7 +293,7 @@ export class MonitorStatusBar implements vscode.Disposable {
     const contextLimit =
       provider.getContextWindowLimit?.(stats.lastModelId) ?? DEFAULT_CONTEXT_WINDOW;
     const tooltipLines = [
-      `${provider.displayName} Session`,
+      `${provider.displayName} Session · ${livenessLabel}`,
       `Tokens: ${formatTokenBreakdown(
         summarizeTokens({
           inputTokens: stats.totalInputTokens,
@@ -337,6 +341,10 @@ export class MonitorStatusBar implements vscode.Disposable {
     this.statusBarItem.text = '$(sync~spin) Loading session...';
     this.statusBarItem.tooltip = 'Replaying session history — this will be faster next time';
     this.statusBarItem.backgroundColor = undefined;
+    this.statusBarItem.accessibilityInformation = {
+      label: 'Sidekick: loading session',
+      role: 'button',
+    };
   }
 
   /**
@@ -345,13 +353,18 @@ export class MonitorStatusBar implements vscode.Disposable {
   private updateNoSession(): void {
     this.statusBarItem.text = '$(pulse) --';
     this.statusBarItem.tooltip = [
-      'No active session',
+      SESSION_LIVENESS_LABELS.none,
       '',
       getRandomPhrase(),
       '',
       'Click to open dashboard',
     ].join('\n');
     this.statusBarItem.backgroundColor = undefined;
+    // Otherwise a screen reader keeps announcing the last session's numbers.
+    this.statusBarItem.accessibilityInformation = {
+      label: `Sidekick session: ${SESSION_LIVENESS_LABELS.none.toLowerCase()}`,
+      role: 'button',
+    };
   }
 
   private clearPendingRender(): void {

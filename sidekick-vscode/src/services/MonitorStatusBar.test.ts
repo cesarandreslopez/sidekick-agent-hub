@@ -123,4 +123,58 @@ describe('MonitorStatusBar', () => {
     expect(String(mocks.statusBarItem.tooltip)).toContain(label);
     statusBar.dispose();
   });
+
+  it('keeps the screen-reader label in step with the session, and marks a past one as Viewing', () => {
+    let onTokenUsage: (() => void) | undefined;
+    let onSessionEnd: (() => void) | undefined;
+    const stats = {
+      totalInputTokens: 1200,
+      totalOutputTokens: 0,
+      totalCacheWriteTokens: 0,
+      totalCacheReadTokens: 0,
+      currentContextSize: 100,
+      lastModelId: 'model',
+    };
+    const disposable = { dispose: vi.fn() };
+    const monitor = {
+      isReplaying: false,
+      isActive: () => true,
+      // A session last written a week ago: attached, but not live.
+      getSessionPath: () => '/sessions/old.jsonl',
+      onSessionStart: () => disposable,
+      onSessionEnd: (handler: () => void) => {
+        onSessionEnd = handler;
+        return disposable;
+      },
+      onReplayStateChange: () => disposable,
+      onTokenUsage: (handler: () => void) => {
+        onTokenUsage = handler;
+        return disposable;
+      },
+      getStats: () => stats,
+      getStatsView: () => stats,
+      getProvider: () => ({
+        id: 'claude-code',
+        displayName: 'Claude Code',
+        getContextWindowLimit: () => 1_000,
+        getSessionMetadata: () => ({ mtime: new Date(Date.now() - 7 * 24 * 3600_000) }),
+      }),
+      getAggregatedMetrics: () => ({ permissionMode: null }),
+    };
+    const item = mocks.statusBarItem as typeof mocks.statusBarItem & {
+      accessibilityInformation?: { label: string };
+    };
+    const statusBar = new MonitorStatusBar(monitor as never);
+
+    onTokenUsage!();
+    expect(item.text).toContain('$(eye)');
+    expect(item.accessibilityInformation?.label).toMatch(
+      /^Sidekick session \(Viewing\): 1200 tokens/,
+    );
+    expect(String(item.tooltip)).toContain('Claude Code Session · Viewing');
+
+    onSessionEnd!();
+    expect(item.accessibilityInformation?.label).toBe('Sidekick session: no session');
+    statusBar.dispose();
+  });
 });
