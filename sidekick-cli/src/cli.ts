@@ -363,6 +363,10 @@ program.addCommand(doctorCmd);
 
 const todayCmd = new Command('today')
   .description('Show a cache-only daily brief for this project')
+  .addHelpText(
+    'after',
+    '\nToken counts are compact in the text; --json carries yesterdayTotalTokens exactly.',
+  )
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { todayAction } = await import('./commands/today');
     return todayAction(_opts, cmd);
