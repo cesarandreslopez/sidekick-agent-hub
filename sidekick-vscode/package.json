@@ -202,7 +202,7 @@
               "opus"
             ],
             "default": "auto",
-            "description": "Model for inline completions. Use 'auto' (recommended), a tier (fast/balanced/powerful), a legacy name (haiku/sonnet/opus), or an exact model ID.",
+            "description": "Model for inline completions. Use 'auto' (recommended), a tier (fast/balanced/powerful), a legacy name (haiku/sonnet/opus), or an exact model ID typed in settings.json (VS Code marks it as an unknown value, but it is used).",
             "enumDescriptions": [
               "Auto - uses the recommended tier for this feature (fast)",
               "Fast - lowest latency model for the active provider",
@@ -225,7 +225,7 @@
               "opus"
             ],
             "default": "auto",
-            "description": "Model for code transformations. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
+            "description": "Model for code transformations. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID typed in settings.json (VS Code marks it as an unknown value, but it is used).",
             "enumDescriptions": [
               "Auto - uses the recommended tier for this feature (powerful)",
               "Fast - lowest latency model for the active provider",
@@ -248,7 +248,7 @@
               "opus"
             ],
             "default": "auto",
-            "description": "Model for commit message generation. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
+            "description": "Model for commit message generation. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID typed in settings.json (VS Code marks it as an unknown value, but it is used).",
             "enumDescriptions": [
               "Auto - uses the recommended tier for this feature (balanced)",
               "Fast - lowest latency model for the active provider",
@@ -271,7 +271,7 @@
               "opus"
             ],
             "default": "auto",
-            "description": "Model for documentation generation. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
+            "description": "Model for documentation generation. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID typed in settings.json (VS Code marks it as an unknown value, but it is used).",
             "enumDescriptions": [
               "Auto - uses the recommended tier for this feature (fast)",
               "Fast - lowest latency model for the active provider",
@@ -294,7 +294,7 @@
               "opus"
             ],
             "default": "auto",
-            "description": "Model for generating explanations. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
+            "description": "Model for generating explanations. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID typed in settings.json (VS Code marks it as an unknown value, but it is used).",
             "enumDescriptions": [
               "Auto - uses the recommended tier for this feature (balanced)",
               "Fast - lowest latency model for the active provider",
@@ -317,7 +317,7 @@
               "opus"
             ],
             "default": "auto",
-            "description": "Model for error explanations and fixes. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
+            "description": "Model for error explanations and fixes. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID typed in settings.json (VS Code marks it as an unknown value, but it is used).",
             "enumDescriptions": [
               "Auto - uses the recommended tier for this feature (balanced)",
               "Fast - lowest latency model for the active provider",
@@ -340,7 +340,7 @@
               "opus"
             ],
             "default": "auto",
-            "description": "Model for inline chat / quick ask. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
+            "description": "Model for inline chat / quick ask. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID typed in settings.json (VS Code marks it as an unknown value, but it is used).",
             "enumDescriptions": [
               "Auto - uses the recommended tier for this feature (balanced)",
               "Fast - lowest latency model for the active provider",
@@ -363,7 +363,7 @@
               "opus"
             ],
             "default": "auto",
-            "description": "Model for pre-commit code review. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
+            "description": "Model for pre-commit code review. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID typed in settings.json (VS Code marks it as an unknown value, but it is used).",
             "enumDescriptions": [
               "Auto - uses the recommended tier for this feature (balanced)",
               "Fast - lowest latency model for the active provider",
@@ -386,7 +386,7 @@
               "opus"
             ],
             "default": "auto",
-            "description": "Model for PR description generation. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID.",
+            "description": "Model for PR description generation. Use 'auto' (recommended), a tier, a legacy name, or an exact model ID typed in settings.json (VS Code marks it as an unknown value, but it is used).",
             "enumDescriptions": [
               "Auto - uses the recommended tier for this feature (balanced)",
               "Fast - lowest latency model for the active provider",
@@ -1130,7 +1130,7 @@
       },
       {
         "command": "sidekick.refreshSession",
-        "title": "Refresh/Find Session",
+        "title": "Find Session",
         "category": "Sidekick",
         "icon": "$(refresh)"
       },
@@ -1283,13 +1283,13 @@
       },
       {
         "command": "sidekick.accounts.openTerminal",
-        "title": "Open Terminal as Account",
+        "title": "Open Terminal as Account…",
         "category": "Sidekick",
         "icon": "$(terminal)"
       },
       {
         "command": "sidekick.accounts.remove",
-        "title": "Remove Account",
+        "title": "Remove Account…",
         "category": "Sidekick",
         "icon": "$(trash)"
       },
