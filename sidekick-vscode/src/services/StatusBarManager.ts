@@ -63,6 +63,11 @@ export class StatusBarManager implements vscode.Disposable {
 
   /** Whether completion hint highlight is active */
   private highlightActive: boolean = false;
+  /**
+   * Set once the user has triggered a completion in this window: they know the
+   * shortcut, so the reminder stops appearing after every pause in typing.
+   */
+  private completionTriggered = false;
 
   /** Disposables for event listeners */
   private _disposables: vscode.Disposable[] = [];
@@ -179,8 +184,9 @@ export class StatusBarManager implements vscode.Disposable {
       this.update();
     }
 
-    // Don't highlight if not in connected state or if hint is disabled
-    if (this.state !== 'connected' || !this._showCompletionHint) {
+    // Don't highlight if not in connected state, if the hint is disabled, or
+    // once the user has shown they know the shortcut.
+    if (this.state !== 'connected' || !this._showCompletionHint || this.completionTriggered) {
       return;
     }
 
@@ -222,6 +228,12 @@ export class StatusBarManager implements vscode.Disposable {
   /**
    * Clear highlight state.
    */
+  /** Records that the user triggered a completion, and clears the reminder. */
+  public noteCompletionTriggered(): void {
+    this.completionTriggered = true;
+    this.clearHighlight();
+  }
+
   public clearHighlight(): void {
     this.clearTimers();
     if (this.highlightActive) {
@@ -357,11 +369,11 @@ export class StatusBarManager implements vscode.Disposable {
     switch (this.state) {
       case 'connected':
         if (this.highlightActive) {
+          // A reminder, not a warning: no warning colour (the only other
+          // status-bar backgrounds VS Code supports are error and warning).
           this.statusBarItem.text = `$(sparkle) ${this._shortcut}`;
           this.statusBarItem.tooltip = `Press ${this._shortcut} for an AI completion`;
-          this.statusBarItem.backgroundColor = new vscode.ThemeColor(
-            'statusBarItem.warningBackground',
-          );
+          this.statusBarItem.backgroundColor = undefined;
         } else {
           this.statusBarItem.text = `$(sparkle) Sidekick \u00B7 ${this.currentProvider}`;
           this.statusBarItem.tooltip = `Sidekick (${this.currentProvider} \u00B7 ${this.currentModel}) \u00B7 AI Complete: ${this._shortcut}`;

@@ -440,12 +440,12 @@
           "sidekick.showCompletionHint": {
             "type": "boolean",
             "default": true,
-            "description": "Show visual hint at cursor suggesting AI completion shortcut after typing stops"
+            "description": "Briefly show the Trigger Completion shortcut in the status bar when you pause typing, until you have used it once in the window"
           },
           "sidekick.completionHintDelayMs": {
             "type": "number",
             "default": 1500,
-            "description": "Delay in milliseconds after typing stops before showing completion hint"
+            "description": "Delay in milliseconds after typing stops before the status bar shows the completion shortcut"
           }
         }
       },

@@ -2220,8 +2220,8 @@ export async function activate(context: vscode.ExtensionContext) {
           return;
         }
       }
-      // Clear highlight before triggering
-      statusBarManager?.clearHighlight();
+      // The user knows the shortcut now: clear the reminder and stop showing it.
+      statusBarManager?.noteCompletionTriggered();
       // Trigger inline completion manually
       await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
     }),

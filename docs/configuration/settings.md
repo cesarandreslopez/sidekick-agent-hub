@@ -61,15 +61,15 @@ See [Model Resolution](model-resolution.md) for details on how tiers map to mode
 
 ## Inline Completions
 
-| Setting                          | Default | Description                                                      |
-| -------------------------------- | ------- | ---------------------------------------------------------------- |
-| `sidekick.enabled`               | `true`  | Enable inline completions                                        |
-| `sidekick.debounceMs`            | `0`     | Delay before a triggered completion request is sent (ms)         |
-| `sidekick.inlineContextLines`    | `30`    | Lines of context before/after cursor                             |
-| `sidekick.multiline`             | `false` | Enable multi-line completions (prose files always use multiline) |
-| `sidekick.transformContextLines` | `50`    | Lines of context for transforms                                  |
-| `sidekick.showCompletionHint`    | `true`  | Show visual hint at cursor                                       |
-| `sidekick.completionHintDelayMs` | `1500`  | Delay before showing hint (ms)                                   |
+| Setting                          | Default | Description                                                                                                        |
+| -------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| `sidekick.enabled`               | `true`  | Enable inline completions                                                                                          |
+| `sidekick.debounceMs`            | `0`     | Delay before a triggered completion request is sent (ms)                                                           |
+| `sidekick.inlineContextLines`    | `30`    | Lines of context before/after cursor                                                                               |
+| `sidekick.multiline`             | `false` | Enable multi-line completions (prose files always use multiline)                                                   |
+| `sidekick.transformContextLines` | `50`    | Lines of context for transforms                                                                                    |
+| `sidekick.showCompletionHint`    | `true`  | Briefly show the Trigger Completion shortcut in the status bar after you pause typing, until you have used it once |
+| `sidekick.completionHintDelayMs` | `1500`  | Delay before showing hint (ms)                                                                                     |
 
 ## Session Monitoring
 

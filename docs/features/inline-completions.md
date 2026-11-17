@@ -22,7 +22,7 @@ Completions appear as ghost text that you can accept with Tab.
 | `sidekick.debounceMs`            | `0`     | Delay before a triggered request is sent (ms); a newer trigger within it replaces the pending one                            |
 | `sidekick.inlineContextLines`    | `30`    | Lines of context before/after cursor                                                                                         |
 | `sidekick.multiline`             | `false` | Enable multi-line completions (up to 10 lines)                                                                               |
-| `sidekick.showCompletionHint`    | `true`  | Show visual hint at cursor                                                                                                   |
+| `sidekick.showCompletionHint`    | `true`  | Briefly show the Trigger Completion shortcut in the status bar after you pause typing, until you have used it once           |
 | `sidekick.completionHintDelayMs` | `1500`  | Delay before showing hint (ms)                                                                                               |
 
 !!! note
