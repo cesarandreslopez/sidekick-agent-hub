@@ -20,7 +20,7 @@ vi.mock('vscode', () => ({
 }));
 vi.mock('./Logger', () => ({ log: vi.fn(), logError: vi.fn() }));
 
-import { CompletionService } from './CompletionService';
+import { CompletionService, resolveInlineCompletionTimeout } from './CompletionService';
 
 function token(cancelled: boolean) {
   return {
@@ -162,4 +162,29 @@ it('cancels a debounced completion before it reaches inference', async () => {
   await expect(result).resolves.toBeUndefined();
   expect(complete).not.toHaveBeenCalled();
   service.dispose();
+});
+
+describe('resolveInlineCompletionTimeout', () => {
+  const config = (inlineTimeout: number | undefined, timeouts?: Record<string, number>) => ({
+    get: (key: string) => (key === 'inlineTimeout' ? inlineTimeout : undefined),
+    inspect: () => (timeouts ? { key: 'timeouts', globalValue: timeouts } : undefined),
+  });
+
+  it('lets an explicit timeouts.inlineCompletion win over the deprecated setting', () => {
+    expect(
+      resolveInlineCompletionTimeout(config(20_000, { inlineCompletion: 60_000 }) as never, 60_000),
+    ).toBe(60_000);
+  });
+
+  it('still honours a customised legacy inlineTimeout when the new one is unset', () => {
+    expect(resolveInlineCompletionTimeout(config(20_000) as never, 15_000)).toBe(20_000);
+    // Another operation's timeout under `timeouts` doesn't count as setting this one.
+    expect(
+      resolveInlineCompletionTimeout(config(20_000, { explanation: 45_000 }) as never, 15_000),
+    ).toBe(20_000);
+  });
+
+  it('ignores a legacy value left at its default', () => {
+    expect(resolveInlineCompletionTimeout(config(15_000) as never, 30_000)).toBe(30_000);
+  });
 });

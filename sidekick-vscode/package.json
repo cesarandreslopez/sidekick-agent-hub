@@ -425,7 +425,7 @@
             "minimum": 5000,
             "maximum": 120000,
             "description": "Timeout in milliseconds for inline completions. Increase if you frequently get timeouts (default: 15000ms = 15s)",
-            "markdownDeprecationMessage": "Deprecated: use `#sidekick.timeouts.inlineCompletion#` instead. This setting is only honoured as a fallback when set to a non-default value."
+            "markdownDeprecationMessage": "Deprecated: use `#sidekick.timeouts.inlineCompletion#` instead. This setting is used only while `inlineCompletion` is not set under `#sidekick.timeouts#`, and only when it differs from its default."
           },
           "sidekick.multiline": {
             "type": "boolean",

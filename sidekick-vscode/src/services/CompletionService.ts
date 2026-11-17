@@ -22,6 +22,34 @@ import { getTimeoutManager, DEFAULT_TIMEOUTS } from './TimeoutManager';
 import { featureEffort } from '../types/inferenceProvider';
 
 /**
+ * The inline completion timeout.
+ *
+ * `sidekick.timeouts.inlineCompletion` wins whenever the user set it (in any
+ * scope); the deprecated `sidekick.inlineTimeout` is only a fallback for
+ * someone who customised it before and never set the new one. Otherwise the
+ * timeout toast's "Open Settings" would lead to a setting with no effect.
+ *
+ * @param config - The `sidekick` configuration section
+ * @param current - The TimeoutManager value (`timeouts.inlineCompletion` or its default)
+ */
+export function resolveInlineCompletionTimeout(
+  config: Pick<vscode.WorkspaceConfiguration, 'get'> &
+    Partial<Pick<vscode.WorkspaceConfiguration, 'inspect'>>,
+  current: number,
+): number {
+  const timeouts = config.inspect?.<Record<string, number>>('timeouts');
+  const setExplicitly = [
+    timeouts?.workspaceFolderValue,
+    timeouts?.workspaceValue,
+    timeouts?.globalValue,
+  ].some((value) => typeof value?.inlineCompletion === 'number');
+  if (setExplicitly) return current;
+
+  const legacy = config.get<number>('inlineTimeout');
+  return legacy !== undefined && legacy !== DEFAULT_TIMEOUTS.inlineCompletion ? legacy : current;
+}
+
+/**
  * Service for managing code completion requests.
  *
  * Coordinates between the VS Code InlineCompletionProvider and AuthService,
@@ -103,15 +131,10 @@ export class CompletionService implements vscode.Disposable {
       this.authService.getProviderId(),
       'inlineModel',
     );
-    // Resolve inline completion timeout:
-    // 1. Check legacy `sidekick.inlineTimeout` (deprecated) — honour if user explicitly set it
-    // 2. Otherwise use TimeoutManager which reads `sidekick.timeouts.inlineCompletion`
-    const legacyTimeout = config.get<number>('inlineTimeout');
-    const legacyIsCustom =
-      legacyTimeout !== undefined && legacyTimeout !== DEFAULT_TIMEOUTS.inlineCompletion;
-    const timeoutMs = legacyIsCustom
-      ? legacyTimeout
-      : getTimeoutManager().getTimeoutConfig('inlineCompletion').baseTimeout;
+    const timeoutMs = resolveInlineCompletionTimeout(
+      config,
+      getTimeoutManager().getTimeoutConfig('inlineCompletion').baseTimeout,
+    );
 
     // Prose files always use multiline mode
     const isProse = PROSE_LANGUAGES.includes(document.languageId.toLowerCase());
