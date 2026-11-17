@@ -11,6 +11,9 @@ import { LOGO_ART } from '../branding';
 import { parseBlessedTags } from './parseBlessedTags';
 import { useTerminalSize } from './useTerminalSize';
 
+/** Rows the full splash (logo and spacers) needs, with the status bar below it. */
+const SPLASH_FULL_MIN_ROWS = 24;
+
 interface SplashOverlayProps {
   /** Number of dashboard panels, for the "1-N jump" hint. */
   panelCount?: number;
@@ -19,8 +22,12 @@ interface SplashOverlayProps {
 export function SplashOverlay({ panelCount }: SplashOverlayProps): React.ReactElement {
   const spinner = useSpinner();
   const phrase = useMemo(() => getRandomPhrase(), []);
-  const { columns } = useTerminalSize();
+  const { columns, rows } = useTerminalSize();
   const jumpHint = panelCount && panelCount > 1 ? `1-${Math.min(panelCount, 9)}` : '1-9';
+  // The full splash is 21 rows; on a short terminal the logo and spacers go,
+  // so the borders and the --replay hint stay on screen.
+  const compact = rows < SPLASH_FULL_MIN_ROWS;
+  const spacer = compact ? null : <Text> </Text>;
 
   return (
     <Box
@@ -28,30 +35,37 @@ export function SplashOverlay({ panelCount }: SplashOverlayProps): React.ReactEl
       borderStyle="single"
       borderColor="magenta"
       paddingX={2}
-      paddingY={1}
+      paddingY={compact ? 0 : 1}
       width={Math.min(60, columns - 2)}
+      flexShrink={0}
     >
       {/* Logo */}
-      {LOGO_ART.map((line, i) => (
-        <Text key={i}>{parseBlessedTags(line)}</Text>
-      ))}
-      <Text> </Text>
-      <Text dimColor> {phrase}</Text>
-      <Text> </Text>
+      {!compact &&
+        LOGO_ART.map((line, i) => (
+          <Text key={i} wrap="truncate-end">
+            {parseBlessedTags(line)}
+          </Text>
+        ))}
+      {spacer}
+      <Text dimColor wrap="truncate-end">
+        {' '}
+        {phrase}
+      </Text>
+      {spacer}
       <Text>
         {' '}
         <Text color="magenta">{spinner}</Text> <Text dimColor>Waiting for session events...</Text>
       </Text>
-      <Text> </Text>
+      {spacer}
       <Text>
         {' '}
         <Text dimColor>Navigate:</Text> <Text bold>{jumpHint}</Text> jump <Text bold>?</Text> help{' '}
         <Text bold>q</Text> quit
       </Text>
-      <Text> </Text>
+      {spacer}
       <Text dimColor> Start a Claude Code, OpenCode, or Codex session</Text>
       <Text dimColor> in another terminal and events will appear here.</Text>
-      <Text> </Text>
+      {spacer}
       <Text>
         {' '}
         <Text dimColor>Or use </Text>

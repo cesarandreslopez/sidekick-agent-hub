@@ -589,7 +589,7 @@ export class SessionsPanel implements SidePanel {
                 }),
           );
           lines.push(
-            `  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} calls{/grey-fg}  ${costDisplay}`,
+            `  ${modelName.padEnd(20)} {bold}${String(ms.calls).padStart(4)}{/bold}{grey-fg} ${ms.calls === 1 ? 'call ' : 'calls'}{/grey-fg}  ${costDisplay}`,
           );
         }
       }
@@ -700,17 +700,21 @@ export class SessionsPanel implements SidePanel {
     const w = ctx?.width ?? detailWidth();
     const totalTokens = s.totalTokens;
     return [
-      `{bold}${s.date}{/bold}  {bold}${s.sessionCount}{/bold}{grey-fg} sessions{/grey-fg}  {bold}${s.messageCount}{/bold}{grey-fg} messages{/grey-fg}`,
+      `{bold}${s.date}{/bold}  {bold}${s.sessionCount}{/bold}{grey-fg} ${s.sessionCount === 1 ? 'session' : 'sessions'}{/grey-fg}  {bold}${s.messageCount}{/bold}{grey-fg} ${s.messageCount === 1 ? 'message' : 'messages'}{/grey-fg}`,
       `{grey-fg}Tokens{/grey-fg} {bold}${fmtNum(totalTokens)}{/bold} ({grey-fg}In{/grey-fg} ${fmtNum(s.inputTokens)}  {grey-fg}Out{/grey-fg} ${fmtNum(s.outputTokens)}  {grey-fg}Cache{/grey-fg} ${fmtNum(s.cacheReadTokens + s.cacheWriteTokens)})  {green-fg}${formatCost(s.totalCost)}{/green-fg}`,
       '',
       sectionHeader('Models', w),
-      ...s.modelUsage.map((u) => `  ${u.model}: {bold}${u.calls}{/bold} calls`),
+      ...s.modelUsage.map(
+        (u) => `  ${u.model}: {bold}${u.calls}{/bold} ${u.calls === 1 ? 'call' : 'calls'}`,
+      ),
       '',
       sectionHeader('Tools', w),
       ...s.toolUsage
         .sort((a, b) => b.calls - a.calls)
         .slice(0, 10)
-        .map((u) => `  ${u.tool.padEnd(16)} {bold}${u.calls}{/bold} calls`),
+        .map(
+          (u) => `  ${u.tool.padEnd(16)} {bold}${u.calls}{/bold} ${u.calls === 1 ? 'call' : 'calls'}`,
+        ),
     ].join('\n');
   }
 
@@ -859,7 +863,7 @@ export class SessionsPanel implements SidePanel {
       return tools
         .map((t) => {
           const pending = t.pending > 0 ? `  {yellow-fg}(${t.pending} pending){/yellow-fg}` : '';
-          return `{cyan-fg}${t.name.padEnd(18)}{/cyan-fg} ${String(t.calls).padStart(5)} calls${pending}`;
+          return `{cyan-fg}${t.name.padEnd(18)}{/cyan-fg} ${String(t.calls).padStart(5)} ${t.calls === 1 ? 'call ' : 'calls'}${pending}`;
         })
         .join('\n');
     }
@@ -869,7 +873,10 @@ export class SessionsPanel implements SidePanel {
     if (s.toolUsage.length === 0) return '{grey-fg}(no tool data){/grey-fg}';
     return s.toolUsage
       .sort((a, b) => b.calls - a.calls)
-      .map((t) => `{cyan-fg}${t.tool.padEnd(18)}{/cyan-fg} ${String(t.calls).padStart(5)} calls`)
+      .map(
+        (t) =>
+          `{cyan-fg}${t.tool.padEnd(18)}{/cyan-fg} ${String(t.calls).padStart(5)} ${t.calls === 1 ? 'call' : 'calls'}`,
+      )
       .join('\n');
   }
 

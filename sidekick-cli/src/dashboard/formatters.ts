@@ -82,6 +82,23 @@ export function formatTime(ts: string): string {
   }
 }
 
+/** Local date and time, `YYYY-MM-DD HH:MM:SS`, instead of a raw UTC ISO string. */
+export function formatDateTime(ts: string | null | undefined): string {
+  if (!ts) return 'unknown';
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
+/** `1 call`, `2 calls`: the count with its noun in the right number. */
+export function plural(count: number, noun: string, pluralNoun = `${noun}s`): string {
+  return `${count} ${count === 1 ? noun : pluralNoun}`;
+}
+
 /** Format elapsed time from a start timestamp (to `endTime`, or now). */
 export function formatElapsed(startTime: string, endTime?: string | number): string {
   const start = new Date(startTime).getTime();

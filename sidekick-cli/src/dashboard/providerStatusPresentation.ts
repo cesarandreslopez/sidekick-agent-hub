@@ -1,4 +1,5 @@
 import type { ProviderServiceStatus } from 'sidekick-shared';
+import { formatDateTime } from './formatters';
 
 /** Product copy for public vendor observations, independent of request readiness. */
 export function presentProviderStatus(status: ProviderServiceStatus): {
@@ -16,15 +17,19 @@ export function presentProviderStatus(status: ProviderServiceStatus): {
       color: 'gray',
       visible: true,
       summary: `${vendor} status unavailable`,
-      lines: ['Status unavailable', `Checked: ${status.checkedAt}`, `Source: ${status.sourceUrl}`],
+      lines: [
+        'Status unavailable',
+        `Checked: ${formatDateTime(status.checkedAt)}`,
+        `Source: ${status.sourceUrl}`,
+      ],
     };
   }
   const partial = status.incidents === null;
   const names = new Map(status.components.map((component) => [component.id, component.name]));
   const lines = [
     status.description,
-    `Checked: ${status.checkedAt}`,
-    `Provider updated: ${status.providerUpdatedAt ?? 'not reported'}`,
+    `Checked: ${formatDateTime(status.checkedAt)}`,
+    `Provider updated: ${status.providerUpdatedAt ? formatDateTime(status.providerUpdatedAt) : 'not reported'}`,
   ];
   for (const component of status.components.filter(
     (component) => component.status !== 'operational',

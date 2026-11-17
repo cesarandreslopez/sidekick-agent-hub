@@ -12,6 +12,7 @@ import {
   escapeBlessed,
   fmtNum,
   formatTime,
+  formatDateTime,
   sectionHeader,
   wordWrap,
 } from '../formatters';
@@ -93,7 +94,9 @@ export class EventStreamPanel implements SidePanel {
 
     // Key fields
     lines.push(`{bold}Type:{/bold}     ${ev.type || 'unknown'}`);
-    lines.push(`{bold}Time:{/bold}     ${ev.timestamp || 'unknown'}`);
+    lines.push(
+      `{bold}Time:{/bold}     ${formatDateTime(typeof ev.timestamp === 'string' ? ev.timestamp : null)}`,
+    );
     if (ev.toolName) lines.push(`{bold}Tool:{/bold}     {cyan-fg}${ev.toolName}{/cyan-fg}`);
     if (ev.model) lines.push(`{bold}Model:{/bold}    ${ev.model}`);
 

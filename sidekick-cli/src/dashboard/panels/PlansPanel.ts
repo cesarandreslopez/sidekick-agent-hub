@@ -118,9 +118,11 @@ export class PlansPanel implements SidePanel {
       const rate = Math.round(p.completionRate * 100);
       const icon = STATUS_ICONS[p.status] || STATUS_ICONS['in_progress'];
       const badge = SOURCE_BADGES[p.source] || p.source;
-      const title = truncate(p.title, 30);
-      const date = p.createdAt.substring(0, 10);
-      const label = `${icon} ${title}  ${badge}  ${rate}%  ${date}`;
+      // Date first and a meaningful title: in a ~21-column side list, rows
+      // that all began "✓ Plan  CX  100%" could not be told apart.
+      const title = truncate(historicalPlanTitle(p), 30);
+      const date = p.createdAt.substring(5, 10);
+      const label = `${icon} ${date} ${title}  ${badge} ${rate}%`;
 
       items.push({
         id: `plan-${i}`,
@@ -348,4 +350,18 @@ export class PlansPanel implements SidePanel {
     this.viewVersion++;
     return `Plans source: ${this.sourceFilter === 'all' ? 'all sources' : SOURCE_NAMES[this.sourceFilter]}`;
   }
+}
+
+/**
+ * A plan's title for the list. Codex plans are all titled "Plan", so the first
+ * step stands in for the generic title.
+ */
+function historicalPlanTitle(plan: {
+  title: string;
+  steps?: Array<{ description?: string }>;
+}): string {
+  const title = plan.title.trim();
+  if (title && !/^plan$/i.test(title)) return title;
+  const firstStep = plan.steps?.find((step) => step.description?.trim())?.description?.trim();
+  return firstStep || title || 'Plan';
 }

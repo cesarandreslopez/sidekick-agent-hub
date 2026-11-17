@@ -32,7 +32,7 @@ export interface TreeData {
   name?: string;
 }
 import type { StaticData } from './StaticDataLoader';
-import { shortenPath, formatDuration, truncate } from './formatters';
+import { shortenPath, formatDuration, truncate, plural } from './formatters';
 import { truncateTagged as truncateTaggedToWidth, visibleWidth } from './blessedText';
 
 // ── Color mapping (VS Code palette → blessed tag names) ──
@@ -204,7 +204,7 @@ function addToolsSection(
     metrics.fileTouches.length > 0 ? ` \u2192 ${metrics.fileTouches.length} files` : '';
   const label = tag(
     'tool',
-    `Tools (${metrics.toolStats.length} types, ${totalCalls} calls${fileSuffix})`,
+    `Tools (${plural(metrics.toolStats.length, 'type')}, ${plural(totalCalls, 'call')}${fileSuffix})`,
   );
   const toolChildren: Record<string, TreeData> = {};
 
@@ -217,7 +217,7 @@ function addToolsSection(
 
   for (const t of metrics.toolStats) {
     const pending = t.pending > 0 ? ` (${t.pending} pending)` : '';
-    const toolLabel = tag('tool', `${t.name}`) + ` \u00B7\u00B7\u00B7 ${t.calls} calls${pending}`;
+    const toolLabel = tag('tool', `${t.name}`) + ` \u00B7\u00B7\u00B7 ${plural(t.calls, 'call')}${pending}`;
     const toolLeaves: Record<string, TreeData> = {};
 
     // Nested files
@@ -416,7 +416,7 @@ function formatPlanStepEntry(step: PlanStep, tasks: TaskItem[]): string {
     metaParts.push(
       `${step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed} tok`,
     );
-  if (step.toolCalls) metaParts.push(`${step.toolCalls} calls`);
+  if (step.toolCalls) metaParts.push(plural(step.toolCalls, 'call'));
   const metaSuffix = metaParts.length > 0 ? ` [${metaParts.join(', ')}]` : '';
   const errorSuffix = step.errorMessage
     ? ` {red-fg}(${truncate(step.errorMessage, 40)}){/red-fg}`
@@ -836,7 +836,7 @@ function buildTasksBoxSection(metrics: DashboardMetrics, w: number): BoxSection 
   for (const t of metrics.tasks) {
     const icon = BOX_STATUS_ICON[t.status] || 'o';
     const left = `${icon} ${t.subject}`;
-    const right = t.toolCallCount > 0 ? `${t.toolCallCount} calls` : '';
+    const right = t.toolCallCount > 0 ? plural(t.toolCallCount, 'call') : '';
     lines.push(twoCols(left, right, w));
   }
 
