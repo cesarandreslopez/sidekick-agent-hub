@@ -104,6 +104,8 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
 
           if (!completion) {
             log('Inline: no completion returned');
+            // A manual request that produced nothing still deserves an answer.
+            vscode.window.setStatusBarMessage('$(info) Sidekick: no suggestion here', 3000);
             return undefined;
           }
 

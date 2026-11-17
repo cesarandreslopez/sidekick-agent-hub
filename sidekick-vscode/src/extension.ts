@@ -2169,12 +2169,41 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sidekick.triggerCompletion', async () => {
       const editor = vscode.window.activeTextEditor;
-      if (editor) {
-        // Clear highlight before triggering
-        statusBarManager?.clearHighlight();
-        // Trigger inline completion manually
-        vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
+      if (!editor) {
+        vscode.window.setStatusBarMessage(
+          '$(info) Sidekick: open a file to get a completion',
+          3000,
+        );
+        return;
       }
+      const scheme = editor.document.uri.scheme;
+      if (scheme !== 'file' && scheme !== 'untitled') {
+        vscode.window.setStatusBarMessage('$(info) Sidekick: completions work in files only', 3000);
+        return;
+      }
+      // The provider answers nothing at all when completions are off, which
+      // looked like the shortcut was broken.
+      if (!vscode.workspace.getConfiguration('sidekick').get<boolean>('enabled')) {
+        const turnOn = 'Turn On';
+        const action = await vscode.window.showInformationMessage(
+          'Sidekick inline completions are off.',
+          turnOn,
+        );
+        if (action !== turnOn) return;
+        await vscode.workspace
+          .getConfiguration('sidekick')
+          .update('enabled', true, vscode.ConfigurationTarget.Global);
+        if (!vscode.workspace.getConfiguration('sidekick').get<boolean>('enabled')) {
+          void vscode.window.showWarningMessage(
+            'A workspace setting keeps Sidekick inline completions off (sidekick.enabled).',
+          );
+          return;
+        }
+      }
+      // Clear highlight before triggering
+      statusBarManager?.clearHighlight();
+      // Trigger inline completion manually
+      await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
     }),
   );
 
