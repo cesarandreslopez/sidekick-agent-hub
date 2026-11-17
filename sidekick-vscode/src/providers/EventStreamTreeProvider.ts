@@ -26,6 +26,13 @@ interface EventItem {
   description: string;
   /** Index in the ring buffer */
   index: number;
+  /**
+   * Stable tree-item id. The list refreshes every 300 ms with the newest event
+   * first; without an id, keyboard selection jumps as rows shift. A counter
+   * that never resets (unlike `index`, which sticks at the buffer size)
+   * keeps ids unique, which VS Code requires.
+   */
+  id: number;
 }
 
 const MAX_EVENTS = 200;
@@ -54,6 +61,7 @@ export class EventStreamTreeProvider
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   /** Ring buffer of events */
+  private nextEventId = 0;
   private events: EventItem[] = [];
 
   /** Disposables */
@@ -104,6 +112,7 @@ export class EventStreamTreeProvider
       time,
       description: event.description,
       index: this.events.length,
+      id: this.nextEventId++,
     };
 
     this.events.push(item);
@@ -126,6 +135,7 @@ export class EventStreamTreeProvider
 
   getTreeItem(element: EventItem): vscode.TreeItem {
     const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.None);
+    item.id = `event-${element.id}`;
     item.description = element.time;
     item.iconPath = EVENT_ICONS[element.type] || new vscode.ThemeIcon('circle-outline');
     // Agent text is appended as plain text: as markdown, `__init__.py` turned
