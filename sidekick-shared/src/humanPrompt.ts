@@ -50,6 +50,32 @@ export function isInjectedPromptText(text: string, provider: HumanPromptProvider
     : CODEX_INJECTED_PREFIX.test(trimmed);
 }
 
+const PASTED_CONTENT_TAG = /<\/?pasted_content\b[^>]*>/g;
+
+/**
+ * The text a session label shows for one user message, or `null` when the
+ * message is harness output rather than something typed: local-command
+ * caveats, system reminders, task notifications, injected Codex context.
+ * Slash-command wrappers read as typed (`/review foo`) and a
+ * `<pasted_content>` wrapper gives way to what was pasted. Not truncated;
+ * labels are cut by their callers. Internal to the label readers.
+ */
+export function sessionLabelText(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (CLAUDE_INJECTED_PREFIX.test(trimmed.slice(0, 256))) return null;
+  if (CODEX_INJECTED_PREFIX.test(trimmed.slice(0, 256))) return null;
+  if (/^<command-(?:name|message|args)>/.test(trimmed)) {
+    const name = trimmed.match(COMMAND_NAME)?.[1].trim();
+    if (!name) return null;
+    const args = trimmed.match(COMMAND_ARGS)?.[1].trim() ?? '';
+    const visible = name.startsWith('/') ? name : `/${name}`;
+    return args ? `${visible} ${args}` : visible;
+  }
+  const unwrapped = trimmed.replace(PASTED_CONTENT_TAG, ' ').trim();
+  return unwrapped || null;
+}
+
 /** Codex wraps attached images as `<image name=…>` / `</image>` text blocks. */
 const CODEX_IMAGE_WRAPPER = /^<\/?image\b[^>]*>$/;
 

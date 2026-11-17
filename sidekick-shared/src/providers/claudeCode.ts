@@ -13,6 +13,7 @@ import * as path from 'path';
 import { StringDecoder } from 'string_decoder';
 import { readSessionContextSnapshot } from '../context/sessionContext';
 import { readSessionFileStats } from '../sessionStats';
+import { sessionLabelText } from '../humanPrompt';
 import type {
   ReadSessionContextSnapshotOptions,
   SessionContextSnapshot,
@@ -66,7 +67,7 @@ import {
 import { scanSubagentDir } from '../parsers/subagentScanner';
 import { getModelContextWindowSize } from '../modelContext';
 import { extractSessionEvents } from '../schemas/sessionEvent';
-import { getClaudeProjectsDir } from '../claudePaths';
+import { encodeClaudeWorkspacePath, getClaudeProjectsDir } from '../claudePaths';
 import { resolveAgentHomes, type SessionHomesOptions } from '../agentHomes';
 import { listClaudeSessionFilesAsync, workspaceDirectoryFilter } from './claudeListing';
 import type { SessionProviderFactory } from './sessionProviderRegistry';
@@ -125,6 +126,25 @@ function claudeSearchProjectPath(sessionPath: string): string {
   return decodeEncodedPath(path.basename(path.dirname(sessionPath)));
 }
 
+/**
+ * The project one transcript line belongs to. The directory name is a lossy
+ * encoding (every `-`, `.`, `_` and `/` became `-`), so decoding it turns
+ * `sidekick-agent-hub` into `sidekick/agent/hub`. The line's `cwd` is the real
+ * path, but it can be a subdirectory the agent moved into, so walk up from it
+ * to the folder whose encoding is the directory name.
+ */
+function claudeLineProjectPath(cwd: unknown, sessionPath: string, fallback: string): string {
+  if (typeof cwd !== 'string' || !cwd) return fallback;
+  const dirName = path.basename(path.dirname(sessionPath));
+  let candidate = cwd;
+  for (;;) {
+    if (encodeClaudeWorkspacePath(candidate) === dirName) return candidate;
+    const parent = path.dirname(candidate);
+    if (parent === candidate) return fallback;
+    candidate = parent;
+  }
+}
+
 /** The search hit one transcript line yields for `query`, or `null`. */
 function matchClaudeSearchLine(
   line: string,
@@ -136,6 +156,9 @@ function matchClaudeSearchLine(
   if (!line.trim() || !line.toLowerCase().includes(queryLower)) return null;
   try {
     const event = JSON.parse(line);
+    // The raw API request body Claude Code logs next to the turn: the same
+    // text again, with no timestamp.
+    if (event.type === 'api-request-blob') return null;
     const text = extractSearchableText(event);
     if (!text) return null;
     const snippet = searchSnippet(text, query, queryLower);
@@ -145,7 +168,7 @@ function matchClaudeSearchLine(
       line: snippet,
       eventType: event.type || 'unknown',
       timestamp: event.timestamp || '',
-      projectPath,
+      projectPath: claudeLineProjectPath(event.cwd, sessionPath, projectPath),
     };
   } catch {
     // Skip malformed JSON
@@ -165,21 +188,21 @@ function extractClaudeLabelFromPrefix(chunk: string): string | null {
     try {
       const event = JSON.parse(trimmed);
       if (event.type !== 'user') continue;
+      // Harness lines: injected context, a subagent's prompt, a compaction summary.
+      if (event.isMeta === true || event.isSidechain === true || event.isCompactSummary === true) {
+        continue;
+      }
       const content = event.message?.content;
       if (!content) continue;
       let text: string | null = null;
       if (typeof content === 'string') {
-        text = content.trim();
+        text = sessionLabelText(content);
       } else if (Array.isArray(content)) {
-        const textBlock = content.find(
-          (block: unknown) =>
-            isTypedBlock(block) &&
-            block.type === 'text' &&
-            typeof block.text === 'string' &&
-            block.text.trim().length > 0,
-        );
-        if (textBlock && isTypedBlock(textBlock) && typeof textBlock.text === 'string') {
-          text = textBlock.text.trim();
+        for (const block of content) {
+          if (isTypedBlock(block) && block.type === 'text' && typeof block.text === 'string') {
+            text = sessionLabelText(block.text);
+            if (text) break;
+          }
         }
       }
       if (text) {
@@ -191,6 +214,31 @@ function extractClaudeLabelFromPrefix(chunk: string): string | null {
     }
   }
   return null;
+}
+
+/** Bytes read for a label: the first 8 KB, and once more at 64 KB when that held no prompt. */
+const LABEL_PREFIX_BYTES = 8192;
+const LABEL_RETRY_BYTES = 65536;
+
+interface LabelPrefix {
+  text: string;
+  /** The file is longer than what was read. */
+  more: boolean;
+}
+
+function readLabelPrefixSync(fd: number, bytes: number): LabelPrefix {
+  const buffer = Buffer.alloc(bytes);
+  const bytesRead = fs.readSync(fd, buffer, 0, bytes, 0);
+  return { text: buffer.toString('utf-8', 0, bytesRead), more: bytesRead === bytes };
+}
+
+async function readLabelPrefix(
+  handle: fs.promises.FileHandle,
+  bytes: number,
+): Promise<LabelPrefix> {
+  const buffer = Buffer.alloc(bytes);
+  const { bytesRead } = await handle.read(buffer, 0, bytes, 0);
+  return { text: buffer.toString('utf8', 0, bytesRead), more: bytesRead === bytes };
 }
 
 /**
@@ -649,17 +697,20 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   }
 
   extractSessionLabel(sessionPath: string): string | null {
+    let fd: number | null = null;
     try {
-      const fd = fs.openSync(sessionPath, 'r');
-      const buffer = Buffer.alloc(8192);
-      const bytesRead = fs.readSync(fd, buffer, 0, 8192, 0);
-      fs.closeSync(fd);
-
-      if (bytesRead === 0) return null;
-
-      return extractClaudeLabelFromPrefix(buffer.toString('utf-8', 0, bytesRead));
+      fd = fs.openSync(sessionPath, 'r');
+      const prefix = readLabelPrefixSync(fd, LABEL_PREFIX_BYTES);
+      if (!prefix.text) return null;
+      const label = extractClaudeLabelFromPrefix(prefix.text);
+      // Harness lines (caveats, reminders, large pastes) can fill the first
+      // 8 KB before the first typed prompt: look once more, further in.
+      if (label || !prefix.more) return label;
+      return extractClaudeLabelFromPrefix(readLabelPrefixSync(fd, LABEL_RETRY_BYTES).text);
     } catch {
       return null;
+    } finally {
+      if (fd !== null) fs.closeSync(fd);
     }
   }
 
@@ -671,12 +722,14 @@ export class ClaudeCodeProvider implements SessionProviderBase {
       let handle: fs.promises.FileHandle | null = null;
       try {
         handle = await fs.promises.open(sessionPath, 'r');
-        const buffer = Buffer.alloc(8192);
-        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-        results.set(
-          sessionPath,
-          extractClaudeLabelFromPrefix(buffer.toString('utf8', 0, bytesRead)),
-        );
+        const prefix = await readLabelPrefix(handle, LABEL_PREFIX_BYTES);
+        let label = extractClaudeLabelFromPrefix(prefix.text);
+        if (!label && prefix.more) {
+          label = extractClaudeLabelFromPrefix(
+            (await readLabelPrefix(handle, LABEL_RETRY_BYTES)).text,
+          );
+        }
+        results.set(sessionPath, label);
       } catch {
         results.set(sessionPath, null);
       } finally {

@@ -10,6 +10,7 @@
  */
 
 import { EventAggregator } from './aggregation/EventAggregator';
+import { sessionLabelText } from './humanPrompt';
 import { drainReader } from './providers/readerDrain';
 import type { EventAggregatorOptions } from './aggregation/types';
 import type {
@@ -54,11 +55,16 @@ function isTextBlock(block: unknown): block is { type: string; text: string } {
   );
 }
 
-function messageText(content: unknown): string | null {
-  if (typeof content === 'string') return content;
+/** The first text block of a user message that a person typed (see `sessionLabelText`). */
+function labelText(content: unknown): string | null {
+  if (typeof content === 'string') return sessionLabelText(content);
   if (!Array.isArray(content)) return null;
-  const block = content.find((item) => isTextBlock(item) && item.text.trim().length > 0);
-  return block && isTextBlock(block) ? block.text : null;
+  for (const item of content) {
+    if (!isTextBlock(item)) continue;
+    const text = sessionLabelText(item.text);
+    if (text) return text;
+  }
+  return null;
 }
 
 /**
@@ -71,7 +77,10 @@ export function firstUserPrompt(
 ): string | null {
   for (const event of events) {
     if (event.type !== 'user') continue;
-    const text = messageText(event.message?.content);
+    if (event.isMeta === true || event.isSidechain === true || event.isCompactSummary === true) {
+      continue;
+    }
+    const text = labelText(event.message?.content);
     if (!text) continue;
     const compact = text.replace(/\s+/g, ' ').trim();
     if (!compact) continue;
