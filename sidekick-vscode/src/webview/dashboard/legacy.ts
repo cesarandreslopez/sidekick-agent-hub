@@ -1025,7 +1025,15 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         sectionEl.classList.add('visible');
       }
 
+      // The quota origin the card describes for the session provider.
+      function expectedQuotaOrigin() {
+        return currentProviderId === 'codex' ? 'codex' : currentProviderId === 'opencode' ? 'zai' : 'claude-code';
+      }
+
       function updateQuota(quota, quotaFailure) {
+        // A sample stamped for another provider (a Claude poll that lands after
+        // a switch to Codex) is not this card's; unstamped placeholders pass.
+        if (quota && quota.providerId && quota.providerId !== expectedQuotaOrigin()) return;
         currentQuota = quota;
         currentQuotaFailure = quotaFailure || null;
 

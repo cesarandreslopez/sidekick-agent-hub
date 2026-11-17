@@ -249,4 +249,19 @@ describe('legacy dashboard script', () => {
     expect(document.getElementById('tool-list')!.textContent).not.toContain('OldTool');
     expect(errors).toEqual([]);
   });
+
+  it("ignores a quota sample stamped for another provider than the card's", () => {
+    send({ type: 'updateSessionProvider', providerId: 'codex', displayName: 'Codex CLI' });
+    const sample = (providerId: string) => ({
+      providerId,
+      available: true,
+      fiveHour: { utilization: 40, resetsAt: '' },
+      sevenDay: { utilization: 10, resetsAt: '' },
+    });
+    send({ type: 'updateQuota', quota: sample('claude-code') });
+    expect(document.getElementById('quota-section')!.classList.contains('visible')).toBe(false);
+    send({ type: 'updateQuota', quota: sample('codex') });
+    expect(document.getElementById('quota-section')!.classList.contains('visible')).toBe(true);
+    expect(errors).toEqual([]);
+  });
 });

@@ -294,7 +294,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Throttles the billing-block recomputation triggered by token usage. */
   private _billingBlockTimer?: ReturnType<typeof setTimeout>;
   private _billingBlockLastRunMs = 0;
-  private _billingBlockInFlight = false;
+  /** Provider whose billing block is being computed, or null. */
+  private _billingBlockInFlight: string | null = null;
+  /** Bumped per run; a run whose generation is no longer current posts nothing. */
+  private _billingBlockGeneration = 0;
   /** Shared providers used only to read usage for the billing block, keyed by id. */
   private readonly _usageProviders = new Map<string, SessionProviderBase>();
   /** Latest quota sample per provider, keyed by the sample's origin (for `state.json`). */
@@ -545,8 +548,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           this._sendBurnRateUpdate();
           this._sendSessionList();
           this._sendProviderInfo();
-          // Start quota refresh when visible
-          this._quotaService?.startRefresh();
+          // Start quota refresh when visible (the Claude poller only for Claude Code)
+          this._syncQuotaRefresh();
           this._providerStatusService?.startRefresh();
           this._peakHoursService?.startRefresh();
           this._startBurnRateTicker();
@@ -581,7 +584,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Start quota + status refresh if view is initially visible
     if (webviewView.visible) {
-      this._quotaService?.startRefresh();
+      this._syncQuotaRefresh();
       this._providerStatusService?.startRefresh();
       this._peakHoursService?.startRefresh();
       this._startBurnRateTicker();
@@ -1323,8 +1326,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._postMessage({ type: 'updateRecoveryPatterns', data: recoveryData });
     }
 
-    // Advanced Burn Rate (trend from this provider's own usage samples)
-    const quotaState = this._quotaService?.getCachedQuota() ?? undefined;
+    // Advanced Burn Rate (trend from this provider's own usage samples, and
+    // exhaustion projected against this provider's own quota)
+    const quotaState = this._lastQuotaByProvider.get(this._expectedQuotaOrigin()) ?? undefined;
     const burnData = this._summaryService.getAdvancedBurnRate(
       stats,
       this._burnRateCalculator,
@@ -1890,11 +1894,37 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _handleQuotaUpdate(quota: DashboardQuotaState): void {
     const quotaFailure = describeQuotaFailure(quota) ?? undefined;
-    this._lastQuotaByProvider.set(this._quotaOrigin(quota), quota);
-    this._postMessage({ type: 'updateQuota', quota, quotaFailure });
-    this._maybeEmitQuotaAlert(quota, quotaFailure);
+    const origin = this._quotaOrigin(quota);
+    // Every provider's latest sample is kept for state.json; only the one the
+    // session provider's card describes is drawn and alerted on. Otherwise a
+    // Claude poll lands on the Codex card as "Primary/Secondary", and a
+    // signed-out Claude account raises its alert under Codex.
+    this._lastQuotaByProvider.set(origin, quota);
+    if (origin === this._expectedQuotaOrigin()) {
+      this._postMessage({ type: 'updateQuota', quota, quotaFailure });
+      this._maybeEmitQuotaAlert(quota, quotaFailure);
+    }
     void this._sendQuotaHistory();
     this._writeStateFile();
+  }
+
+  /** The quota origin the session provider's card shows (OpenCode shows z.ai). */
+  private _expectedQuotaOrigin(): QuotaProviderId {
+    const id = this._sessionMonitor.getProvider().id;
+    return id === 'codex' ? 'codex' : id === 'opencode' ? 'zai' : 'claude-code';
+  }
+
+  /**
+   * Runs the Claude subscription poller only while the view is visible and the
+   * session provider is Claude Code; its samples describe nothing else.
+   */
+  private _syncQuotaRefresh(): void {
+    if (!this._quotaService) return;
+    if (this._view?.visible && this._sessionMonitor.getProvider().id === 'claude-code') {
+      this._quotaService.startRefresh();
+    } else {
+      this._quotaService.stopRefresh();
+    }
   }
 
   /**
@@ -2014,11 +2044,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * been persisted, then posts both to the webview.
    */
   private async _sendBillingBlock(): Promise<void> {
-    if (this._billingBlockInFlight) return;
-    this._billingBlockInFlight = true;
+    const providerId = this._sessionMonitor.getProvider().id;
+    // One run per provider at a time; a run for another provider (a switch
+    // happened) is superseded, and its result is discarded when it lands.
+    if (this._billingBlockInFlight === providerId) return;
+    const generation = ++this._billingBlockGeneration;
+    this._billingBlockInFlight = providerId;
     this._billingBlockLastRunMs = Date.now();
+    const superseded = (): boolean =>
+      generation !== this._billingBlockGeneration ||
+      this._sessionMonitor.getProvider().id !== providerId;
     try {
-      const providerId = this._sessionMonitor.getProvider().id;
       const provider = this._usageProviderFor(providerId);
       if (!provider) return;
       const now = new Date();
@@ -2046,13 +2082,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           };
         }
       }
+      if (superseded()) return;
       this._lastBillingBlock = block;
       this._postMessage({ type: 'updateBillingBlock', block, official });
       this._writeStateFile();
     } catch (error) {
       logError('Dashboard failed to compute the billing block', error);
     } finally {
-      this._billingBlockInFlight = false;
+      if (generation === this._billingBlockGeneration) this._billingBlockInFlight = null;
     }
   }
 
@@ -2093,14 +2130,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         } else if (cached) {
           this._handleQuotaUpdate(cached);
         }
-        this._quotaService.startRefresh();
+        this._syncQuotaRefresh();
         return;
       }
 
-      this._handleQuotaUpdate({
-        fiveHour: { utilization: 0, resetsAt: '' },
-        sevenDay: { utilization: 0, resetsAt: '' },
-        available: false,
+      if (provider.id === 'claude-code') {
+        // No poller (the extension started under another provider): one
+        // resolver read still paints the card instead of leaving it empty.
+        this._handleQuotaUpdate(await resolveQuota({ providerId: 'claude-code', workspacePath }));
+        return;
+      }
+
+      // Hides the card (OpenCode without z.ai). Posted directly: it describes
+      // no provider, so it must not be filed under one in state.json.
+      this._postMessage({
+        type: 'updateQuota',
+        quota: {
+          fiveHour: { utilization: 0, resetsAt: '' },
+          sevenDay: { utilization: 0, resetsAt: '' },
+          available: false,
+        },
       });
     } catch (error) {
       logError('Dashboard failed to resolve provider quota', error);
@@ -2781,6 +2830,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._sendSessionList();
     this._sendProviderInfo();
 
+    // The billing block and quota describe one provider: clear the old block
+    // and recompute for the new provider, and run the Claude poller only for
+    // Claude Code.
+    this._lastBillingBlock = null;
+    this._postMessage({ type: 'updateBillingBlock', block: null, official: null });
+    void this._sendBillingBlock();
+    this._syncQuotaRefresh();
     void this._sendProviderQuotaToWebview();
   }
 

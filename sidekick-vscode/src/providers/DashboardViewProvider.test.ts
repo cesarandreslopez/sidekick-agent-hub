@@ -1398,3 +1398,122 @@ describe('DashboardViewProvider session switches', () => {
     provider.dispose();
   });
 });
+
+describe('DashboardViewProvider quota follows the session provider', () => {
+  const claudeProvider = {
+    id: 'claude-code',
+    displayName: 'Claude Code',
+    getSessionDirectory: () => '/sessions',
+  };
+
+  function quotaProvider() {
+    const monitor = makeSessionMonitor(); // Codex
+    monitor.getStats.mockReturnValue({ ...liveStatsView(), lastUpdated: new Date() } as never);
+    let emit!: (quota: unknown) => void;
+    const quotaService = {
+      onQuotaUpdate: vi.fn((handler: (quota: unknown) => void) => {
+        emit = handler;
+        return disposable();
+      }),
+      startRefresh: vi.fn(),
+      stopRefresh: vi.fn(),
+      getCachedQuota: vi.fn(() => null),
+    };
+    const persistence = {
+      onDidChange: vi.fn(() => disposable()),
+      addNotification: vi.fn(),
+      getNotifications: vi.fn(() => []),
+      getUnreadCount: vi.fn(() => 0),
+    };
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+      quotaService as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      persistence as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    (provider as unknown as { _sendQuotaHistory: () => Promise<void> })._sendQuotaHistory = vi.fn(
+      async () => {},
+    );
+    const count = (type: string) =>
+      postMessage.mock.calls.filter((call) => call[0].type === type).length;
+    return { monitor, provider, quotaService, persistence, postMessage, count, emit: () => emit };
+  }
+
+  const signedOutClaude = () => ({
+    providerId: 'claude-code',
+    available: false,
+    failureKind: 'auth',
+    error: 'No OAuth token available',
+    fiveHour: { utilization: 0, resetsAt: '' },
+    sevenDay: { utilization: 0, resetsAt: '' },
+  });
+
+  it("keeps Claude's poll off the Codex card and out of its alerts", () => {
+    const { monitor, provider, persistence, count, emit } = quotaProvider();
+    emit()(signedOutClaude());
+    expect(count('updateQuota')).toBe(0);
+    expect(count('notification')).toBe(0);
+    expect(persistence.addNotification).not.toHaveBeenCalled();
+    // Still filed for state.json under its own origin.
+    const written = sharedMocks.writeStateFile.mock.calls.at(-1)![0] as {
+      quota: { claude: unknown };
+    };
+    expect(written.quota.claude).not.toBeNull();
+
+    monitor.getProvider.mockReturnValue(claudeProvider as never);
+    emit()(signedOutClaude());
+    expect(count('updateQuota')).toBe(1);
+    expect(count('notification')).toBe(1);
+    provider.dispose();
+  });
+
+  it('runs the Claude poller only while the session provider is Claude Code', () => {
+    const { monitor, provider, quotaService } = quotaProvider();
+    const host = provider as unknown as { refreshSessionView(): void };
+    host.refreshSessionView();
+    expect(quotaService.startRefresh).not.toHaveBeenCalled();
+    expect(quotaService.stopRefresh).toHaveBeenCalled();
+
+    monitor.getProvider.mockReturnValue(claudeProvider as never);
+    host.refreshSessionView();
+    expect(quotaService.startRefresh).toHaveBeenCalledTimes(1);
+    provider.dispose();
+  });
+
+  it('recomputes the billing block for the new provider and drops the old run', async () => {
+    const { monitor, provider, count } = quotaProvider();
+    const host = provider as unknown as {
+      refreshSessionView(): void;
+      _sendBillingBlock(): Promise<void>;
+    };
+    let release!: () => void;
+    sharedMocks.collectUsageEvents.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ events: [] });
+        }),
+    );
+    const codexRun = host._sendBillingBlock();
+
+    monitor.getProvider.mockReturnValue(claudeProvider as never);
+    host.refreshSessionView();
+    await vi.waitFor(() => expect(count('updateBillingBlock')).toBe(2));
+    const providers = sharedMocks.collectUsageEvents.mock.calls.at(-1)![0] as {
+      providers: Array<{ id: string }>;
+    };
+    expect(providers.providers.map((p) => p.id)).toEqual(['claude-code']);
+
+    // The Codex run finishing late posts nothing over the Claude Code block.
+    release();
+    await codexRun;
+    expect(count('updateBillingBlock')).toBe(2);
+    provider.dispose();
+  });
+});
