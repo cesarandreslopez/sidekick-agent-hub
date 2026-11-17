@@ -7,6 +7,7 @@ import {
   listSessionPreviews,
   listSessionPreviewsAsync,
   readSessionPreview,
+  readSessionPreviewAsync,
 } from './sessionPreviews';
 
 const temporaryDirectories: string[] = [];
@@ -101,6 +102,26 @@ describe('readSessionPreview', () => {
       firstTimestamp: '2026-08-18T11:00:00.000Z',
       workspacePath: '/workspace/codex-project',
     });
+  });
+
+  it('finds a Codex cwd whose session_meta line runs past the prefix scan', async () => {
+    const dir = makeTempDir();
+    const filePath = writeSession(dir, 'rollout-long.jsonl', [
+      JSON.stringify({
+        timestamp: '2026-08-18T11:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          id: 'long',
+          cwd: '/workspace/long-meta',
+          instructions: 'x'.repeat(22_000),
+        },
+      }),
+    ]);
+    const { provider } = makeFakeProvider('codex', [filePath]);
+
+    expect(readSessionPreview(provider, filePath)?.workspacePath).toBe('/workspace/long-meta');
+    const { preview } = await readSessionPreviewAsync(provider, filePath);
+    expect(preview?.workspacePath).toBe('/workspace/long-meta');
   });
 
   it('returns null for a missing file', () => {

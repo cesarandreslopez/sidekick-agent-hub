@@ -21,7 +21,7 @@
 import * as fs from 'fs';
 import { mapWithConcurrency } from './mapWithConcurrency';
 import { readClaudeSessionCwdAsync } from './providers/claudeListing';
-import { readSessionCwdAsync } from './providers/codexRollouts';
+import { readSessionCwd, readSessionCwdAsync } from './providers/codexRollouts';
 import { isCompressedRolloutPath, readRolloutHead } from './providers/compressedRollouts';
 import { pathWithinRoots, resolveWorkspaceRoots } from './workspaceRoots';
 import { assertListingAlone, isSessionListing, type SessionListing } from './sessionListing';
@@ -208,7 +208,9 @@ export function readSessionPreview(
     sizeBytes,
     firstUserPrompt,
     firstTimestamp: prefix.firstTimestamp,
-    workspacePath: prefix.workspacePath,
+    workspacePath:
+      prefix.workspacePath ??
+      (prefixBudget > 0 ? codexCwdBeyondPrefixSync(provider, sessionPath) : null),
   };
 }
 
@@ -649,8 +651,40 @@ async function readSessionPreviewFromInfoAsync(
     sizeBytes: info.sizeBytes ?? 0,
     firstUserPrompt,
     firstTimestamp: prefix.firstTimestamp ?? info.createdAt?.toISOString() ?? null,
-    workspacePath: prefix.workspacePath ?? info.workspacePath ?? null,
+    workspacePath:
+      prefix.workspacePath ??
+      info.workspacePath ??
+      (prefixBudget > 0 ? await codexCwdBeyondPrefix(provider, info.path) : null),
   };
+}
+
+/**
+ * A Codex rollout's first line (`session_meta`, which carries the cwd) often
+ * runs past the prefix scan (it holds the instructions), so the scan sees no
+ * workspace. The rollout reader reads that one line whole, and caches it.
+ */
+async function codexCwdBeyondPrefix(
+  provider: SessionProviderBase,
+  sessionPath: string,
+): Promise<string | null> {
+  if (provider.id !== 'codex') return null;
+  try {
+    return await readSessionCwdAsync(sessionPath);
+  } catch {
+    return null;
+  }
+}
+
+function codexCwdBeyondPrefixSync(
+  provider: SessionProviderBase,
+  sessionPath: string,
+): string | null {
+  if (provider.id !== 'codex') return null;
+  try {
+    return readSessionCwd(sessionPath);
+  } catch {
+    return null;
+  }
 }
 
 async function extractLabelWithYield(
