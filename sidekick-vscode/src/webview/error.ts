@@ -620,12 +620,17 @@ function handleExtensionMessage(event: MessageEvent) {
       updateUI();
       break;
 
-    case 'cancelled':
+    case 'cancelled': {
+      // The panel's own Cancel button is hidden by this update; if it had
+      // focus, hand it to Run Again rather than dropping it to <body>.
+      const hadFocus = document.activeElement?.id === 'cancel-btn';
       cancelled = true;
       isLoading = false;
       errorMessage = undefined;
       updateUI();
+      if (hadFocus) document.getElementById('retry-cancelled-btn')?.focus();
       break;
+    }
 
     case 'applyFixResult': {
       const applyFixBtn = document.getElementById('apply-fix-btn');

@@ -54,9 +54,12 @@ describe('Error panel webview', () => {
       'Generating fix...',
     );
 
+    // Cancel from the panel's own button: focus moves on to Run Again.
+    document.getElementById('cancel-btn')!.focus();
     send({ type: 'cancelled', requestId: 'r1' });
     expect(visible('cancelled-state')).toBe(true);
     expect(visible('loading-spinner')).toBe(false);
+    expect(document.activeElement?.id).toBe('retry-cancelled-btn');
 
     send({ type: 'explanationError', requestId: 'r1', error: 'boom' });
     expect(document.getElementById('error-state-title')!.textContent).toBe(
