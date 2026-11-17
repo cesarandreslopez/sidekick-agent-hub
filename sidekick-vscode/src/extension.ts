@@ -121,6 +121,7 @@ import { resolveDiagnosticAtSelection } from './utils/diagnosticAtSelection';
 import { PROVIDER_LABELS, accountDisplayName } from './commands/accountQuickPick';
 import { formatTimeoutSeconds } from './utils/formatTimeout';
 import { currentFirst } from './utils/pickerOrder';
+import { getSessionLiveness } from './utils/sessionLiveness';
 import { locateEditRange, relocateInsertLine, type EditTarget } from './utils/editRange';
 import { buildReportCsp } from './utils/reportCsp';
 import type { AccountProviderId, SyncReport } from 'sidekick-shared';
@@ -742,8 +743,10 @@ export async function activate(context: vscode.ExtensionContext) {
         });
     });
 
-    // Notify on session start if a handoff exists
-    sessionMonitor.onSessionStart(() => {
+    // Notify on session start if a handoff exists: once per session, and only
+    // for a session that is live (not one picked from the list to look at).
+    let handoffNotifiedFor: string | null = null;
+    sessionMonitor.onSessionStart((sessionPath) => {
       vscode.commands.executeCommand('sidekick.walkthrough.sessionDetected');
       // onCommand completion may not fire for a command the extension runs
       // itself; the context key completes the walkthrough step either way.
@@ -757,8 +760,12 @@ export async function activate(context: vscode.ExtensionContext) {
         .get<string>('autoHandoff', 'off');
       if (autoHandoff !== 'generate-and-notify' || !handoffService) return;
 
+      if (!sessionPath || sessionPath === handoffNotifiedFor) return;
+      if (sessionMonitor && getSessionLiveness(sessionMonitor) !== 'live') return;
+
       const latestPath = handoffService.getLatestHandoffPath();
       if (latestPath) {
+        handoffNotifiedFor = sessionPath;
         vscode.window
           .showInformationMessage('Previous session context available.', 'Open Handoff')
           .then((action) => {
