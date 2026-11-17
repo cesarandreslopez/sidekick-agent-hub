@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.4] - 2026-11-17
+
+A documentation and media release. The extension, the CLI and the library behave exactly as in 0.33.3.
+
+### Changed
+
+- **New demo recordings.** The README and docs GIFs are re-recorded from the current products: the terminal dashboard following a live session (quota and the billing block, the activity map and its insights, the accounts overlay), `sidekick map --follow`, and a VS Code tour (Session Analytics, the Activity Map, usage history and the Accounts view), with fresh screenshots for the docs. A script in `demo/` records them against an invented session in a sandbox, so they can be made again for a later release. The old GIFs stay where they were, because the published pages of earlier versions still load them.
+- **The READMEs say what Sidekick is first.** The root, VS Code (Marketplace and Open VSX), CLI (npm) and library READMEs open with what Sidekick shows and why it helps, and no longer repeat per-release notes; those stay in the changelogs.
+- **Docs refresh.** The home page, quick start, session monitor, CLI guide, account switcher, peak hours, settings, provider and architecture pages now match 0.33.x. Corrections include: the MCP server has eight tools; `[` and `]` switch dashboard tabs; completions are on demand; the Project Timeline is VS Code only; Ultra has no five-hour window and `sidekick quota` shows no peak-hours line on it; the full list of stores in the Sidekick config folder; and the `tasks add`, `note add` and `decision add` options. New pages cover the Plans view and every VS Code command and keybinding.
+- **Package descriptions** lead with monitoring, and the `claude-max` provider setting says it works on a Pro, Max or Ultra plan.
+
 ## [0.33.3] - 2026-11-17
 
 A second UI and UX pass over the VS Code extension, the terminal dashboard and the CLI, made against 0.33.2. The audit drove the terminal for real in tmux and ran every CLI command, as well as reading the code. Fable checked each finding against the code before it was fixed, and reviewed the fixes before release.

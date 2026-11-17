@@ -1,8 +1,8 @@
 {
   "name": "sidekick-for-max",
   "displayName": "Sidekick Agent Hub",
-  "description": "AI coding assistant with real-time agent monitoring — see what your AI is doing, control token costs, and never lose session context.",
-  "version": "0.33.3",
+  "description": "See what your AI coding agents are doing and what they cost: live activity map, tokens, cost, context and quota for Claude Code, Codex and OpenCode, plus AI completions, transforms and commit messages.",
+  "version": "0.33.4",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",
@@ -23,21 +23,23 @@
     "url": "https://github.com/cesarandreslopez/sidekick-agent-hub/issues"
   },
   "keywords": [
-    "ai-coding-assistant",
     "claude-code",
-    "opencode",
     "codex-cli",
-    "inline-completion",
-    "code-review",
-    "code-refactoring",
+    "opencode",
     "session-monitor",
+    "activity-map",
+    "token-usage",
+    "cost-tracking",
+    "quota",
     "context-management",
+    "agent-hub",
+    "ai-coding-assistant",
+    "mcp",
+    "inline-completion",
     "git-commit",
-    "documentation-generator",
+    "code-review",
     "anthropic",
-    "copilot-alternative",
-    "multi-provider",
-    "agent-hub"
+    "multi-provider"
   ],
   "engines": {
     "vscode": "^1.85.0"
@@ -137,7 +139,7 @@
             "description": "AI provider for inference features (completions, transforms, explanations). 'auto' detects the most recently used coding agent.",
             "enumDescriptions": [
               "Auto-detect based on installed agents",
-              "Claude via Max subscription (uses Claude Code CLI, no extra API cost)",
+              "Claude through Claude Code on a Pro, Max or Ultra plan (no extra API cost)",
               "Claude via Anthropic API key (per-token billing)",
               "OpenCode (uses your configured OpenCode model/provider)",
               "Codex CLI (uses OpenAI API)"

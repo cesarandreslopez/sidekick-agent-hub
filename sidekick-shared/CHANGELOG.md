@@ -5,6 +5,15 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.4] - 2026-11-17
+
+A documentation release. No code, exported signature or type changed.
+
+### Changed
+
+- **README.** Opens with what the library is for and points to this changelog instead of repeating recent additions.
+- **Package description** names the session providers, usage and pricing, quota, activity map, transcripts and schemas the library covers.
+
 ## [0.33.3] - 2026-11-17
 
 No exported signature or type changed. The changes below alter values or behaviour that consumers can see.

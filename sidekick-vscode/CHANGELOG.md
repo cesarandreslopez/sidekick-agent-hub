@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.4] - 2026-11-17
+
+A documentation and media release. The extension behaves exactly as in 0.33.3.
+
+### Changed
+
+- **New Marketplace and Open VSX page.** The README opens with what Sidekick shows and why it helps, a new recording of Session Analytics and the Activity Map following a live session, and fresh screenshots grouped by what you see, what it costs and what you keep. Per-release notes stay on the Changelog tab.
+- **Extension description and keywords** lead with monitoring, and the `claude-max` option of `sidekick.inferenceProvider` says it works on a Pro, Max or Ultra plan.
+- **Docs.** New pages cover the Plans view and every command and keybinding; the session monitor, quick start, settings and provider pages match 0.33.x.
+
 ## [0.33.3] - 2026-11-17
 
 A second UI and UX pass, made against 0.33.2. Fable checked each finding against the code before it was fixed, and reviewed the fixes before release.

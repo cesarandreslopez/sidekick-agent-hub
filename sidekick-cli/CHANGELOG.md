@@ -5,6 +5,16 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.4] - 2026-11-17
+
+A documentation and media release. The CLI behaves exactly as in 0.33.3.
+
+### Changed
+
+- **New npm page.** The README opens with what `sidekick` shows and why it helps and a new recording of `sidekick dashboard` following a live session; the Activity Map, Quota, Account Management and HTML Report sections gain screenshots. Per-release notes stay in this changelog.
+- **Package description and keywords** lead with monitoring.
+- **Docs.** The CLI guide documents the `tasks add`, `note add` and `decision add` options, `tasks --limit`, the Plans panel tabs and every store in the Sidekick config folder, and counts eight MCP tools.
+
 ## [0.33.3] - 2026-11-17
 
 A second UI and UX pass over the terminal dashboard and the one-shot commands, made against 0.33.2. The audit drove the dashboard for real in tmux and ran every command. Fable checked each finding against the code before it was fixed, and reviewed the fixes before release.

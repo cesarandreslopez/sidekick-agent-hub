@@ -1,7 +1,7 @@
 {
   "name": "sidekick-agent-hub",
-  "version": "0.33.3",
-  "description": "Terminal dashboard for monitoring AI coding agent sessions",
+  "version": "0.33.4",
+  "description": "See what your AI coding agents are doing and what they cost: a live terminal dashboard and activity map for Claude Code, Codex and OpenCode sessions, with tokens, cost, quota and account switching.",
   "type": "module",
   "bin": {
     "sidekick": "./dist/sidekick-cli.mjs"
@@ -24,11 +24,17 @@
   },
   "keywords": [
     "cli",
-    "ai-coding-assistant",
+    "tui",
     "claude-code",
-    "opencode",
     "codex-cli",
+    "opencode",
     "session-monitor",
+    "activity-map",
+    "token-usage",
+    "cost-tracking",
+    "quota",
+    "mcp",
+    "ai-coding-assistant",
     "agent-hub"
   ],
   "author": {
