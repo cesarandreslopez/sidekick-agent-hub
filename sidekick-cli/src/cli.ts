@@ -32,6 +32,7 @@ import { detectProvider } from 'sidekick-shared';
 import type { ProviderId, SessionProviderBase } from 'sidekick-shared';
 import { ClaudeCodeProvider, OpenCodeProvider, CodexProvider } from 'sidekick-shared';
 import { formatCliError } from './cliError';
+import { installClosedPipeHandler } from './closedPipe';
 import { leaveActiveAltScreen } from './dashboard/altScreen';
 import { registerAccountsCommand } from './commands/accounts';
 
@@ -42,6 +43,11 @@ import { registerAccountsCommand } from './commands/accounts';
 if (process.env.NO_COLOR && !process.env.FORCE_COLOR) chalk.level = 0;
 
 const commandToken = firstCommandToken(process.argv.slice(2));
+
+// `sidekick stats | head` closes the pipe early: end quietly instead of
+// printing an EPIPE stack trace. The status line keeps running after the
+// reader is gone so it can still write state.json and persist the quota.
+installClosedPipeHandler({ exit: commandToken !== 'statusline', beforeExit: leaveActiveAltScreen });
 
 const program = new Command();
 

@@ -617,14 +617,6 @@ export function parsePromptDumpFormat(
     : { error: `Unknown format "${format}". Use one of: ${PROMPT_DUMP_FORMATS.join(', ')}.` };
 }
 
-/** A reader that stops early (`| head`) ends the dump quietly, as Unix filters do. */
-function exitQuietlyOnClosedPipe(): void {
-  process.stdout.once('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EPIPE') process.exit(0);
-    throw err;
-  });
-}
-
 function fail(message: string): void {
   process.stderr.write(`Error: ${message}\n`);
   process.exitCode = 1;
@@ -690,7 +682,6 @@ export async function dumpPromptsAction(
     else usage = collected;
   }
 
-  exitQuietlyOnClosedPipe();
   switch (format) {
     case 'json':
       process.stdout.write(
