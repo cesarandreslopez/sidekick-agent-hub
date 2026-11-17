@@ -62,6 +62,18 @@ export function bootInlineWebview(
       state = next;
     },
   });
+  // Libraries imported into the test's own Node context (d3-zoom, for one)
+  // read the global `navigator`, which Node only defines from version 21.
+  // Lend them the window's for as long as this page is open.
+  const lentNavigator = typeof (globalThis as { navigator?: unknown }).navigator === 'undefined';
+  if (lentNavigator) {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
+      writable: true,
+    });
+  }
+
   beforeScripts?.(window);
 
   for (const code of scripts) {
@@ -74,7 +86,10 @@ export function bootInlineWebview(
     posted,
     send: (message) => window.dispatchEvent(new window.MessageEvent('message', { data: message })),
     getState: () => state,
-    close: () => void window.happyDOM.close(),
+    close: () => {
+      if (lentNavigator) delete (globalThis as { navigator?: unknown }).navigator;
+      void window.happyDOM.close();
+    },
   };
 }
 
