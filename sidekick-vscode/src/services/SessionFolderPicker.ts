@@ -110,9 +110,26 @@ export class SessionFolderPicker {
       return undefined;
     }
 
+    // Name sessions by their first prompt, as the session list does; the ID
+    // alone told the user nothing.
+    let labels: Map<string, string | null> | undefined;
+    try {
+      labels = await provider.extractSessionLabelsAsync?.(sessions);
+    } catch {
+      labels = undefined;
+    }
+
     const items = await Promise.all(
       sessions.map(async (sessionPath) => {
-        const filename = provider.getSessionId(sessionPath);
+        const sessionId = provider.getSessionId(sessionPath);
+        let label: string | null | undefined = labels?.get(sessionPath);
+        if (label === undefined) {
+          try {
+            label = provider.extractSessionLabel(sessionPath);
+          } catch {
+            label = null;
+          }
+        }
         let modifiedTime: Date;
 
         try {
@@ -123,8 +140,10 @@ export class SessionFolderPicker {
         }
 
         return {
-          label: filename,
-          description: formatRelativeTime(modifiedTime),
+          label: label || sessionId,
+          description: label
+            ? `${formatRelativeTime(modifiedTime)} · ${sessionId.slice(0, 8)}`
+            : formatRelativeTime(modifiedTime),
           detail: sessionPath,
           sessionPath,
         };
@@ -134,6 +153,7 @@ export class SessionFolderPicker {
     const selected = await vscode.window.showQuickPick(items, {
       placeHolder: 'Select a session to monitor',
       matchOnDescription: true,
+      matchOnDetail: true,
     });
 
     return selected?.sessionPath;
