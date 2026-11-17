@@ -21,6 +21,7 @@ import {
 } from 'sidekick-shared';
 import type { FollowEvent, SessionPreview } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import { formatCliError } from '../cliError';
 import { toCsv, type CsvColumn } from '../csv';
 import { parseLimit } from '../utils/parseLimit';
 
@@ -63,6 +64,8 @@ function formatAge(mtime: Date): string {
 export function buildSessionListRows(previews: SessionPreview[]): Array<{
   id: string;
   timestamp: string;
+  /** ISO 8601 with zone; `timestamp` is local and for reading. */
+  modifiedAt: string;
   age: string;
   label: string;
   size: number;
@@ -72,6 +75,7 @@ export function buildSessionListRows(previews: SessionPreview[]): Array<{
     return {
       id: preview.sessionId || path.basename(preview.filePath, path.extname(preview.filePath)),
       timestamp: formatTimestamp(modified),
+      modifiedAt: preview.modifiedAt,
       age: formatAge(modified),
       label: preview.firstUserPrompt || '',
       size: preview.sizeBytes,
@@ -246,8 +250,7 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
       result.watcher.start(true);
       result.watcher.stop();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`Error: ${msg}\n`);
+      process.stderr.write(formatCliError(err));
       process.exitCode = 1;
       return;
     }

@@ -1,5 +1,6 @@
 declare const __CLI_VERSION__: string;
 
+import { existsSync } from 'node:fs';
 import { Command, Option } from 'commander';
 import chalk from 'chalk';
 import {
@@ -100,6 +101,11 @@ program.hook('preAction', async (_program, actionCommand) => {
     updateNotice = startUpdateNotice({
       allowFetch: needsFullStartup(commandToken) && !isOfflineRun(),
     });
+  }
+  // A mistyped --project still "works" (an empty project), so say so once.
+  const project = program.opts().project as string | undefined;
+  if (project && !existsSync(project)) {
+    process.stderr.write(`Warning: --project ${project} does not exist.\n`);
   }
   const outputFile = program.opts().outputFile as string | undefined;
   if (outputFile) {

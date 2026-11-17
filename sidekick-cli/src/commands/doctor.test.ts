@@ -73,4 +73,14 @@ describe('doctorAction', () => {
     expect(parsed.checks.at(-1)).toMatchObject({ id: 'pricing_catalog', status: 'warning' });
     expect(parsed.pricingCatalog).toMatchObject({ source: 'static', registeredEntries: 0 });
   });
+
+  it('exits 1 only when the report is unhealthy', async () => {
+    process.exitCode = undefined;
+    await doctorAction({}, makeCmd(true));
+    expect(process.exitCode).toBeUndefined();
+    mockRunDoctor.mockResolvedValue(report('unhealthy'));
+    await doctorAction({}, makeCmd(true));
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
+  });
 });

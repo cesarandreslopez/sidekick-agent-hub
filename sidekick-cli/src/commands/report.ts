@@ -18,6 +18,7 @@ import {
 } from 'sidekick-shared';
 import type { HtmlReportOptions } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import { formatCliError } from '../cliError';
 
 export function resolveReportFlags(opts: Record<string, unknown>): {
   noOpen: boolean;
@@ -45,8 +46,7 @@ export async function reportAction(_opts: Record<string, unknown>, cmd: Command)
     try {
       sessionPath = resolveSessionPath(provider, workspacePath, sessionId);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`Error: ${msg}\n`);
+      process.stderr.write(formatCliError(err));
       process.exitCode = 1;
       return;
     }

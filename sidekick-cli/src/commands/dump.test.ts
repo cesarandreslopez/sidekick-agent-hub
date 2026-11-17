@@ -27,6 +27,7 @@ describe('buildSessionListRows', () => {
       age: '5m ago',
     });
     expect(row.timestamp).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    expect(Date.parse(row.modifiedAt)).not.toBeNaN();
   });
 
   it('falls back to the file basename when a preview has no session id', () => {

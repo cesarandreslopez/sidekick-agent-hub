@@ -39,4 +39,6 @@ export async function doctorAction(_opts: Record<string, unknown>, cmd: Command)
       ? `${JSON.stringify({ ...report, pricingCatalog: getPricingCatalogInfo() }, null, 2)}\n`
       : `${formatHealthReport(report)}\n`,
   );
+  // Scripts can gate on the exit code; "attention" is advice, not failure.
+  if (report.status === 'unhealthy') process.exitCode = 1;
 }
