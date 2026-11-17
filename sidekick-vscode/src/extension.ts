@@ -2347,50 +2347,52 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Register review changes command
   context.subscriptions.push(
-    vscode.commands.registerCommand('sidekick.reviewChanges', async () => {
-      await gitReady;
-      if (!preCommitReviewService) {
-        vscode.window.showErrorMessage('Git integration not available. Cannot review changes.');
-        return;
-      }
-
-      // The service shows the one cancellable progress notification; an outer
-      // one stacked a second toast whose Cancel did not stop the request.
-      try {
-        const result = await preCommitReviewService.reviewChanges();
-
-        if (result.cancelled) {
+    vscode.commands.registerCommand(
+      'sidekick.reviewChanges',
+      async (sourceControl?: { rootUri?: vscode.Uri }) => {
+        await gitReady;
+        if (!preCommitReviewService) {
+          vscode.window.showErrorMessage('Git integration not available. Cannot review changes.');
           return;
         }
+        // A Source Control title button passes its repository; review that one.
+        const repoRoot = sourceControl?.rootUri?.fsPath;
+        const retry = () => vscode.commands.executeCommand('sidekick.reviewChanges', sourceControl);
 
-        if (result.error) {
-          void showProviderFailure(`Review failed: ${result.error}`, result.cause, () =>
-            vscode.commands.executeCommand('sidekick.reviewChanges'),
-          );
-          return;
-        }
+        // The service shows the one cancellable progress notification; an outer
+        // one stacked a second toast whose Cancel did not stop the request.
+        try {
+          const result = await preCommitReviewService.reviewChanges(undefined, repoRoot);
 
-        if (result.issueCount === 0) {
-          vscode.window.showInformationMessage('AI Review complete: No issues found!');
-        } else {
-          vscode.window
-            .showInformationMessage(
-              `AI Review complete: ${result.issueCount} suggestion${result.issueCount === 1 ? '' : 's'}. Check Problems panel.`,
-              'Clear Review',
-            )
-            .then((action) => {
-              if (action === 'Clear Review') {
-                vscode.commands.executeCommand('sidekick.clearReview');
-              }
-            });
+          if (result.cancelled) {
+            return;
+          }
+
+          if (result.error) {
+            void showProviderFailure(`Review failed: ${result.error}`, result.cause, retry);
+            return;
+          }
+
+          if (result.issueCount === 0) {
+            vscode.window.showInformationMessage('AI Review complete: No issues found!');
+          } else {
+            vscode.window
+              .showInformationMessage(
+                `AI Review complete: ${result.issueCount} suggestion${result.issueCount === 1 ? '' : 's'}. Check Problems panel.`,
+                'Clear Review',
+              )
+              .then((action) => {
+                if (action === 'Clear Review') {
+                  vscode.commands.executeCommand('sidekick.clearReview');
+                }
+              });
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          void showProviderFailure(`Review failed: ${message}`, error, retry);
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        void showProviderFailure(`Review failed: ${message}`, error, () =>
-          vscode.commands.executeCommand('sidekick.reviewChanges'),
-        );
-      }
-    }),
+      },
+    ),
   );
 
   // Register clear review command

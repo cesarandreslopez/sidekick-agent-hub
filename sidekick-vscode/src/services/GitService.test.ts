@@ -12,7 +12,7 @@ vi.mock('vscode', () => ({
 }));
 vi.mock('./Logger', () => ({ log: vi.fn(), logError: vi.fn() }));
 
-import { GitService } from './GitService';
+import { GitService, isInsideRoot } from './GitService';
 
 function childProcess(): EventEmitter & { stdout: EventEmitter; stderr: EventEmitter } {
   return Object.assign(new EventEmitter(), {
@@ -46,5 +46,13 @@ describe('GitService process execution', () => {
 
     await expect(pending).resolves.toBe('');
     expect(mockSpawn).toHaveBeenCalledWith('git', ['diff', hostile, '--'], { cwd: '/tmp/repo' });
+  });
+});
+
+describe('isInsideRoot', () => {
+  it('matches the root and paths below it, not a sibling that shares a prefix', () => {
+    expect(isInsideRoot('/w/app', '/w/app')).toBe(true);
+    expect(isInsideRoot('/w/app/src/a.ts', '/w/app')).toBe(true);
+    expect(isInsideRoot('/w/app-2/src/a.ts', '/w/app')).toBe(false);
   });
 });

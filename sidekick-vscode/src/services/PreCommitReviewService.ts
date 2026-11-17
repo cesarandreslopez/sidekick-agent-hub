@@ -80,20 +80,21 @@ export class PreCommitReviewService implements vscode.Disposable {
    * Reviews current git changes and creates diagnostics for issues found.
    *
    * @param signal - Optional AbortSignal for external cancellation
+   * @param repoRoot - Repository to review when the caller already knows it
+   *   (the Source Control view a title button was clicked in)
    * @returns Promise resolving to review result
    */
-  async reviewChanges(signal?: AbortSignal): Promise<ReviewResult> {
+  async reviewChanges(signal?: AbortSignal, repoRoot?: string): Promise<ReviewResult> {
     try {
       log('PreCommitReviewService: Starting review');
 
-      // Get repository
-      const repository = this.gitService.getActiveRepository();
-      if (!repository) {
+      if (!this.gitService.getActiveRepository()) {
         return { issueCount: 0, error: 'No Git repository found' };
       }
 
-      // Get diff (staged preferred) - uses existing getChangesForCommit from GitService
-      const changes = await this.gitService.getChangesForCommit();
+      // Get diff (staged preferred). Diagnostics are placed under the same
+      // repository the diff came from, which may not be the active one.
+      const changes = await this.gitService.getChangesForCommit(repoRoot);
       if (!changes) {
         return { issueCount: 0, error: 'No changes to review. Stage or modify some files first.' };
       }
@@ -179,10 +180,10 @@ export class PreCommitReviewService implements vscode.Disposable {
       const issues = parseReviewResponse(response);
       log(`PreCommitReviewService: Parsed ${issues.length} issues`);
 
-      // Create diagnostics
-      await this.createDiagnostics(issues, repository.rootUri.fsPath);
+      // Create diagnostics; report only the ones actually placed.
+      const placed = await this.createDiagnostics(issues, changes.repoPath);
 
-      return { issueCount: issues.length };
+      return { issueCount: placed };
     } catch (error) {
       logError('PreCommitReviewService: Review failed', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -195,8 +196,11 @@ export class PreCommitReviewService implements vscode.Disposable {
    *
    * @param issues - Array of review issues from AI
    * @param repoRoot - Repository root path for resolving file paths
+   * @returns How many diagnostics were placed (issues in files that can't be
+   *   opened are skipped)
    */
-  private async createDiagnostics(issues: ReviewIssue[], repoRoot: string): Promise<void> {
+  private async createDiagnostics(issues: ReviewIssue[], repoRoot: string): Promise<number> {
+    let placed = 0;
     // Clear previous diagnostics
     this.diagnosticCollection.clear();
 
@@ -237,11 +241,13 @@ export class PreCommitReviewService implements vscode.Disposable {
         });
 
         this.diagnosticCollection.set(uri, diagnostics);
+        placed += diagnostics.length;
       } catch (error) {
         // File might not exist or be accessible - skip it
         log(`PreCommitReviewService: Could not create diagnostics for ${filePath}: ${error}`);
       }
     }
+    return placed;
   }
 
   /**

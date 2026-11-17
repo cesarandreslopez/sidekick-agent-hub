@@ -15,6 +15,16 @@ import { API, GitExtension, Repository } from '../api/git';
 import { log, logError } from './Logger';
 
 /**
+ * Whether `filePath` is the repository root or inside it. A plain prefix test
+ * would put `/w/app-2/x.ts` inside `/w/app`.
+ */
+export function isInsideRoot(filePath: string, root: string): boolean {
+  if (filePath === root) return true;
+  const withSep = root.endsWith(path.sep) || root.endsWith('/') ? root : root + path.sep;
+  return filePath.startsWith(withSep);
+}
+
+/**
  * Result from getChangesForCommit operation.
  */
 export interface ChangesForCommit {
@@ -121,7 +131,7 @@ export class GitService implements vscode.Disposable {
     if (editor) {
       const documentPath = editor.document.uri.fsPath;
       const matchingRepo = this.api.repositories.find((repo) =>
-        documentPath.startsWith(repo.rootUri.fsPath),
+        isInsideRoot(documentPath, repo.rootUri.fsPath),
       );
       if (matchingRepo) {
         log(`getActiveRepository: Matched editor to repo: ${matchingRepo.rootUri.fsPath}`);
@@ -171,11 +181,18 @@ export class GitService implements vscode.Disposable {
    * 5. Multiple repos with diffs: prompt user to select
    * 6. No repos with diffs: return undefined
    *
+   * @param preferredRoot - A repository the user already picked, such as the
+   *   Source Control view a title button was clicked in; used when it exists
    * @returns Promise resolving to selected repository, or undefined if none available/selected
    */
-  async selectRepository(): Promise<Repository | undefined> {
+  async selectRepository(preferredRoot?: string): Promise<Repository | undefined> {
     if (!this.api || this.api.repositories.length === 0) {
       return undefined;
+    }
+
+    if (preferredRoot) {
+      const preferred = this.api.repositories.find((repo) => repo.rootUri.fsPath === preferredRoot);
+      if (preferred) return preferred;
     }
 
     // Single repo - no ambiguity
@@ -204,7 +221,7 @@ export class GitService implements vscode.Disposable {
     if (editor) {
       const documentPath = editor.document.uri.fsPath;
       const matchingRepo = reposWithDiffs.find((repo) =>
-        documentPath.startsWith(repo.rootUri.fsPath),
+        isInsideRoot(documentPath, repo.rootUri.fsPath),
       );
       if (matchingRepo) {
         log(
@@ -318,11 +335,12 @@ export class GitService implements vscode.Disposable {
    * 3. Falls back to unstaged changes if nothing staged
    * 4. Returns null if no changes exist
    *
+   * @param preferredRoot - Repository to use when the caller already knows it
    * @returns Promise resolving to changes object or null if no changes
    */
-  async getChangesForCommit(): Promise<ChangesForCommit | null> {
+  async getChangesForCommit(preferredRoot?: string): Promise<ChangesForCommit | null> {
     try {
-      const repository = await this.selectRepository();
+      const repository = await this.selectRepository(preferredRoot);
       if (!repository) {
         log('No active repository found or no repositories with changes');
         return null;
