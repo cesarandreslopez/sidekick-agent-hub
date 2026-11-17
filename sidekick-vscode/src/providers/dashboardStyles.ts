@@ -2320,6 +2320,11 @@ export const DASHBOARD_STYLES = `
       animation: sk-slide-in-left 0.25s ease-out;
     }
 
+    /* Rows already on screen before a live re-render do not slide in again. */
+    .timeline-item.no-anim {
+      animation: none;
+    }
+
     .timeline-item .time {
       color: var(--vscode-descriptionForeground);
       white-space: nowrap;

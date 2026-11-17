@@ -15,6 +15,7 @@ import { tokenMetricDisplay } from './tokens';
 import { quotaCardVisibility, quotaSectionTooltip, renderQuotaExtrasHtml } from './quotaWindows';
 import { blockCostText, formatCost as formatCostText, modelLabel, rowCostText, totalCostText, unpricedNote } from './cost';
 import { highlightMatches } from './text';
+import { captureFocus, restoreFocus } from './focus';
 import { mergeUiState, readUiState } from './uiState';
 import { compactNumber, exactNumber, frequentWords, plural, sessionDurationText, statusLabel } from './format';
 import type { DashboardInit } from '../../types/dashboard';
@@ -1320,6 +1321,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           return;
         }
 
+        // Rebuilt on every changed flush: keep keyboard focus on the same row.
+        const toolFocus = captureFocus(toolListEl, 'data-tool-name');
         toolListEl.innerHTML = analytics.map(function(tool) {
           const successClass = tool.successRate < 90 ? 'warning' : '';
           const avgDuration = tool.avgDuration < 1000
@@ -1366,6 +1369,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           });
         });
 
+        restoreFocus(toolListEl, 'data-tool-name', toolFocus);
+
         // Open rows refresh their calls as counts move (throttled per tool).
         expandedTools.forEach(function(toolName) { requestToolDetails(toolName, false); });
       }
@@ -1386,6 +1391,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
       // Current timeline events cache for client-side filtering
       let currentTimelineEvents = [];
+      // Keys of the rows on screen, so a re-render animates only new ones.
+      let renderedTimelineKeys = new Set();
       // Assistant responses the user expanded, by time + text, kept across re-renders.
       const expandedTimelineKeys = new Set();
       function timelineKey(event) {
@@ -1458,10 +1465,18 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         });
 
         if (filtered.length === 0) {
+          // Events the filters hide are not "no activity" (system events,
+          // tool errors and compactions are hidden by default).
+          const emptyText = searchQuery
+            ? 'No matching events'
+            : events.length > 0
+              ? plural(events.length, 'event') + ' hidden by filters'
+              : 'No activity yet';
           timelineEl.innerHTML = '<div class="timeline-item">' +
             '<span class="time">--:--</span>' +
-            '<span class="description">' + (searchQuery ? 'No matching events' : 'No activity yet') + '</span>' +
+            '<span class="description">' + emptyText + '</span>' +
           '</div>';
+          renderedTimelineKeys = new Set();
           return;
         }
 
@@ -1480,9 +1495,15 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           'compaction': '⚠'
         };
 
+        // Rebuilt on every live push: keep keyboard focus, and slide in only
+        // the rows that are new rather than the whole list.
+        const timelineFocus = captureFocus(timelineEl, 'data-key');
+        const previouslyRendered = renderedTimelineKeys;
+        renderedTimelineKeys = new Set(filtered.map(timelineKey));
         timelineEl.innerHTML = countHtml + filtered.map(function(event, idx) {
           const icon = iconMap[event.type] || '●';
           let classes = 'timeline-item';
+          if (previouslyRendered.has(timelineKey(event))) classes += ' no-anim';
           if (event.isError) classes += ' error';
           if (event.type === 'assistant_response') classes += ' assistant';
           if (event.type === 'compaction') classes += ' compaction';
@@ -1544,6 +1565,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               if (isExpanded) expandedTimelineKeys.delete(itemKey); else expandedTimelineKeys.add(itemKey);
             }
 
+            const hadFocus = document.activeElement === clickedLink;
             const newLink = setTimelineDescription(
               descEl,
               isExpanded ? truncated : full,
@@ -1551,8 +1573,11 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               !isExpanded
             );
             newLink.addEventListener('click', handleExpand);
+            // The link is replaced: a keyboard user stays on it.
+            if (hadFocus) newLink.focus({ preventScroll: true });
           });
         });
+        restoreFocus(timelineEl, 'data-key', timelineFocus);
       }
 
       /**
@@ -1835,6 +1860,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
         const severityIcons = { error: '⚠', warning: '⚠', info: 'ℹ' };
 
+        // Marking one read re-renders the list: keep focus where it was moved.
+        const notificationFocus = captureFocus(listEl, 'data-id');
         listEl.innerHTML = notifications.map(function(n) {
           const icon = severityIcons[n.severity] || 'ℹ';
           const readClass = n.isRead ? 'notification-read' : 'notification-unread';
@@ -1857,6 +1884,19 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           function markRead() {
             const id = item.getAttribute('data-id');
             if (id) {
+              // A read item stops being a control: a keyboard user moves on to
+              // the next unread one (or back to an earlier one, or Mark all read).
+              if (document.activeElement === item) {
+                const unread = Array.prototype.filter.call(
+                  listEl.querySelectorAll('.notification-unread[role="button"]'),
+                  function(other) { return other !== item; }
+                );
+                const after = unread.find(function(other) {
+                  return item.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING;
+                });
+                const next = after || unread[unread.length - 1] || document.getElementById('mark-all-read-btn');
+                if (next) next.focus({ preventScroll: true });
+              }
               vscode.postMessage({ type: 'markNotificationRead', id: id });
               item.classList.remove('notification-unread');
               item.classList.add('notification-read');
@@ -1874,6 +1914,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             }
           });
         });
+        restoreFocus(listEl, 'data-id', notificationFocus);
       }
 
       /**
@@ -1899,6 +1940,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         if (key === lastErrorDetailsKey) return;
         lastErrorDetailsKey = key;
 
+        const errorFocus = captureFocus(listEl, 'data-error-type');
         listEl.innerHTML = errorDetails.map(function(group, idx) {
           const messagesHtml = group.messages.map(function(msg) {
             return '<li>' + escapeHtml(msg) + '</li>';
@@ -1926,6 +1968,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             if (open) expandedErrorTypes.add(type); else expandedErrorTypes.delete(type);
           });
         });
+        restoreFocus(listEl, 'data-error-type', errorFocus);
       }
 
 
@@ -2760,6 +2803,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             currentTimelineEvents = [];
             liveTimelineCount = 0;
             expandedTimelineKeys.clear();
+            renderedTimelineKeys = new Set();
             renderFilteredTimeline();
             updateActivityBadge();
             updateToolAnalytics([]);

@@ -250,6 +250,62 @@ describe('legacy dashboard script', () => {
     expect(errors).toEqual([]);
   });
 
+  it('keeps keyboard focus on a tool row and a notification across live re-renders', () => {
+    const tools = (calls: number) => ({
+      type: 'updateToolAnalytics',
+      analytics: [
+        { name: 'Read', totalCalls: calls, successRate: 100, avgDuration: 5, pendingCount: 0 },
+        { name: 'Bash', totalCalls: 1, successRate: 100, avgDuration: 5, pendingCount: 0 },
+      ],
+    });
+    send(tools(1));
+    const bashToggle = () =>
+      document.querySelector<HTMLElement>('.tool-item[data-tool-name="Bash"] .tool-toggle')!;
+    bashToggle().focus();
+    send(tools(2));
+    expect(document.activeElement).toBe(bashToggle());
+
+    const notifications = (readFirst: boolean) => ({
+      type: 'updateNotificationHistory',
+      unreadCount: readFirst ? 1 : 2,
+      notifications: ['n1', 'n2'].map((id, i) => ({
+        id,
+        triggerId: 't',
+        triggerName: 'Quota',
+        severity: 'warning',
+        title: 'Alert ' + id,
+        body: 'body',
+        time: '9:00',
+        isRead: readFirst && i === 0,
+      })),
+    });
+    send(notifications(false));
+    const item = (id: string) =>
+      document.querySelector<HTMLElement>('.notification-item[data-id="' + id + '"]')!;
+    item('n1').focus();
+    item('n1').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(posted.at(-1)).toEqual({ type: 'markNotificationRead', id: 'n1' });
+    expect(document.activeElement).toBe(item('n2'));
+    // The host re-renders the list; focus stays on the next unread item.
+    send(notifications(true));
+    expect(document.activeElement).toBe(item('n2'));
+    expect(errors).toEqual([]);
+  });
+
+  it('says how many events the filters hide instead of "No activity yet"', () => {
+    send({
+      type: 'updateTimeline',
+      events: [
+        { type: 'error', time: '9:00', description: 'tool failed', noiseLevel: 'system' },
+        { type: 'compaction', time: '9:01', description: 'compacted', noiseLevel: 'system' },
+      ],
+    });
+    expect(document.getElementById('timeline-list')!.textContent).toContain(
+      '2 events hidden by filters',
+    );
+    expect(errors).toEqual([]);
+  });
+
   it('says a live session joins History when it ends', () => {
     const availability = (live: boolean) => ({
       type: 'updateSessionAvailability',
