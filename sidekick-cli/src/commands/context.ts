@@ -9,8 +9,15 @@ import type { Command } from 'commander';
 import { composeContext, resolveProjectIdentity, formatCost } from 'sidekick-shared';
 import type { ContextResult, Fidelity } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import {
+  decisionAlternatives,
+  formatCount,
+  isOmittedPlaceholder,
+  noteStatusLabel,
+  taskStatusLabel,
+} from '../displayLabels';
 
-function formatContextText(ctx: ContextResult, slug: string): string {
+export function formatContextText(ctx: ContextResult, slug: string): string {
   const lines: string[] = [];
 
   lines.push('# Project Context');
@@ -24,7 +31,7 @@ function formatContextText(ctx: ContextResult, slug: string): string {
     lines.push('No tasks.');
   } else {
     for (const t of ctx.tasks.items) {
-      const status = t.status.toUpperCase();
+      const status = taskStatusLabel(t.status);
       const desc = t.description ? ` — ${t.description}` : '';
       lines.push(`- [${status}] ${t.subject}${desc}`);
     }
@@ -42,9 +49,15 @@ function formatContextText(ctx: ContextResult, slug: string): string {
   } else {
     for (const d of ctx.decisions.items) {
       lines.push(`- ${d.description}`);
-      lines.push(`  Chosen: ${d.chosenOption}`);
+      lines.push(
+        `  Chosen: ${isOmittedPlaceholder(d.chosenOption) ? '(not recorded)' : d.chosenOption}`,
+      );
       if (d.rationale) {
         lines.push(`  Rationale: ${d.rationale}`);
+      }
+      const alternatives = decisionAlternatives(d.alternatives);
+      if (alternatives.length > 0) {
+        lines.push(`  Alternatives: ${alternatives.join(', ')}`);
       }
     }
   }
@@ -57,7 +70,8 @@ function formatContextText(ctx: ContextResult, slug: string): string {
   } else {
     for (const n of ctx.notes.items) {
       const label = n.title || n.content.slice(0, 80);
-      const tag = `[${n.noteType}/${n.importance}]`;
+      const state = n.status && n.status !== 'active' ? `/${noteStatusLabel(n.status)}` : '';
+      const tag = `[${n.noteType}/${n.importance}${state}]`;
       lines.push(`- ${tag} ${label}`);
       if (n.title && n.content) {
         lines.push(`  ${n.content}`);
@@ -76,14 +90,14 @@ function formatContextText(ctx: ContextResult, slug: string): string {
   lines.push('');
 
   // --- Stats (if available) ---
+  // The history store is global: these totals cover every project, all time,
+  // not this one, so the heading says so.
   if (ctx.stats) {
-    lines.push('## Stats');
+    lines.push('## Usage (all projects, all time)');
     const t = ctx.stats.tokens;
+    lines.push(`Tokens: ${formatCount(t.inputTokens)} in / ${formatCount(t.outputTokens)} out`);
     lines.push(
-      `Tokens: ${t.inputTokens.toLocaleString()} in / ${t.outputTokens.toLocaleString()} out`,
-    );
-    lines.push(
-      `Cache: ${t.cacheReadTokens.toLocaleString()} read / ${t.cacheWriteTokens.toLocaleString()} write`,
+      `Cache: ${formatCount(t.cacheReadTokens)} read / ${formatCount(t.cacheWriteTokens)} write`,
     );
     lines.push(`Cost: ${formatCost(ctx.stats.cost)}`);
     lines.push('');

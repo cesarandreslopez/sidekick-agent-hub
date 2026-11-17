@@ -6,6 +6,7 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import { readTasks, resolveProjectIdentity } from 'sidekick-shared';
 import type { PersistedTask } from 'sidekick-shared';
+import { taskStatusLabel } from '../displayLabels';
 import { parseLimit } from '../utils/parseLimit';
 
 const STATUS_COLORS: Record<string, (s: string) => string> = {
@@ -13,13 +14,6 @@ const STATUS_COLORS: Record<string, (s: string) => string> = {
   in_progress: chalk.blue,
   completed: chalk.green,
   deleted: chalk.gray,
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pending',
-  in_progress: 'In Progress',
-  completed: 'Completed',
-  deleted: 'Deleted',
 };
 
 const STATUS_ICONS: Record<string, string> = {
@@ -84,7 +78,7 @@ export function printTasksTable(tasks: PersistedTask[], total = tasks.length): v
     );
 
     const meta: string[] = [];
-    meta.push(colorFn(STATUS_LABELS[task.status] ?? task.status));
+    meta.push(colorFn(taskStatusLabel(task.status)));
     meta.push(chalk.dim(`updated ${formatDate(task.updatedAt)}`));
     if (task.toolCallCount > 0) {
       meta.push(chalk.dim(`${task.toolCallCount} tool call${task.toolCallCount === 1 ? '' : 's'}`));

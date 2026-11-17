@@ -6,6 +6,7 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import { readNotes, resolveProjectIdentity } from 'sidekick-shared';
 import type { KnowledgeNote, KnowledgeNoteType, KnowledgeNoteStatus } from 'sidekick-shared';
+import { noteStatusLabel } from '../displayLabels';
 
 const TYPE_COLORS: Record<string, (s: string) => string> = {
   gotcha: chalk.red,
@@ -26,7 +27,7 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function printNotesList(notes: KnowledgeNote[]): void {
+export function printNotesList(notes: KnowledgeNote[]): void {
   if (notes.length === 0) {
     process.stdout.write(chalk.dim('No knowledge notes found for this project.\n'));
     return;
@@ -44,11 +45,14 @@ function printNotesList(notes: KnowledgeNote[]): void {
 
     const meta: string[] = [];
     meta.push(impFn(note.importance));
-    meta.push(chalk.dim(note.status));
+    meta.push(chalk.dim(noteStatusLabel(note.status)));
     meta.push(chalk.dim(formatDate(note.updatedAt)));
-    if (note.filePath) {
-      meta.push(chalk.cyan(note.filePath));
-    }
+    // `.` is what a note added without --file is filed under.
+    meta.push(
+      note.filePath && note.filePath !== '.'
+        ? chalk.cyan(note.filePath)
+        : chalk.dim('project-wide'),
+    );
     if (note.tags && note.tags.length > 0) {
       meta.push(chalk.dim(note.tags.map((t) => `#${t}`).join(' ')));
     }

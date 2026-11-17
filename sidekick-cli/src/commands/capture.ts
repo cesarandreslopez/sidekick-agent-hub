@@ -29,8 +29,15 @@ function csv(value: unknown): string[] | undefined {
     .filter(Boolean);
 }
 
+/** The trimmed text, or an error naming what is missing. */
+function required(value: string, what: string): string {
+  const text = value.trim();
+  if (!text) throw new Error(`${what} is required`);
+  return text;
+}
+
 export async function taskAddAction(subject: string, cmd: Command): Promise<void> {
-  const task = await addTask(projectFrom(cmd), subject, {
+  const task = await addTask(projectFrom(cmd), required(subject, 'A task subject'), {
     description: cmd.opts().description as string | undefined,
     tags: csv(cmd.opts().tags),
   });
@@ -48,23 +55,27 @@ export async function taskDoneAction(id: string, cmd: Command): Promise<void> {
 
 export async function noteAddAction(content: string, cmd: Command): Promise<void> {
   const opts = cmd.opts();
-  const note = await addNote(projectFrom(cmd), content, {
+  const note = await addNote(projectFrom(cmd), required(content, 'Note content'), {
     filePath: opts.file as string | undefined,
     title: opts.title as string | undefined,
     noteType: opts.type as 'gotcha' | 'pattern' | 'guideline' | 'tip' | undefined,
     importance: opts.importance as 'critical' | 'high' | 'medium' | 'low' | undefined,
     tags: csv(opts.tags),
   });
-  emit(cmd, `Added note ${note.id}${note.filePath ? ` for ${note.filePath}` : ''}`, {
-    ok: true,
-    action: 'added',
-    note,
-  });
+  emit(
+    cmd,
+    `Added note ${note.id}${note.filePath && note.filePath !== '.' ? ` for ${note.filePath}` : ''}`,
+    {
+      ok: true,
+      action: 'added',
+      note,
+    },
+  );
 }
 
 export async function decisionAddAction(description: string, cmd: Command): Promise<void> {
   const opts = cmd.opts();
-  const result = await addDecision(projectFrom(cmd), description, {
+  const result = await addDecision(projectFrom(cmd), required(description, 'A decision'), {
     rationale: opts.rationale as string | undefined,
     chosenOption: opts.chosen as string | undefined,
     alternatives: csv(opts.alternatives),

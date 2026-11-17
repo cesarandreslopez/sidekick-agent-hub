@@ -330,7 +330,7 @@ noteCmd
   .command('add')
   .description('Add a knowledge note')
   .argument('<content>', 'Note content')
-  .option('--file <path>', 'Related project file', '.')
+  .option('--file <path>', 'Related project file (default: the whole project)')
   .option('--title <title>', 'Short note title')
   .addOption(noteTypeOption('tip'))
   .addOption(noteImportanceOption())

@@ -6,6 +6,7 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import { readDecisions, resolveProjectIdentity } from 'sidekick-shared';
 import type { DecisionEntry } from 'sidekick-shared';
+import { decisionAlternatives, isOmittedPlaceholder } from '../displayLabels';
 import { parseLimit } from '../utils/parseLimit';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -20,7 +21,7 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function printDecisionsList(decisions: DecisionEntry[]): void {
+export function printDecisionsList(decisions: DecisionEntry[]): void {
   if (decisions.length === 0) {
     process.stdout.write(chalk.dim('No decisions found for this project.\n'));
     return;
@@ -34,22 +35,26 @@ function printDecisionsList(decisions: DecisionEntry[]): void {
 
     const meta: string[] = [];
     meta.push(chalk.dim(formatDate(d.timestamp)));
-    meta.push(chalk.cyan(SOURCE_LABELS[d.source] || d.source));
+    // Decisions added with `sidekick decision add` are filed under the
+    // generic text-pattern source; name them by where they came from.
+    meta.push(chalk.cyan(d.sessionId === 'cli' ? 'cli' : SOURCE_LABELS[d.source] || d.source));
     if (d.tags && d.tags.length > 0) {
       meta.push(chalk.dim(d.tags.map((t) => `#${t}`).join(' ')));
     }
     process.stdout.write(`  ${meta.join(chalk.dim(' · '))}\n`);
 
-    process.stdout.write(`  ${chalk.green('Chosen:')} ${d.chosenOption}\n`);
+    const chosen = isOmittedPlaceholder(d.chosenOption) ? '(not recorded)' : d.chosenOption;
+    process.stdout.write(`  ${chalk.green('Chosen:')} ${chosen}\n`);
 
     if (d.rationale) {
       const rationale = d.rationale.length > 140 ? d.rationale.slice(0, 137) + '...' : d.rationale;
       process.stdout.write(`  ${chalk.dim('Rationale:')} ${chalk.dim(rationale)}\n`);
     }
 
-    if (d.alternatives && d.alternatives.length > 0) {
+    const alternatives = decisionAlternatives(d.alternatives);
+    if (alternatives.length > 0) {
       process.stdout.write(
-        `  ${chalk.dim('Alternatives:')} ${chalk.dim(d.alternatives.join(', '))}\n`,
+        `  ${chalk.dim('Alternatives:')} ${chalk.dim(alternatives.join(', '))}\n`,
       );
     }
 
