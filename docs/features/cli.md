@@ -62,7 +62,7 @@ sidekick dashboard [options]
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `--project <path>`     | Override project path (default: current working directory)                                                                   |
 | `--provider <id>`      | Session provider: `claude-code`, `opencode`, `codex`, or `auto` (default)                                                    |
-| `--session <id>`       | Follow a specific session by ID (default: most recent or session picker)                                                     |
+| `--session <id>`       | Follow a specific session by ID and start pinned to it (default: most recent or session picker)                              |
 | `--replay`             | Replay existing events from the beginning before streaming live                                                              |
 | `--no-mouse`           | Start with mouse capture disabled so terminal text selection works (toggle with `M`)                                         |
 | `--no-color`           | Disable colored output for any command (also honors `NO_COLOR`)                                                              |
@@ -864,7 +864,7 @@ Press `z` to cycle through three layout modes:
 
 Minimum terminal size: 60 columns wide, 15 rows tall.
 
-The dashboard runs in the terminal's alternate screen, so your scrollback is left untouched and comes back when you quit (`sidekick map --follow` does the same). On narrow terminals the panel tab bar shortens itself — full titles, then abbreviations, then digits, with the active panel marked `▸` — and the status bar drops lower-priority hints first, keeping `? help` and `q quit` visible. `NO_COLOR` turns colour off.
+The dashboard runs in the terminal's alternate screen, so your scrollback is left untouched and comes back when you quit (`sidekick map --follow` does the same). Stopped by a signal, both exit with `128 +` the signal number (143 for SIGTERM); a fatal error restores the terminal first and exits 1 with the error. The session picker fits the terminal and follows resizes, pages with `PgUp`/`PgDn`, `Home`/`End` and `g`/`G`, and marks a session written in the last two minutes as `LIVE`. With colour off, selected rows are marked `▸`. On narrow terminals the panel tab bar shortens itself — full titles, then abbreviations, then digits, with the active panel marked `▸` — and the status bar drops lower-priority hints first, keeping `? help` and `q quit` visible. `NO_COLOR` turns colour off.
 
 ## Dashboard Panels
 
@@ -970,7 +970,7 @@ The detail tab stays put when you move to another item. When the tabs do not fit
 
 | Key | Action                                                                |
 | --- | --------------------------------------------------------------------- |
-| `p` | Pin session — prevent auto-switching to the newest session            |
+| `p` | Pin session — prevent auto-switching to a newly started session       |
 | `s` | Switch to pending session (when a newer session arrives while pinned) |
 | `f` | Toggle session filter — filter the side list to the selected session  |
 
@@ -1012,7 +1012,7 @@ While pinned, the status bar shows `PINNED`, and a newer session raises a toast 
 
 | Key      | Action                                                    |
 | -------- | --------------------------------------------------------- |
-| `?`      | Show help overlay                                         |
+| `?`      | Show help overlay (and the last error, if there was one)  |
 | `V`      | Show version / changelog                                  |
 | `Esc`    | Clear filter, close overlay, or return focus to side list |
 | `q`      | Quit (or close the overlay if one is open)                |
@@ -1048,7 +1048,7 @@ For OpenCode, the CLI reads `opencode.db` via `sqlite3`. If `sqlite3` is missing
 
 ### Session Pinning
 
-By default, the dashboard auto-switches to the newest session when one starts. Press `p` to pin the current session — the dashboard stays on it even when new sessions appear. Press `s` to switch to a pending session that arrived while pinned.
+By default, the dashboard switches to a session that starts after it opened, and says so in a toast (`Following new session … — p pins`). A session that already existed never takes over just because it was written to more recently, so a session you picked stays on screen. Press `p` to pin the current session — the dashboard stays on it even when new sessions appear. Press `s` to switch to a pending session that arrived while pinned. Starting with `--session <id>` pins that session from the start, as `sidekick map --follow --session` does.
 
 ### Session Filter
 
