@@ -159,12 +159,20 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
       dispatch({ type: 'CYCLE_FILTER_MODE' });
       return;
     }
+    // Two quick Tabs arrive as one "\t\t" input, not as key.tab: cycle once each.
+    if (/^\t+$/.test(input)) {
+      for (let i = 0; i < input.length; i++) dispatch({ type: 'CYCLE_FILTER_MODE' });
+      return;
+    }
     if (key.backspace || key.delete) {
       dispatch({ type: 'SET_FILTER', value: state.filterString.slice(0, -1) });
       return;
     }
     if (input && !key.ctrl && !key.meta) {
-      dispatch({ type: 'SET_FILTER', value: state.filterString + input });
+      // A paste can carry tabs and newlines; written into the one-line filter
+      // they broke the frame. An embedded newline is not Enter, so drop it.
+      const text = stripControlCharacters(input);
+      if (text) dispatch({ type: 'SET_FILTER', value: state.filterString + text });
       return;
     }
     return;
@@ -451,7 +459,18 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
 
   // ── Tier 6: focus-dependent navigation ──
 
+  // A held j or k reaches Ink as one run ("jjj"); move by its length instead
+  // of dropping it. Only identical j/k runs: a pasted string is never split
+  // into keys, which would fire whatever commands its letters name.
+  const run = navigationRun(input);
+
   if (state.focusTarget === 'side') {
+    if (run !== 0) {
+      if (currentItemCount === 0) return;
+      const index = Math.max(0, Math.min(currentItemCount - 1, clampedSelection + run));
+      if (index !== clampedSelection) dispatch({ type: 'SELECT_ITEM', index });
+      return;
+    }
     if (input === 'j' || key.downArrow) {
       if (clampedSelection < currentItemCount - 1) {
         dispatch({ type: 'SELECT_ITEM', index: clampedSelection + 1 });
@@ -490,6 +509,15 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
   }
 
   if (state.focusTarget === 'detail') {
+    if (run !== 0) {
+      dispatch({
+        type: 'SCROLL_DETAIL_DELTA',
+        delta: run,
+        totalLines: detailLineCount,
+        viewportHeight: detailViewportHeight,
+      });
+      return;
+    }
     if (input === 'j' || key.downArrow) {
       dispatch({
         type: 'SCROLL_DETAIL_DELTA',
@@ -534,6 +562,23 @@ export function handleDashboardInput(input: string, key: Key, ctx: InputDispatch
       return;
     }
   }
+}
+
+/**
+ * The movement for a run of two or more identical `j` or `k` characters
+ * (positive down), or 0. A single key keeps its own handling.
+ */
+export function navigationRun(input: string): number {
+  if (input.length < 2) return 0;
+  if (/^j+$/.test(input)) return input.length;
+  if (/^k+$/.test(input)) return -input.length;
+  return 0;
+}
+
+/** Remove C0 control characters and DEL from typed or pasted text. */
+export function stripControlCharacters(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\u0000-\u001f\u007f]/g, '');
 }
 
 /** Raise a handler's string result as a toast (errors in red). */

@@ -178,6 +178,50 @@ describe('filter overlay', () => {
     handleDashboardInput('x', makeKey({ ctrl: true }), ctx);
     expect(dispatched).toEqual([]);
   });
+
+  it('two quick Tabs, delivered as one input, cycle the mode twice', () => {
+    const { ctx, dispatched } = makeCtx({ overlay: 'filter', filterString: 'ab' });
+    handleDashboardInput('\t\t', makeKey(), ctx);
+    expect(dispatched).toEqual([{ type: 'CYCLE_FILTER_MODE' }, { type: 'CYCLE_FILTER_MODE' }]);
+  });
+
+  it('drops tabs and newlines from pasted text instead of writing them into the filter', () => {
+    const { ctx, dispatched } = makeCtx({ overlay: 'filter', filterString: '' });
+    handleDashboardInput('a\tb\nc', makeKey(), ctx);
+    expect(dispatched).toEqual([{ type: 'SET_FILTER', value: 'abc' }]);
+  });
+});
+
+describe('held navigation keys', () => {
+  it('a run of j in the side list moves by its length', () => {
+    const { ctx, dispatched } = makeCtx({}, { currentItemCount: 10, clampedSelection: 2 });
+    handleDashboardInput('jjj', makeKey(), ctx);
+    expect(dispatched).toEqual([{ type: 'SELECT_ITEM', index: 5 }]);
+  });
+
+  it('a run of k stops at the first item', () => {
+    const { ctx, dispatched } = makeCtx({}, { currentItemCount: 10, clampedSelection: 1 });
+    handleDashboardInput('kkkk', makeKey(), ctx);
+    expect(dispatched).toEqual([{ type: 'SELECT_ITEM', index: 0 }]);
+  });
+
+  it('a run of j in the detail pane scrolls by its length', () => {
+    const { ctx, dispatched } = makeCtx(
+      { focusTarget: 'detail' },
+      { detailLineCount: 40, detailViewportHeight: 10 },
+    );
+    handleDashboardInput('jj', makeKey(), ctx);
+    expect(dispatched).toEqual([
+      { type: 'SCROLL_DETAIL_DELTA', delta: 2, totalLines: 40, viewportHeight: 10 },
+    ]);
+  });
+
+  it('never splits other multi-character input into separate keys', () => {
+    const { ctx, dispatched, exit } = makeCtx({}, { currentItemCount: 10, clampedSelection: 0 });
+    handleDashboardInput('qrn', makeKey(), ctx);
+    expect(exit).not.toHaveBeenCalled();
+    expect(dispatched).toEqual([]);
+  });
 });
 
 describe('context menu overlay', () => {

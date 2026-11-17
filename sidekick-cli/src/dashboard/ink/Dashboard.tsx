@@ -312,9 +312,13 @@ export function Dashboard({
   // events shift the Events ring, a status change re-sorts Tasks, typing
   // narrows the filter): if the index did not move but the item at it did,
   // follow the item. A moved index means the user moved it.
+  // Not before the first event: while the splash shows, the list holds only
+  // history, and following a history row moved the selection off the session
+  // row that the first event inserts at the top.
   let followedIndex = state.selectedItemIndex;
   const previousSelection = selectionRef.current;
   if (
+    state.hasReceivedEvents &&
     previousSelection.panelId === panel.id &&
     previousSelection.itemId !== undefined &&
     previousSelection.index === state.selectedItemIndex &&
@@ -433,9 +437,20 @@ export function Dashboard({
   // Auto-scroll for tabs that request it (e.g., Timeline)
   const activeTab = detailTabs[tabIdx];
   useEffect(() => {
-    if (!activeTab?.autoScrollBottom) return;
+    // Leaving the tab (or showing content that fits) forgets the previous key,
+    // so coming back counts as new content and jumps to the bottom again.
+    // Otherwise the stale key matched on return and the Timeline stopped
+    // following new events.
+    if (!activeTab?.autoScrollBottom) {
+      prevDetailContentKeyRef.current = null;
+      return;
+    }
     const contentKey = `${panel.id}:${selectedItem?.id ?? 'none'}:${tabIdx}`;
-    if (detailLines.length <= detailViewportHeight) return;
+    if (detailLines.length <= detailViewportHeight) {
+      prevDetailContentKeyRef.current = null;
+      prevDetailLineCountRef.current = detailLines.length;
+      return;
+    }
     const wasAtBottom =
       state.detailScrollOffset >=
       maxDetailScroll(prevDetailLineCountRef.current, detailViewportHeight);

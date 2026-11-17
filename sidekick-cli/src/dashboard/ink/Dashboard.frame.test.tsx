@@ -331,6 +331,47 @@ describe('status bar budget', () => {
   });
 });
 
+describe('selection when the first event arrives', () => {
+  it('leaves the selection on the session row, not on a history day', async () => {
+    const history: StaticData = {
+      ...staticData,
+      sessions: ['2026-11-13', '2026-11-14'].map((date) => ({
+        date,
+        sessionCount: 2,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        totalTokens: 0,
+        totalCost: 0,
+        messageCount: 1,
+        modelUsage: [],
+        toolUsage: [],
+      })),
+    };
+    const { stdout, stdin, writes } = fakeStreams(100, 24);
+    const panels = allPanels();
+    const app = render(
+      <Dashboard panels={panels} metrics={new DashboardState().getMetrics()} staticData={history} />,
+      {
+        stdout: stdout as unknown as NodeJS.WriteStream,
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        debug: true,
+        exitOnCtrlC: false,
+        patchConsole: false,
+      },
+    );
+    await flush();
+    app.rerender(<Dashboard panels={panels} metrics={seededMetrics()} staticData={history} />);
+    await flush();
+    await flush();
+    const frame = (writes[writes.length - 1] ?? '').replace(ANSI, '');
+    app.unmount();
+    const selected = frame.split('\n').find((line) => line.startsWith('║▸'));
+    expect(selected).toContain('session-');
+  });
+});
+
 describe('timeline renderer width', () => {
   it('never emits a row wider than the pane', () => {
     const panel = new SessionsPanel();
