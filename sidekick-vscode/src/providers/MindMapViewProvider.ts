@@ -280,7 +280,6 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     if (!this._view?.visible) return;
     this._syncFromSessionMonitor();
     this._sendStateToWebview();
-    this._postMessage({ type: 'updatePhrase', phrase: getRandomPhrase() });
   }
 
   /**
@@ -381,6 +380,10 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       color: var(--vscode-foreground);
       background: var(--vscode-sideBar-background);
       overflow: hidden;
+      /* The header wraps at sidebar widths; the graph takes what is left. */
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
     }
 
     .header {
@@ -415,6 +418,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
     .status {
       font-size: var(--sk-font-sm);
+      white-space: nowrap;
       padding: 2px var(--sk-space-2);
       border-radius: var(--sk-radius-sm);
       background: var(--vscode-badge-background);
@@ -424,6 +428,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     .header-actions {
       margin-left: auto;
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: var(--sk-space-2);
     }
@@ -456,7 +461,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
     #graph-container {
       width: 100%;
-      height: calc(100vh - 45px);
+      flex: 1;
+      min-height: 0;
     }
 
     #graph-container svg {
@@ -469,7 +475,8 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: calc(100vh - 45px);
+      flex: 1;
+      min-height: 0;
       color: var(--vscode-descriptionForeground);
       text-align: center;
       padding: 20px;
@@ -788,7 +795,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 </head>
 <body>
   <div class="header">
-    <img src="${iconUri}" alt="Sidekick" />
+    <img src="${iconUri}" alt="" />
     <h1>Mind Map</h1>
     <div class="header-actions">
       <button id="toggle-layout" class="icon-button" type="button" title="Toggle circular layout" aria-pressed="false" disabled>Circular</button>
@@ -1235,8 +1242,11 @@ ${getGraphLegendHtml()}
           }
         });
 
-        // Center the view
-        centerOnSession({ duration: animate ? 600 : 250, preserveZoom: false, scale: 1 });
+        // A layout toggle or Reset centres the view; a live update only does
+        // while Follow is on, so a zoom or pan the user chose is kept.
+        if (animate || following) {
+          centerOnSession({ duration: animate ? 600 : 250, preserveZoom: false, scale: 1 });
+        }
       }
 
       /**
@@ -1879,8 +1889,9 @@ ${getGraphLegendHtml()}
         }
       });
 
-      // Handle window resize
-      window.addEventListener('resize', function() {
+      // Handle window resize, and the graph area changing size on its own
+      // (the header wrapping to another line at a narrow sidebar width).
+      function handleResize() {
         if (simulation) {
           const width = containerEl.clientWidth;
           const height = containerEl.clientHeight;
@@ -1894,7 +1905,17 @@ ${getGraphLegendHtml()}
             simulation.alpha(0.3).restart();
           }
         }
-      });
+      }
+      window.addEventListener('resize', handleResize);
+      if (typeof ResizeObserver === 'function') {
+        let lastSize = '';
+        new ResizeObserver(function() {
+          const size = containerEl.clientWidth + 'x' + containerEl.clientHeight;
+          if (size === lastSize) return;
+          lastSize = size;
+          handleResize();
+        }).observe(containerEl);
+      }
 
       if (resetLayoutEl) {
         resetLayoutEl.addEventListener('click', function() {

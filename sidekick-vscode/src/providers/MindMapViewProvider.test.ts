@@ -70,6 +70,11 @@ describe('MindMapViewProvider graph scheduling', () => {
     vi.advanceTimersByTime(1);
     expect(monitor.getStatsView).toHaveBeenCalledTimes(1);
     expect(buildGraph).toHaveBeenCalledTimes(1);
+    // The header phrase rotates on its own timer, not on every graph update.
+    const types = target._view.webview.postMessage.mock.calls.map(
+      ([m]) => (m as { type: string }).type,
+    );
+    expect(types).not.toContain('updatePhrase');
     provider.dispose();
   });
 });
