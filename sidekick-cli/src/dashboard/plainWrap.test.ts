@@ -32,10 +32,25 @@ describe('wrapPlainText', () => {
 });
 
 describe('wrapPlainTextLimited', () => {
-  it('ends the last kept row with an ellipsis when the text is longer', () => {
+  it('shows the end of a text that is too long, after an ellipsis', () => {
     const rows = wrapPlainTextLimited('alpha beta gamma delta epsilon zeta', 11, 2);
     expect(rows).toHaveLength(2);
-    expect(rows[1].endsWith('…')).toBe(true);
+    expect(rows[0]).toBe('alpha beta');
+    expect(rows[1].startsWith('…')).toBe(true);
+    expect(rows[1].endsWith('zeta')).toBe(true);
     for (const row of rows) expect(displayWidth(row)).toBeLessThanOrEqual(11);
+  });
+
+  it('keeps the file name of a very long report path in a three-row toast', () => {
+    const dir = '/private/tmp/' + 'nested-directory-name/'.repeat(8);
+    const message = `Report: ${dir}sidekick-report-1794926533884.html`;
+    expect(message.length).toBeGreaterThan(190);
+    const rows = wrapPlainTextLimited(message, 56, 3);
+    expect(rows).toHaveLength(3);
+    expect(rows[2].startsWith('…')).toBe(true);
+    expect(rows[2].endsWith('/sidekick-report-1794926533884.html')).toBe(true);
+    // The tail is taken from the path as written: no space inside it.
+    expect(rows[2]).not.toContain(' ');
+    for (const row of rows) expect(displayWidth(row)).toBeLessThanOrEqual(56);
   });
 });

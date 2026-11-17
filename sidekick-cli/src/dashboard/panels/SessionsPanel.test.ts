@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { SessionsPanel } from './SessionsPanel';
+import { SessionsPanel, hangingWrap } from './SessionsPanel';
 import { DashboardState } from '../DashboardState';
 import type { DashboardMetrics } from '../DashboardState';
 import type { PanelItem } from './types';
@@ -244,6 +244,30 @@ describe('SessionsPanel narrative retry hint', () => {
       await failNarrative(diagnosis({ diagnosis: 'timeout', recovery: 'retry_later' })),
     ).toContain("Press 'n' to retry");
     expect(await failNarrative(undefined)).toContain("Press 'n' to retry");
+  });
+});
+
+describe('hangingWrap', () => {
+  it('splits a long path across rows without inserting a space inside it', () => {
+    const path =
+      '/Users/someone/projects/sidekick/src/dashboard/ink/SessionPickerInk.frame.test.tsx';
+    const rows = hangingWrap(`Edit ${path} now`, 40, 10, 6);
+    for (const [i, row] of rows.entries()) {
+      // First row follows the prefix; the rest hang under it at the same column.
+      expect(row.length).toBeLessThanOrEqual(i === 0 ? 24 : 40);
+    }
+    const text = rows.map((row, i) => (i === 0 ? row : row.slice(10))).join('\n');
+    // The path's pieces sit on consecutive rows; joined with nothing between
+    // them they give back the path exactly, with no space inserted.
+    expect(text.replace(/\n/g, '')).toContain(path);
+    expect(rows.length).toBeGreaterThan(2);
+  });
+
+  it('keeps ordinary words whole and separated by single spaces', () => {
+    const rows = hangingWrap('alpha beta gamma delta epsilon zeta eta theta', 30, 4);
+    expect(rows.map((row, i) => (i === 0 ? row : row.slice(4))).join(' ')).toBe(
+      'alpha beta gamma delta epsilon zeta eta theta',
+    );
   });
 });
 

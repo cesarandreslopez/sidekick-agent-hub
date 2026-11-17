@@ -1032,7 +1032,7 @@ const OWN_ROW_INDENT = '    ';
  * wrapping it into the sliver left over produced one character per row.
  * The first entry is what follows the prefix ('' when the text moved down).
  */
-function hangingWrap(
+export function hangingWrap(
   text: string,
   width: number,
   prefixWidth: number,
@@ -1040,13 +1040,55 @@ function hangingWrap(
 ): string[] {
   const textWidth = width - prefixWidth;
   if (textWidth - firstRowReserve < MIN_HANGING_TEXT_WIDTH) {
-    const rows = wrapTaggedLines(text, Math.max(1, width - OWN_ROW_INDENT.length));
+    const ownWidth = Math.max(1, width - OWN_ROW_INDENT.length);
+    const rows = fillRows(text, ownWidth, ownWidth);
     return ['', ...rows.map((row) => OWN_ROW_INDENT + row)];
   }
-  const [first = '', ...rest] = wrapTaggedLines(text, textWidth - firstRowReserve);
-  if (rest.length === 0) return [first];
+  const [first = '', ...rest] = fillRows(
+    text,
+    Math.max(1, textWidth - firstRowReserve),
+    Math.max(1, textWidth),
+  );
   const indent = ' '.repeat(prefixWidth);
-  return [first, ...wrapTaggedLines(rest.join(' '), textWidth).map((row) => indent + row)];
+  return [first, ...rest.map((row) => indent + row)];
+}
+
+/**
+ * Greedy word wrap with a first row of `firstWidth` columns and the rest of
+ * `restWidth`. A word wider than its row is split across rows with nothing
+ * inserted: re-joining wrapped rows with a space used to put one in the
+ * middle of a hard-broken path.
+ */
+function fillRows(text: string, firstWidth: number, restWidth: number): string[] {
+  const rows: string[] = [];
+  let row = '';
+  const capacity = () => (rows.length === 0 ? firstWidth : restWidth);
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const wordWidth = visibleLength(word);
+    if (row && visibleLength(row) + 1 + wordWidth <= capacity()) {
+      row += ` ${word}`;
+      continue;
+    }
+    if (row) {
+      rows.push(row);
+      row = '';
+    }
+    if (wordWidth <= capacity()) {
+      row = word;
+      continue;
+    }
+    let pieces = wrapTaggedLines(word, capacity());
+    if (rows.length === 0 && firstWidth !== restWidth && pieces.length > 1) {
+      // The first piece fills the narrower first row; the rest of the word
+      // (its pieces joined back with nothing between) wraps at the full width.
+      rows.push(pieces[0]);
+      pieces = wrapTaggedLines(pieces.slice(1).join(''), restWidth);
+    }
+    rows.push(...pieces.slice(0, -1));
+    row = pieces[pieces.length - 1] ?? '';
+  }
+  if (row || rows.length === 0) rows.push(row);
+  return rows;
 }
 
 /**
