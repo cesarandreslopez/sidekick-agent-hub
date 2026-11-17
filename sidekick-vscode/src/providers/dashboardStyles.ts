@@ -218,7 +218,10 @@ export const DASHBOARD_STYLES = `
     .health-check-title { font-weight: 600; }
     .health-check-message, .health-check-repair { color: var(--vscode-descriptionForeground); font-size: 11px; }
     .health-check-repair { margin-top: 2px; }
-    .health-diagnostic { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; font-size: 11px; padding: 4px 0; }
+    /* Provider and kind on one line, the message under them, so a narrow
+       sidebar does not squeeze the message into a 40 px column. */
+    .health-diagnostic { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 11px; padding: 4px 0; }
+    .health-diagnostic-message { grid-column: 1 / -1; overflow-wrap: anywhere; }
     .health-diagnostic-provider { font-weight: 600; }
     .health-diagnostic-kind { color: var(--vscode-descriptionForeground); }
     .health-diagnostic.error .health-diagnostic-provider { color: var(--vscode-charts-red, var(--vscode-errorForeground)); }
@@ -2266,13 +2269,17 @@ export const DASHBOARD_STYLES = `
       white-space: nowrap;
     }
 
+    /* Two lines, not one: quota detail ("Run claude to sign in…") was cut off.
+       The full text is in the title. */
     .notification-body {
       color: var(--vscode-descriptionForeground);
       font-size: 11px;
       margin-top: 2px;
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow-wrap: anywhere;
     }
 
     /* Timeline item noise classification */

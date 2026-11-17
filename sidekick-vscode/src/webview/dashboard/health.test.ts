@@ -55,6 +55,9 @@ describe('renderHealthHtml', () => {
     expect(html.checks).toContain('&lt;sqlite3&gt; missing');
     expect(html.checks).not.toContain('<sqlite3>');
     expect(html.diagnostics).toContain('sqlite3 not found &amp; unusable');
+    // People read provider names and plain words, not ids and enums.
+    expect(html.diagnostics).toContain('>OpenCode<');
+    expect(html.diagnostics).toContain('Sqlite unavailable while listing sessions');
     expect(html.tools).toContain('<th>7d</th><th>30d</th>');
     expect(html.tools).toContain('<td>Bash</td><td>6</td><td>12</td>');
     expect(html.tools).toContain('health-trend up');

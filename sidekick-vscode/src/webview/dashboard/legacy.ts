@@ -1038,8 +1038,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             : 'Official (status line): 5h ' + Math.round(official.fiveHourUtilization) + '% used'
               + resetsIn(official.fiveHourResetsAt) + ' · 7d ' + Math.round(official.sevenDayUtilization) + '%';
           officialEl.classList.add('official');
-        } else if (currentProviderId === 'opencode') {
-          // OpenCode has no official status-line sample to compare against.
+        } else if (currentProviderId !== 'claude-code') {
+          // Only Claude Code's status line records an official sample;
+          // OpenCode and Codex have nothing to install or compare against.
           officialEl.textContent = '';
           officialEl.classList.remove('official');
         } else {
@@ -1889,7 +1890,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
                 '<span class="notification-title">' + escapeHtml(n.title) + '</span>' +
                 '<span class="notification-time">' + n.time + '</span>' +
               '</div>' +
-              '<div class="notification-body">' + escapeHtml(n.body) + '</div>' +
+              '<div class="notification-body" title="' + escapeHtml(n.body) + '">' + escapeHtml(n.body) + '</div>' +
             '</div>' +
           '</div>';
         }).join('');
@@ -3585,9 +3586,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
         body.innerHTML = '<div class="panel-metrics-row">' +
           '<div class="panel-metric-card"><div class="val">' + Math.round(data.cacheHitRate * 100) + '%</div><div class="lbl">Cache Hit Rate</div></div>' +
-          '<div class="panel-metric-card"><div class="val">' + formatNumber(data.estimatedTokensSaved) + '</div><div class="lbl">Tokens Saved</div></div>' +
-          '<div class="panel-metric-card"><div class="val">' + formatCost(data.estimatedCostSaved) + '</div><div class="lbl">Cost Saved</div></div>' +
-          '<div class="panel-metric-card"><div class="val">' + formatNumber(data.cacheWriteTokens) + '</div><div class="lbl">Cache Writes</div></div>' +
+          '<div class="panel-metric-card"><div class="val" title="' + exactNumber(data.estimatedTokensSaved) + ' tokens read from cache">' + compactNumber(data.estimatedTokensSaved) + '</div><div class="lbl">Cache Reads</div></div>' +
+          '<div class="panel-metric-card"><div class="val">' + formatCost(data.estimatedCostSaved) + '</div><div class="lbl">Est. Cost Saved</div></div>' +
+          '<div class="panel-metric-card"><div class="val" title="' + exactNumber(data.cacheWriteTokens) + ' tokens written to cache">' + compactNumber(data.cacheWriteTokens) + '</div><div class="lbl">Cache Writes</div></div>' +
           '</div>';
       }
 

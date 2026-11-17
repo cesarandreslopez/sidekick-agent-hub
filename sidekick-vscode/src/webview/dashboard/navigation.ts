@@ -247,6 +247,9 @@ export function createNavigation(doc: Document) {
         .getElementById('custom-path-indicator')
         ?.classList.toggle('visible', Boolean(value.isUsingCustomPath && value.customPathDisplay));
       text('custom-path-text', value.customPathDisplay ? `Custom: ${value.customPathDisplay}` : '');
+      // The path is ellipsized in a narrow sidebar: the whole of it on hover.
+      const customPathText = doc.getElementById('custom-path-text');
+      if (customPathText) customPathText.title = value.customPathDisplay ?? '';
       syncAvailability();
     },
   };

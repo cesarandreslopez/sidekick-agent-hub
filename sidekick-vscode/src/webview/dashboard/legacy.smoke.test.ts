@@ -370,6 +370,43 @@ describe('legacy dashboard script', () => {
     expect(errors).toEqual([]);
   });
 
+  it('offers the status-line hint only to Claude Code, and names cache reads as such', () => {
+    const block = {
+      start: new Date().toISOString(),
+      end: new Date(Date.now() + 3_600_000).toISOString(),
+      elapsedMs: 60_000,
+      remainingMs: 3_600_000,
+      tokens: { total: 1000 },
+      costUsd: 0.1,
+      burnRatePerMinute: 10,
+      projectedTokens: 2000,
+      projectedCostUsd: 0.2,
+    };
+    send({ type: 'updateSessionProvider', providerId: 'codex', displayName: 'Codex CLI' });
+    send({ type: 'updateBillingBlock', block, official: null });
+    expect(document.getElementById('billing-block-official')!.textContent).toBe('');
+    send({ type: 'updateSessionProvider', providerId: 'claude-code', displayName: 'Claude Code' });
+    send({ type: 'updateBillingBlock', block, official: null });
+    expect(document.getElementById('billing-block-official')!.textContent).toContain(
+      'install the status line',
+    );
+    send({
+      type: 'updateCacheEffectiveness',
+      data: {
+        cacheHitRate: 0.9,
+        estimatedTokensSaved: 2_500_000,
+        estimatedCostSaved: 1.2,
+        cacheWriteTokens: 1200,
+        cacheReadTokens: 2_500_000,
+      },
+    });
+    const cache = document.getElementById('cache-eff-body')!.textContent!;
+    expect(cache).toContain('Cache Reads');
+    expect(cache).toContain('2.5M');
+    expect(cache).not.toContain('Tokens Saved');
+    expect(errors).toEqual([]);
+  });
+
   it('says a live session joins History when it ends', () => {
     const availability = (live: boolean) => ({
       type: 'updateSessionAvailability',

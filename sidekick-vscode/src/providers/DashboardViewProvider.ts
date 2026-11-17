@@ -926,7 +926,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         // Build description from tool input
         let desc = toolName;
         if (tc.input?.file_path) {
-          desc = String(tc.input.file_path).split('/').pop() || desc;
+          // Windows paths too, or the row shows the whole path cut to "C:\…".
+          desc = String(tc.input.file_path).split(/[\\/]/).pop() || desc;
         } else if (tc.input?.command) {
           const cmd = String(tc.input.command);
           desc = cmd.length > 60 ? cmd.substring(0, 57) + '...' : cmd;
@@ -3034,17 +3035,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   }
 
   /**
-   * Gets a shortened display version of a path.
+   * The custom session folder as it really is, `~`-abbreviated under home.
+   * Decoding the folder name (`-Users-x-code-sidekick-agent-hub`) turned
+   * every hyphen into a slash, so names with hyphens read as wrong paths.
    */
   private _getShortPath(fullPath: string): string {
-    // Get just the last part of the encoded path (the project folder name)
-    const parts = fullPath.split(/[/\\]/);
-    const encoded = parts[parts.length - 1] || parts[parts.length - 2] || fullPath;
-    // Decode it for display
-    if (encoded.startsWith('-')) {
-      return '/' + encoded.substring(1).replace(/-/g, '/');
-    }
-    return encoded.replace(/-/g, '/');
+    const home = os.homedir();
+    return fullPath === home || fullPath.startsWith(home + path.sep)
+      ? '~' + fullPath.slice(home.length)
+      : fullPath;
   }
 
   /**

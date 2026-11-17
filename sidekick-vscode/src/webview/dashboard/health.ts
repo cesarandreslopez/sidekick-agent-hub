@@ -31,6 +31,33 @@ export function escapeHtml(value: unknown): string {
 
 const CHECK_ICONS: Record<string, string> = { ok: '✓', warning: '!', error: '✕', info: '·' };
 
+const PROVIDER_NAMES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  opencode: 'OpenCode',
+  codex: 'Codex CLI',
+};
+
+/** `Claude Code` for `claude-code`; unknown ids are shown as they are. */
+export function providerName(id: string): string {
+  return PROVIDER_NAMES[id] ?? id;
+}
+
+const PHASE_TEXT: Record<string, string> = {
+  construct: 'starting up',
+  initialize: 'starting up',
+  enumerate: 'listing sessions',
+  query: 'querying',
+  read: 'reading a session',
+  watch: 'watching for changes',
+};
+
+/** `Home unavailable while listing sessions` for `home_unavailable` · `enumerate`. */
+export function diagnosticKindText(kind: string, phase: string): string {
+  const words = kind.replace(/_/g, ' ').replace(/\bdb\b/, 'database');
+  const text = words.charAt(0).toUpperCase() + words.slice(1);
+  return `${text} while ${PHASE_TEXT[phase] ?? phase}`;
+}
+
 export interface HealthHtml {
   banner: string;
   checks: string;
@@ -77,8 +104,8 @@ export function renderHealthHtml(data: DashboardHealthPayload): HealthHtml {
           .map(
             (d) =>
               `<div class="health-diagnostic ${escapeHtml(d.severity)}">` +
-              `<span class="health-diagnostic-provider">${escapeHtml(d.providerId)}</span>` +
-              `<span class="health-diagnostic-kind">${escapeHtml(d.kind)} · ${escapeHtml(d.phase)}</span>` +
+              `<span class="health-diagnostic-provider">${escapeHtml(providerName(d.providerId))}</span>` +
+              `<span class="health-diagnostic-kind" title="${escapeHtml(`${d.kind} · ${d.phase}`)}">${escapeHtml(diagnosticKindText(d.kind, d.phase))}</span>` +
               `<span class="health-diagnostic-message">${escapeHtml(d.message)}</span></div>`,
           )
           .join('');
