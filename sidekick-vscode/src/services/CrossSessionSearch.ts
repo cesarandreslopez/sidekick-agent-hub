@@ -11,7 +11,7 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
 import { searchSessions, type SearchResult } from 'sidekick-shared';
-import { log } from './Logger';
+import { logError } from './Logger';
 import type { SessionProvider } from '../types/sessionProvider';
 
 /**
@@ -31,7 +31,7 @@ export class CrossSessionSearch implements vscode.Disposable {
    * Opens the cross-session search QuickPick.
    */
   async search(): Promise<void> {
-    const quickPick = vscode.window.createQuickPick<SearchResultItem>();
+    const quickPick = vscode.window.createQuickPick<SearchPickItem>();
     const provider = this._sessionMonitor.getProvider();
     quickPick.placeholder = `Search across all ${provider.displayName} sessions...`;
     quickPick.matchOnDescription = true;
@@ -50,7 +50,9 @@ export class CrossSessionSearch implements vscode.Disposable {
         searchTimer = undefined;
       }
       if (query.length < 3) {
-        quickPick.items = [];
+        // The placeholder is hidden once something is typed, so say it here.
+        quickPick.items =
+          query.length > 0 ? [messageItem('$(info) Type 3 or more characters')] : [];
         quickPick.busy = false;
         return;
       }
@@ -65,13 +67,17 @@ export class CrossSessionSearch implements vscode.Disposable {
             signal: controller.signal,
           });
           if (generation === searchGeneration) {
-            quickPick.items = results.map((r) => new SearchResultItem(r));
+            quickPick.items =
+              results.length > 0
+                ? results.map((r) => new SearchResultItem(r))
+                : [messageItem(`$(search) No matches for "${query}"`)];
           }
         } catch (error) {
           if (generation === searchGeneration) {
-            quickPick.items = [];
-            quickPick.placeholder = 'Search failed. Use Sidekick: Run Doctor for details.';
-            log(`CrossSessionSearch error: ${error}`);
+            // An item, not the placeholder: the placeholder is hidden while
+            // the user's query is in the box.
+            quickPick.items = [messageItem('$(error) Search failed — View Logs', 'logs')];
+            logError('CrossSessionSearch: search failed', error);
           }
         } finally {
           if (generation === searchGeneration) quickPick.busy = false;
@@ -81,6 +87,13 @@ export class CrossSessionSearch implements vscode.Disposable {
 
     quickPick.onDidAccept(() => {
       const selected = quickPick.selectedItems[0];
+      if (selected && !(selected instanceof SearchResultItem)) {
+        if (selected.action === 'logs') {
+          void vscode.commands.executeCommand('sidekick.showLogs');
+          quickPick.hide();
+        }
+        return;
+      }
       if (selected) {
         // The conversation viewer can read both files and synthetic database paths.
         vscode.commands.executeCommand('sidekick.openConversation', selected.result.sessionPath);
@@ -105,6 +118,17 @@ export class CrossSessionSearch implements vscode.Disposable {
     }
     this.disposables = [];
   }
+}
+
+/** A status line in the results list (hint, no matches, failure). */
+interface MessageItem extends vscode.QuickPickItem {
+  action?: 'logs';
+}
+
+type SearchPickItem = SearchResultItem | MessageItem;
+
+function messageItem(label: string, action?: 'logs'): MessageItem {
+  return { label, alwaysShow: true, action };
 }
 
 /**
