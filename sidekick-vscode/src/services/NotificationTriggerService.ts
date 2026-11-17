@@ -668,10 +668,11 @@ export class NotificationTriggerService implements vscode.Disposable {
       `Session has consumed ${formatTokenCount(totalTokens)} tokens`,
       'warning',
       {
-      triggerId: 'high-token-usage',
-      triggerName: 'High Token Usage',
-      context: { tokenCount: totalTokens },
-    });
+        triggerId: 'high-token-usage',
+        triggerName: 'High Token Usage',
+        context: { tokenCount: totalTokens },
+      },
+    );
     this.recordFire('high-token-usage');
     this.lastNotifiedTokenTotal = totalTokens;
   }
