@@ -14,7 +14,7 @@ A second UI and UX pass over the VS Code extension, the terminal dashboard and t
 - **CLI: `sidekick doctor` exits with code 1 when the report is unhealthy.** It used to exit 0 for every report. "Attention" still exits 0. Scripts that run `doctor` will now see the failure.
 - **CLI: `sidekick dashboard --session <id>` starts pinned.** It follows the session you named and does not jump to a newer one. This matches `sidekick map --follow --session`. Without `--session`, the dashboard still switches to a session that starts, and now tells you when it does.
 - **CLI: the dashboard and `sidekick map --follow` exit with `128 +` the signal number when a signal stops them** (143 for SIGTERM, 129 for SIGHUP). They used to exit 0.
-- **CLI: Codex usage reports keep each session's project.** Per-project totals for Codex sessions will change: sessions whose first line runs past 16 KB used to be counted under no project.
+- **CLI: Codex usage reports keep each session's project.** Per-project totals for Codex sessions will change: sessions whose first line runs past 16 KiB used to be counted under no project.
 - **CLI: option values are checked where you type them.** Unknown values for these options are now errors, where before they were silently accepted or ignored:
   - `context --fidelity`
   - `note add --type` / `--importance`
@@ -68,7 +68,7 @@ A second UI and UX pass over the VS Code extension, the terminal dashboard and t
     - Notifications, Windows paths and Health diagnostics stay readable in a narrow sidebar.
 - **VS Code: other views**
   - **Project Timeline:**
-    - Message, token, task and error counts cover whole Claude Code sessions. They used to come from the first and last 16 KB, so an 18 MB session read "2 msgs".
+    - Message, token, task and error counts cover whole Claude Code sessions. They used to come from the first and last 16 KiB, so an 18 MB session read "2 msgs".
     - Sessions are read in the background, a few at a time, and older ones are skipped by date. The live session is re-read at most once a minute.
     - The timeline follows a live provider switch.
     - Expanded cards and keyboard focus survive refreshes.

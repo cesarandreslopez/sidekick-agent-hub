@@ -9,6 +9,7 @@ Types, parsers, providers, readers, formatters, aggregation, search, reporting, 
 
 ## Recent additions
 
+- **0.33.3: session labels read what was typed, and task references resolve** — Claude Code labels (`extractSessionLabel()`, `extractSessionLabelsAsync()`, `firstUserPrompt()`) skip harness text (local-command caveats, system reminders, meta, sidechain and compact-summary records), show slash commands as typed (`/clear`), unwrap `<pasted_content>`, and look 64 KiB in when the first 8 KiB holds no prompt. `completeTask()` resolves a reference by exact store key, `<origin8>:<taskId>`, exact `taskId`, then unique prefix, and lists the candidates when it is ambiguous. `formatStatusline()` shows Claude Code's rate limits with no account selected, search hits carry the real project path, Codex previews fill `workspacePath` past a long `session_meta`, and activity classification no longer breaks on ids such as `constructor` or `__proto__`. No exported signature or type changed.
 - **0.33.2: billions in token counts, and plan files for every workspace** — `formatTokenCount()` uses a `B` suffix from 1e9 (`204.4B`), and a value that rounds to 1000.0 of a unit shows as 1.0 of the next (`999_950` → `1.0M`, not `1000.0k`). `readClaudeCodePlanFiles()` finds the Claude Code project folder with `encodeClaudeWorkspacePath()`, so it now finds plans for workspaces whose path has dots, spaces or other non-alphanumeric characters. Each entry gains `sessionIds`, the sorted ids of every session whose transcript names the plan's slug. `sessionId` is still the slug.
 - **0.33.1: session reads never block the event loop for a whole file** — the Claude Code and Codex readers read in slices of at most 1 MiB, and `collectUsageEvents()`, `importSessionHistory()`, `searchSessions()` and the observed-session adapter read Claude Code and Codex sessions in 1 MiB steps with a yield between them. `collectUsageEvents()`'s `bounds.deadlineMs` and `signal` stop inside a session, and with the cache on the next call continues it from kept progress. New: `SessionReader.readNewBounded(maxBytes)`, `searchInSessionAsync()`, `importSessionHistory({ signal })`. `.jsonl.zst` rollouts decompress on the thread pool, and `extractSessionEvents()` parses a line with only its type's schema (same results, about 40% less time on real history).
 - **0.33.0: cache-write pricing, agent start folders, and leaner entries**
@@ -551,7 +552,7 @@ const rolloutPath = latest ? findCodexRolloutFile(latest.sessionId) : null;
 
 > **Naming trap:** the top-level `encodeWorkspacePath` export is Sidekick's own config-store slug (it keeps dots) and does **not** match Claude Code's directory scheme. For `~/.claude/projects/` paths always use `encodeClaudeWorkspacePath` — or better, `getClaudeSessionDirectory` / `discoverSessionDirectory`, which tolerate encoding drift.
 
-For a cross-provider "recent sessions" surface, `listSessionPreviews()` enumerates stat-only, sorts by mtime, applies `since`/`limit`, and only then does bounded content reads for the survivors — so cost tracks the size of the answer, not the size of the history:
+For a cross-provider "recent sessions" surface, `listSessionPreviews()` enumerates stat-only, sorts by mtime, applies `since`/`limit`, and only then reads content for the survivors (a 16 KiB prefix each, `maxPrefixBytes`) — so cost tracks the size of the answer, not the size of the history:
 
 ```typescript
 import { ClaudeCodeProvider, CodexProvider, listSessionPreviews } from 'sidekick-shared';
@@ -564,7 +565,7 @@ const previews = listSessionPreviews([new ClaudeCodeProvider(), new CodexProvide
 //       firstUserPrompt, firstTimestamp, workspacePath }, ...]
 ```
 
-`readSessionPreview(provider, filePath)` reads the same bounded preview for one known session file — `null` when the file is missing or unreadable, `null` fields when its content is malformed.
+`readSessionPreview(provider, filePath)` reads the same preview for one known session file — `null` when the file is missing or unreadable, `null` fields when its content is malformed. Since 0.33.3, when a Codex rollout's `session_meta` line runs past the prefix, that one line is read whole (and cached), so `workspacePath` is filled instead of `null`; `maxPrefixBytes: 0` still skips both reads.
 
 Hosts with a UI loop should prefer the async variants from `sidekick-shared/node`. They read with bounded concurrency, yield between files, batch Codex/OpenCode label lookups into non-blocking `sqlite3` subprocesses, and — unlike their sync twins — return degradation status alongside the data:
 

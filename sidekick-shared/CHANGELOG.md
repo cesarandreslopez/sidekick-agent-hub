@@ -23,14 +23,14 @@ No exported signature or type changed. The changes below alter values or behavio
   - skip harness text (`<local-command-caveat>`, `<system-reminder>`, meta, sidechain and compact-summary records)
   - render slash commands as typed (`/clear`)
   - unwrap `<pasted_content>`
-  - retry once with a 64 KB prefix when the first 8 KB holds no prompt
+  - retry once with a 64 KiB prefix when the first 8 KiB holds no prompt
 
   The 60-character cut is unchanged. A failed file close can no longer make `extractSessionLabel()` throw.
 
 - **Session search** reports the real project path, walking up from the event's `cwd`, instead of decoding the folder name (every `-` became `/`). It skips `api-request-blob` lines.
 - **`completeTask()`** resolves a reference in this order: exact store key, `<origin8>:<taskId>`, exact `taskId`, then a unique prefix. It writes back under the matched key, so session-derived tasks with short ids can be completed. An ambiguous reference lists its candidates.
 - **`formatStatusline()`** renders Claude Code's official rate limits when no account is selected but a quota is available. It no longer says `quota unavailable` then.
-- **Session previews** read a Codex rollout's `session_meta` when that line runs past the 16 KB prefix, so `workspacePath` is no longer null. Usage events for those sessions now carry their project.
+- **Session previews** read a Codex rollout's `session_meta` when that line runs past the 16 KiB prefix, so `workspacePath` is no longer null. Usage events for those sessions now carry their project.
 - **The watcher factory's "not found" error** lists session IDs instead of file names.
 - **`sessionDump` tool averages** use `formatDurationMs()` (`1m 22s`) instead of raw milliseconds.
 

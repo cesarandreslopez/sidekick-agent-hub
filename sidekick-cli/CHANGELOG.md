@@ -14,7 +14,7 @@ A second UI and UX pass over the terminal dashboard and the one-shot commands, m
 - **`sidekick doctor` exits with code 1 when the report is unhealthy.** It used to exit 0 for every report. "Attention" still exits 0. Scripts that run `doctor` will now see the failure.
 - **`sidekick dashboard --session <id>` starts pinned.** It follows the session you named and does not jump to a newer one. This matches `sidekick map --follow --session`. Without `--session`, the dashboard still switches to a session that starts, and now tells you when it does.
 - **The dashboard and `sidekick map --follow` exit with `128 +` the signal number when a signal stops them** (143 for SIGTERM, 129 for SIGHUP). They used to exit 0.
-- **Codex usage reports keep each session's project.** Per-project totals for Codex sessions will change: sessions whose first line runs past 16 KB used to be counted under no project.
+- **Codex usage reports keep each session's project.** Per-project totals for Codex sessions will change: sessions whose first line runs past 16 KiB used to be counted under no project.
 - **Option values are checked where you type them.** Unknown values for these options are now errors, where before they were silently accepted or ignored:
   - `context --fidelity`
   - `note add --type` / `--importance`

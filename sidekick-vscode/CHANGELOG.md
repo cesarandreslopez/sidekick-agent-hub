@@ -54,7 +54,7 @@ A second UI and UX pass, made against 0.33.2. Fable checked each finding against
     - Notifications, Windows paths and Health diagnostics stay readable in a narrow sidebar.
 - **Other views**
   - **Project Timeline:**
-    - Message, token, task and error counts cover whole Claude Code sessions. They used to come from the first and last 16 KB, so an 18 MB session read "2 msgs".
+    - Message, token, task and error counts cover whole Claude Code sessions. They used to come from the first and last 16 KiB, so an 18 MB session read "2 msgs".
     - Sessions are read in the background, a few at a time, and older ones are skipped by date. The live session is re-read at most once a minute.
     - The timeline follows a live provider switch.
     - Expanded cards and keyboard focus survive refreshes.
