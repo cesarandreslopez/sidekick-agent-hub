@@ -1,0 +1,17 @@
+{
+  "name": "sidekick-demo",
+  "private": true,
+  "type": "module",
+  "description": "Reproducible demo recordings for the Sidekick READMEs and docs. Not published.",
+  "scripts": {
+    "generate": "node lib/generate.mjs",
+    "test": "node --test generate.test.mjs",
+    "record": "node record.mjs",
+    "sync": "node sync.mjs"
+  },
+  "devDependencies": {
+    "@fontsource/jetbrains-mono": "5.2.5",
+    "@vscode/vsce": "3.9.2",
+    "playwright": "1.63.0"
+  }
+}

@@ -25,6 +25,7 @@ echo "Formatting root docs and workflows..."
 cd "$ROOT_DIR"
 "$PRETTIER" --config "$ROOT_DIR/prettier.config.cjs" --ignore-path "$ROOT_DIR/.prettierignore" --write \
   "docs/**/*.md" \
+  "demo/**/*.md" \
   "*.md" \
   "*.yml" \
   ".github/**/*.{md,yml,yaml}"

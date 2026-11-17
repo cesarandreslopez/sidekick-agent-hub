@@ -25,6 +25,7 @@ echo "Checking root docs and workflows formatting..."
 cd "$ROOT_DIR"
 "$PRETTIER" --config "$ROOT_DIR/prettier.config.cjs" --ignore-path "$ROOT_DIR/.prettierignore" --check \
   "docs/**/*.md" \
+  "demo/**/*.md" \
   "*.md" \
   "*.yml" \
   ".github/**/*.{md,yml,yaml}"

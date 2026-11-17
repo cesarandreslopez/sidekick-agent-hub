@@ -1,0 +1,13 @@
+{
+  "name": "demo-network-shim",
+  "displayName": "Demo network shim",
+  "description": "Recording-only: answers public status pages as operational and refuses every other request from the extension host. Never published.",
+  "version": "0.0.1",
+  "publisher": "sidekick-demo",
+  "private": true,
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/cesarandreslopez/sidekick-agent-hub" },
+  "engines": { "vscode": "^1.85.0" },
+  "activationEvents": ["*"],
+  "main": "./extension.js"
+}
