@@ -453,6 +453,15 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* VS Code's workbench.reduceMotion setting puts this class on the body. */
+body.vscode-reduce-motion *,
+body.vscode-reduce-motion *::before,
+body.vscode-reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
 `;
   document.head.appendChild(style);
 }

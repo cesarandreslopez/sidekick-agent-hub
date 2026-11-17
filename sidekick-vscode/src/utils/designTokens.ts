@@ -132,6 +132,15 @@ export function getDesignTokenCSS(): string {
       transition-duration: 0.01ms !important;
     }
   }
+  /* VS Code's own workbench.reduceMotion setting puts this class on the
+     webview body; honour it like the OS preference. */
+  body.vscode-reduce-motion *,
+  body.vscode-reduce-motion *::before,
+  body.vscode-reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 </style>`);
 }
 
