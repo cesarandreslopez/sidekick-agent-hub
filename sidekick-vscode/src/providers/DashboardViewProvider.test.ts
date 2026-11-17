@@ -86,7 +86,7 @@ vi.mock('../services/Logger', () => ({
 }));
 
 import { formatLocalDateKey, normalizeProviderUsage } from 'sidekick-shared';
-import { commands, window } from 'vscode';
+import { commands, window, workspace } from 'vscode';
 import { DashboardViewProvider, displayConfigPath } from './DashboardViewProvider';
 import { addUsageToPricing, type ModelUsageEntry } from '../services/ModelPricingService';
 
@@ -1558,6 +1558,82 @@ describe('DashboardViewProvider quota follows the session provider', () => {
     release();
     await codexRun;
     expect(count('updateBillingBlock')).toBe(2);
+    provider.dispose();
+  });
+});
+
+describe('DashboardViewProvider Event Log checkbox', () => {
+  function resolvedProvider() {
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+    const postMessage = vi.fn();
+    let onConfig: ((event: { affectsConfiguration(key: string): boolean }) => void) | undefined;
+    vi.mocked(workspace.onDidChangeConfiguration).mockImplementationOnce(((
+      listener: typeof onConfig,
+    ) => {
+      onConfig = listener;
+      return disposable();
+    }) as never);
+    const view = {
+      visible: false,
+      webview: {
+        cspSource: 'vscode-webview:',
+        options: {},
+        html: '',
+        asWebviewUri: (uri: { fsPath: string }) => `vscode-resource:${uri.fsPath}`,
+        postMessage,
+        onDidReceiveMessage: vi.fn(() => disposable()),
+      },
+      onDidChangeVisibility: vi.fn(() => disposable()),
+      onDidDispose: vi.fn(() => disposable()),
+    };
+    provider.resolveWebviewView(view as never, {} as never, {} as never);
+    return { provider, postMessage, fireConfig: () => onConfig };
+  }
+
+  it('follows a Settings edit while the dashboard is open', () => {
+    const { provider, postMessage, fireConfig } = resolvedProvider();
+    vi.mocked(workspace.getConfiguration).mockReturnValueOnce({
+      inspect: () => undefined,
+      get: () => true,
+    } as never);
+    fireConfig()!({ affectsConfiguration: (key) => key === 'sidekick.enableEventLog' });
+    expect(postMessage).toHaveBeenLastCalledWith({ type: 'syncEventLogState', enabled: true });
+    postMessage.mockClear();
+    fireConfig()!({ affectsConfiguration: () => false });
+    expect(postMessage).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
+  it('writes where the setting is defined and puts the box back when the write fails', async () => {
+    const { provider, postMessage } = resolvedProvider();
+    const host = provider as unknown as {
+      _handleDashboardWebviewMessage(message: unknown): void;
+    };
+    const update = vi.fn(async () => {});
+    vi.mocked(workspace.getConfiguration).mockReturnValueOnce({
+      inspect: () => ({ workspaceValue: false }),
+      get: () => false,
+      update,
+    } as never);
+    host._handleDashboardWebviewMessage({ type: 'toggleEventLog', enabled: true });
+    await vi.waitFor(() => expect(update).toHaveBeenCalled());
+    // A workspace value overrides the global one: write the workspace value.
+    expect(update).toHaveBeenCalledWith('enableEventLog', true, 2);
+
+    const failing = vi.fn(async () => {
+      throw new Error('read-only settings');
+    });
+    vi.mocked(workspace.getConfiguration)
+      .mockReturnValueOnce({ inspect: () => undefined, get: () => false, update: failing } as never)
+      .mockReturnValueOnce({ inspect: () => undefined, get: () => false } as never);
+    host._handleDashboardWebviewMessage({ type: 'toggleEventLog', enabled: true });
+    await vi.waitFor(() =>
+      expect(postMessage).toHaveBeenLastCalledWith({ type: 'syncEventLogState', enabled: false }),
+    );
+    expect(failing).toHaveBeenCalledWith('enableEventLog', true, 1);
     provider.dispose();
   });
 });

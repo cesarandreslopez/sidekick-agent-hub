@@ -309,9 +309,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Last billing block computed, for the public state file. */
   private _lastBillingBlock: BillingBlock | null = null;
 
-  /** Event logger reference for toggling from the dashboard */
-  private _eventLogger?: SessionEventLogger;
-
   /** Decision log service for cross-session decision persistence */
   private _decisionLogService?: DecisionLogService;
 
@@ -334,10 +331,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   private _lastQuotaAlertKey: string | null = null;
 
   /**
-   * Sets the event logger instance used for dashboard toggle control.
+   * Kept for the extension's wiring. The Event Log checkbox now only writes
+   * `sidekick.enableEventLog`; the extension's settings listener attaches
+   * or detaches the logger, so the setting and the logger never disagree.
    */
-  setEventLogger(logger: SessionEventLogger): void {
-    this._eventLogger = logger;
+  setEventLogger(_logger: SessionEventLogger): void {
+    // Nothing to hold: see above.
   }
 
   /**
@@ -533,6 +532,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._viewDisposables.push(
       vscode.window.onDidChangeActiveColorTheme(() => {
         this._postMessage({ type: 'themeChanged' });
+      }),
+      // The Event Log checkbox mirrors the setting, including edits made in
+      // Settings while the dashboard is open.
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('sidekick.enableEventLog')) this._sendEventLogState();
       }),
     );
 
@@ -798,17 +802,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         this._handleToolCallDetails(message.toolName);
         break;
 
-      case 'toggleEventLog': {
-        const enabled = message.enabled;
-        log(`Dashboard: event log toggled: ${enabled}`);
-        vscode.workspace
-          .getConfiguration('sidekick')
-          .update('enableEventLog', enabled, vscode.ConfigurationTarget.Global);
-        if (this._eventLogger) {
-          this._sessionMonitor.setEventLogger(enabled ? this._eventLogger : null);
-        }
+      case 'toggleEventLog':
+        void this._toggleEventLog(message.enabled);
         break;
-      }
 
       case 'searchDecisions':
         this._sendDecisionsToWebview(message.query ?? '');
@@ -2988,6 +2984,28 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     });
     this._syncProviderStatusCards();
     this._syncPeakHoursCard();
+  }
+
+  /**
+   * The Event Log checkbox writes the setting where it is currently defined:
+   * a workspace value overrides a global one, so writing Global under it
+   * changed nothing while the box showed it on. The extension's settings
+   * listener applies the logger once the write lands; a failed write puts
+   * the box back.
+   */
+  private async _toggleEventLog(enabled: boolean): Promise<void> {
+    log(`Dashboard: event log toggled: ${enabled}`);
+    const config = vscode.workspace.getConfiguration('sidekick');
+    const target =
+      config.inspect<boolean>('enableEventLog')?.workspaceValue !== undefined
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+    try {
+      await config.update('enableEventLog', enabled, target);
+    } catch (error) {
+      logError('Dashboard: could not change the Event Log setting', error);
+      this._sendEventLogState();
+    }
   }
 
   /**
