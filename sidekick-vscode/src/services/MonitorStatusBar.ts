@@ -227,7 +227,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    */
   private updateDisplay(): void {
     // Format: "$(pulse) 12.5K | 15%"
-    const tokensFormatted = formatTokenCount(this.totalTokens, { suffixCase: 'upper' });
+    const tokensFormatted = formatTokenCount(this.totalTokens);
 
     // Context trend indicator
     const trendIcon =
@@ -303,7 +303,7 @@ export class MonitorStatusBar implements vscode.Disposable {
         }),
         (n) => n.toLocaleString(),
       )}`,
-      `Context: ${this.contextPercent}% of ${formatTokenCount(contextLimit, { suffixCase: 'upper' })}`,
+      `Context: ${this.contextPercent}% of ${formatTokenCount(contextLimit)}`,
     ];
 
     if (this.permissionMode && this.permissionMode !== 'default') {

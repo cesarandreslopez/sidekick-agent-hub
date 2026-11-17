@@ -463,7 +463,7 @@ describe('high-token-usage alert', () => {
     handlers.tokenUsage!(usage);
     expect(mocks.showWarningMessage).toHaveBeenCalledTimes(1);
     expect(mocks.showWarningMessage).toHaveBeenCalledWith(
-      'High Token Usage: Session has consumed 5100K tokens',
+      'High Token Usage: Session has consumed 5.1M tokens',
       NOTIFICATION_BUTTONS.openDashboard,
       NOTIFICATION_BUTTONS.snooze,
     );
@@ -496,7 +496,7 @@ describe('high-token-usage alert', () => {
     handlers.tokenUsage!(usage);
     expect(mocks.showWarningMessage).toHaveBeenCalledTimes(2);
     expect(mocks.showWarningMessage).toHaveBeenLastCalledWith(
-      'High Token Usage: Session has consumed 10200K tokens',
+      'High Token Usage: Session has consumed 10.2M tokens',
       NOTIFICATION_BUTTONS.openDashboard,
       NOTIFICATION_BUTTONS.snooze,
     );

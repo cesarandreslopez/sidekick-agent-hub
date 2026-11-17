@@ -77,6 +77,7 @@ import {
   calculateCodeImpact,
   scoreSessionQuality,
   summarizeTokens,
+  formatTokenCount,
   getLiveClaudeHome,
   isSubagentSpawnTool,
   isTaskNotificationSystemEvent,
@@ -2739,7 +2740,7 @@ export class SessionMonitor implements vscode.Disposable {
       this.timeline.unshift({
         type: 'compaction',
         timestamp: event.timestamp,
-        description: `Context compacted: ${Math.round(newCompaction.contextBefore / 1000)}K -> ${Math.round(newCompaction.contextAfter / 1000)}K tokens (reclaimed ${Math.round(newCompaction.tokensReclaimed / 1000)}K)`,
+        description: `Context compacted: ${formatTokenCount(newCompaction.contextBefore)} → ${formatTokenCount(newCompaction.contextAfter)} tokens (reclaimed ${formatTokenCount(newCompaction.tokensReclaimed)})`,
         noiseLevel: 'system',
         metadata: {
           contextBefore: newCompaction.contextBefore,

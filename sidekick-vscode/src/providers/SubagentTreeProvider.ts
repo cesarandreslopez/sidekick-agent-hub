@@ -762,7 +762,7 @@ export class SubagentTreeProvider
       const tokens =
         element.totalTokens ?? (element.inputTokens || 0) + (element.outputTokens || 0);
       if (tokens > 0) {
-        descParts.push(`${formatTokenCount(tokens, { suffixCase: 'upper' })} tok`);
+        descParts.push(`${formatTokenCount(tokens)} tok`);
       }
       if (element.durationMs) {
         const secs = Math.round(element.durationMs / 1000);

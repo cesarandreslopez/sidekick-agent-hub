@@ -18,6 +18,7 @@ import {
   DEFAULT_QUOTA_THRESHOLDS,
   describeQuotaThresholdAlert,
   evaluateQuotaThresholds,
+  formatTokenCount,
   summarizeTokens,
 } from 'sidekick-shared';
 import type { QuotaAlertMemory, QuotaState, QuotaThresholdConfig } from 'sidekick-shared';
@@ -562,13 +563,9 @@ export class NotificationTriggerService implements vscode.Disposable {
     if (!trigger?.enabled) return;
     if (this.isThrottled(trigger.id, trigger.throttleSeconds)) return;
 
-    const reclaimedK = Math.round(event.tokensReclaimed / 1000);
-    const beforeK = Math.round(event.contextBefore / 1000);
-    const afterK = Math.round(event.contextAfter / 1000);
-
     this.fireNotification(
       'Context Compacted',
-      `${beforeK}K -> ${afterK}K tokens (reclaimed ${reclaimedK}K)`,
+      `${formatTokenCount(event.contextBefore)} → ${formatTokenCount(event.contextAfter)} tokens (reclaimed ${formatTokenCount(event.tokensReclaimed)})`,
       trigger.severity,
       {
         triggerId: trigger.id,
@@ -666,8 +663,11 @@ export class NotificationTriggerService implements vscode.Disposable {
       return;
     }
 
-    const totalK = Math.round(totalTokens / 1000);
-    this.fireNotification('High Token Usage', `Session has consumed ${totalK}K tokens`, 'warning', {
+    this.fireNotification(
+      'High Token Usage',
+      `Session has consumed ${formatTokenCount(totalTokens)} tokens`,
+      'warning',
+      {
       triggerId: 'high-token-usage',
       triggerName: 'High Token Usage',
       context: { tokenCount: totalTokens },
