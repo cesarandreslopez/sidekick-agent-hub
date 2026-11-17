@@ -14,6 +14,8 @@ import {
   summarizeTokens,
   TOKEN_TOTAL_LABEL,
   formatTokenCount,
+  formatLocalDateKey,
+  addLocalDays,
 } from 'sidekick-shared';
 import type { FailingToolTrendRow } from 'sidekick-shared';
 import type { DailyData, HistoricalDataStore, TopFailingTool } from 'sidekick-shared';
@@ -30,10 +32,30 @@ function formatCount(n: number): string {
   return n.toLocaleString('en-US');
 }
 
-function printStatsSummary(
+/** `1 call`, `12,345 calls`. */
+function calls(n: number): string {
+  return `${formatCount(n)} call${n === 1 ? '' : 's'}`;
+}
+
+const NAME_WIDTH = 30;
+const TOOL_ROWS = 15;
+
+/** A model or tool name cut to its column, so the count column stays put. */
+function fitName(name: string): string {
+  return name.length > NAME_WIDTH ? `${name.slice(0, NAME_WIDTH - 1)}…` : name.padEnd(NAME_WIDTH);
+}
+
+/** The local `YYYY-MM-DD` keys of today and the six days before it. */
+export function lastSevenDayKeys(now: Date = new Date()): Set<string> {
+  const today = formatLocalDateKey(now);
+  return new Set(Array.from({ length: 7 }, (_, index) => addLocalDays(today, -index)));
+}
+
+export function printStatsSummary(
   history: HistoricalDataStore,
   topFailingTools: TopFailingTool[],
   failingTools30: TopFailingTool[] = [],
+  now: Date = new Date(),
 ): void {
   const at = history.allTime;
 
@@ -48,49 +70,44 @@ function printStatsSummary(
   );
   const unpricedCount = pricedModels.filter((m) => m.priced === false).length;
   const costIsPartial = unpricedCount > 0 || pricedModels.some((m) => m.partiallyPriced);
-  process.stdout.write(
-    `  ${chalk.dim('Sessions:')}       ${chalk.bold(formatCount(at.sessionCount))}\n`,
-  );
-  process.stdout.write(
-    `  ${chalk.dim('Messages:')}       ${chalk.bold(formatCount(at.messageCount))}\n`,
-  );
-  process.stdout.write(
-    `  ${chalk.dim(`${TOKEN_TOTAL_LABEL}:`)} ${chalk.bold(formatTokens(totalTokens))}\n`,
-  );
-  process.stdout.write(
-    `  ${chalk.dim('  Input:')}         ${formatTokens(at.tokens.inputTokens)}\n`,
-  );
-  process.stdout.write(
-    `  ${chalk.dim('  Output:')}        ${formatTokens(at.tokens.outputTokens)}\n`,
-  );
-  process.stdout.write(
-    `  ${chalk.dim('  Cache write:')}   ${formatTokens(at.tokens.cacheWriteTokens)}\n`,
-  );
-  process.stdout.write(
-    `  ${chalk.dim('  Cache read:')}    ${formatTokens(at.tokens.cacheReadTokens)}\n`,
-  );
-  process.stdout.write(
-    `  ${chalk.dim('Total cost:')}     ${chalk.green(formatCost(at.totalCost))}${
-      costIsPartial
-        ? chalk.yellow(
-            unpricedCount > 0
-              ? ` (partial — ${unpricedCount} model${unpricedCount === 1 ? '' : 's'} unpriced)`
-              : ' (partial)',
-          )
-        : ''
-    }\n`,
-  );
-  process.stdout.write(`  ${chalk.dim('Period:')}         ${at.firstDate} — ${at.lastDate}\n`);
   const recordedSessions = history.sessions ?? [];
   const changedLines = recordedSessions.reduce(
     (sum, session) => sum + session.additions + session.deletions,
     0,
   );
   const changedLineCost = recordedSessions.reduce((sum, session) => sum + session.totalCost, 0);
+
+  const summary: Array<[string, string]> = [
+    ['Sessions:', chalk.bold(formatCount(at.sessionCount))],
+    ['Messages:', chalk.bold(formatCount(at.messageCount))],
+    [`${TOKEN_TOTAL_LABEL}:`, chalk.bold(formatTokens(totalTokens))],
+    ['  Input:', formatTokens(at.tokens.inputTokens)],
+    ['  Output:', formatTokens(at.tokens.outputTokens)],
+    ['  Cache write:', formatTokens(at.tokens.cacheWriteTokens)],
+    ['  Cache read:', formatTokens(at.tokens.cacheReadTokens)],
+    [
+      'Total cost:',
+      chalk.green(formatCost(at.totalCost)) +
+        (costIsPartial
+          ? chalk.yellow(
+              unpricedCount > 0
+                ? ` (partial — ${unpricedCount} model${unpricedCount === 1 ? '' : 's'} unpriced)`
+                : ' (partial)',
+            )
+          : ''),
+    ],
+    ['Period:', `${at.firstDate} — ${at.lastDate}`],
+  ];
   if (changedLines > 0) {
-    process.stdout.write(
-      `  ${chalk.dim('Code impact:')}    ${formatCost(changedLineCost / changedLines)} per changed line (${formatCount(changedLines)} lines)\n`,
-    );
+    summary.push([
+      'Code impact:',
+      `${formatCost(changedLineCost / changedLines)} per changed line (${formatCount(changedLines)} lines)`,
+    ]);
+  }
+  // One value column, however long the longest label is.
+  const labelWidth = Math.max(...summary.map(([label]) => label.length)) + 1;
+  for (const [label, value] of summary) {
+    process.stdout.write(`  ${chalk.dim(label.padEnd(labelWidth))}${value}\n`);
   }
   process.stdout.write('\n');
 
@@ -102,9 +119,9 @@ function printStatsSummary(
     // One row per model, whatever spelling (dated, prefixed, Bedrock) recorded it.
     // Claude Code's `<synthetic>` placeholders are never billed, so they are
     // neither a model nor an unpriced one.
-    const sorted = mergeModelUsage(
-      at.modelUsage.filter((usage) => usage.model !== SYNTHETIC_MODEL),
-    ).sort((a, b) => b.calls - a.calls);
+    const sorted = mergeModelUsage(at.modelUsage.filter((usage) => usage.model !== SYNTHETIC_MODEL))
+      .filter((m) => m.calls > 0)
+      .sort((a, b) => b.calls - a.calls);
     const unpricedModels: string[] = [];
     for (const m of sorted) {
       // Honest rendering: priced === false means no pricing was available
@@ -119,7 +136,7 @@ function printStatsSummary(
         costStr = chalk.dim(` (${formatCost(m.cost)})`);
       }
       process.stdout.write(
-        `  ${chalk.cyan(m.model.padEnd(30))} ${formatCount(m.calls).padStart(8)} calls${costStr}\n`,
+        `  ${chalk.cyan(fitName(m.model))} ${calls(m.calls).padStart(14)}${costStr}\n`,
       );
     }
     if (unpricedModels.length > 0) {
@@ -135,15 +152,23 @@ function printStatsSummary(
   }
 
   // Tool usage
-  if (at.toolUsage && at.toolUsage.length > 0) {
+  const tools = [...(at.toolUsage ?? [])]
+    .filter((t) => t.calls > 0)
+    .sort((a, b) => b.calls - a.calls);
+  if (tools.length > 0) {
     process.stdout.write(chalk.bold('Tool Usage\n'));
     process.stdout.write(chalk.dim('─'.repeat(50) + '\n'));
 
-    const sorted = [...at.toolUsage].sort((a, b) => b.calls - a.calls);
-    for (const t of sorted) {
-      const failStr = t.failureCount > 0 ? chalk.red(` (${t.failureCount} failed)`) : '';
+    for (const t of tools.slice(0, TOOL_ROWS)) {
+      const failStr =
+        t.failureCount > 0 ? chalk.red(` (${formatCount(t.failureCount)} failed)`) : '';
       process.stdout.write(
-        `  ${chalk.yellow(t.tool.padEnd(30))} ${formatCount(t.calls).padStart(8)} calls${failStr}\n`,
+        `  ${chalk.yellow(fitName(t.tool))} ${calls(t.calls).padStart(14)}${failStr}\n`,
+      );
+    }
+    if (tools.length > TOOL_ROWS) {
+      process.stdout.write(
+        chalk.dim(`  … ${tools.length - TOOL_ROWS} more (sidekick --json stats has them all)\n`),
       );
     }
     process.stdout.write('\n');
@@ -154,14 +179,20 @@ function printStatsSummary(
     process.stdout.write(formatFailingToolsBlock(failingRows));
   }
 
-  // Recent daily breakdown (last 7 days)
-  const days = Object.values(history.daily || {});
-  if (days.length > 0) {
-    days.sort((a, b) => b.date.localeCompare(a.date));
-    const recent = days.slice(0, 7);
+  // Recent daily breakdown: the last seven calendar days, not the last seven
+  // days that happen to have data.
+  if (Object.keys(history.daily || {}).length > 0) {
+    const window = lastSevenDayKeys(now);
+    const recent = Object.values(history.daily || {})
+      .filter((day) => window.has(day.date))
+      .sort((a, b) => b.date.localeCompare(a.date));
 
     process.stdout.write(chalk.bold('Recent Activity (last 7 days)\n'));
     process.stdout.write(chalk.dim('─'.repeat(70) + '\n'));
+    if (recent.length === 0) {
+      process.stdout.write(chalk.dim('  No activity in the last 7 days.\n\n'));
+      return;
+    }
     process.stdout.write(
       chalk.dim(
         '  Date'.padEnd(16) +
@@ -176,8 +207,8 @@ function printStatsSummary(
       const tokens = summarizeTokens(day.tokens).total;
       process.stdout.write(
         `  ${day.date.padEnd(14)}` +
-          `${String(day.sessionCount).padStart(10)}` +
-          `${String(day.messageCount).padStart(10)}` +
+          `${formatCount(day.sessionCount).padStart(10)}` +
+          `${formatCount(day.messageCount).padStart(10)}` +
           `${formatTokens(tokens).padStart(12)}` +
           `${formatCost(day.totalCost).padStart(10)}\n`,
       );
@@ -236,7 +267,7 @@ export function formatFailingToolsBlock(rows: FailingToolTrendRow[]): string {
           ? chalk.green(arrow)
           : chalk.dim(arrow);
     lines.push(
-      `  ${chalk.red(row.tool.padEnd(30))} ${String(row.last7).padStart(5)} ${String(row.last30).padStart(5)}  ${trend} ${chalk.dim(categories)}`,
+      `  ${chalk.red(fitName(row.tool))} ${formatCount(row.last7).padStart(5)} ${formatCount(row.last30).padStart(5)}  ${trend} ${chalk.dim(categories)}`,
     );
   }
   return lines.join('\n') + '\n\n';

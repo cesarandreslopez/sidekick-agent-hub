@@ -10,7 +10,7 @@ vi.mock('sidekick-shared', async (importOriginal) => ({
   getTopFailingTools: async () => [],
 }));
 
-import { formatFailingToolsBlock, statsAction } from './stats';
+import { formatFailingToolsBlock, printStatsSummary, statsAction } from './stats';
 
 describe('formatFailingToolsBlock', () => {
   it('renders both windows with a trend arrow per tool', () => {
@@ -81,5 +81,94 @@ describe('statsAction model usage', () => {
     expect(out).not.toContain('unpriced');
     // The total inherits the partially priced row.
     expect(out).toMatch(/Total cost:\s+\$1\.00 \(partial\)/);
+  });
+});
+
+describe('printStatsSummary layout', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function capture(run: () => void): string {
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      out.push(String(chunk));
+      return true;
+    });
+    run();
+    return out.join('');
+  }
+
+  const tokens = { inputTokens: 1, outputTokens: 1, cacheWriteTokens: 0, cacheReadTokens: 0 };
+  const day = (date: string, messageCount: number) => ({
+    date,
+    tokens,
+    totalCost: 1,
+    messageCount,
+    sessionCount: 1,
+    modelUsage: [],
+    toolUsage: [],
+  });
+
+  function history(daily: Record<string, unknown>) {
+    return {
+      schemaVersion: 3,
+      daily,
+      monthly: {},
+      lastSaved: '2026-11-17T00:00:00.000Z',
+      allTime: {
+        tokens,
+        totalCost: 210149.07,
+        messageCount: 1494051,
+        sessionCount: 7771,
+        firstDate: '2026-03-26',
+        lastDate: '2026-11-16',
+        modelUsage: [{ model: 'claude-opus-5-5', calls: 1, tokens: 1, cost: 1 }],
+        toolUsage: [
+          {
+            tool: 'mcp__plugin_context7_context7__query-docs',
+            calls: 8,
+            successCount: 8,
+            failureCount: 0,
+          },
+          { tool: 'Bash', calls: 4096, successCount: 1199, failureCount: 2897 },
+          { tool: 'Unused', calls: 0, successCount: 0, failureCount: 0 },
+        ],
+      },
+    } as never;
+  }
+
+  it('lines up the summary values, cuts long names, and groups counts', () => {
+    chalk.level = 0;
+    const text = capture(() => printStatsSummary(history({}), [], []));
+    const valueColumns = text
+      .split('\n')
+      .filter((line) => /^ {2}(?:Sessions|Messages|Total \(incl\. cache\)|Total cost):/.test(line))
+      .map((line) => line.length - line.replace(/^ {2}\S[^:]*:\s+/, '').length);
+    expect(valueColumns).toHaveLength(4);
+    expect(new Set(valueColumns).size).toBe(1);
+    expect(text).toContain('mcp__plugin_context7_context7…');
+    expect(text).toContain('(2,897 failed)');
+    expect(text).toMatch(/1 call(?!s)/);
+    expect(text).not.toContain('Unused');
+  });
+
+  it('shows only the last seven calendar days', () => {
+    chalk.level = 0;
+    const now = new Date(2026, 10, 17, 12);
+    const text = capture(() =>
+      printStatsSummary(
+        history({ '2026-11-16': day('2026-11-16', 4096), '2026-09-20': day('2026-09-20', 1) }),
+        [],
+        [],
+        now,
+      ),
+    );
+    expect(text).toContain('2026-11-16');
+    expect(text).toContain('4,096');
+    expect(text).not.toContain('2026-09-20');
+
+    const quiet = capture(() =>
+      printStatsSummary(history({ '2026-09-20': day('2026-09-20', 1) }), [], [], now),
+    );
+    expect(quiet).toContain('No activity in the last 7 days.');
   });
 });
