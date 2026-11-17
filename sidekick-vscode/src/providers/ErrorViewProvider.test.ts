@@ -175,4 +175,56 @@ describe('ErrorViewProvider', () => {
     expect(posted.some((m) => m.type === 'cancelled')).toBe(true);
     expect(posted.some((m) => m.type === 'explanationError')).toBe(false);
   });
+
+  it('reports an AbortError-named rejection as cancelled (toast Cancel, declined retry)', async () => {
+    const service = {
+      explainError: vi.fn(async () => {
+        const err = new Error('Request was cancelled');
+        err.name = 'AbortError';
+        throw err;
+      }),
+    };
+    const provider = new ErrorViewProvider({} as never, service as never);
+    await provider.showErrorExplanation(document as never, diagnostic as never, 'explain');
+    expect(posted.some((m) => m.type === 'cancelled')).toBe(true);
+    expect(posted.some((m) => m.type === 'explanationError')).toBe(false);
+  });
+
+  it("the panel's Cancel aborts the request and shows Cancelled, even if it then finishes", async () => {
+    const pending = deferred<unknown>();
+    let seenSignal: AbortSignal | undefined;
+    const service = {
+      generateFix: vi.fn((_c: unknown, _e: unknown, signal: AbortSignal) => {
+        seenSignal = signal;
+        return pending.promise;
+      }),
+    };
+    const provider = new ErrorViewProvider({} as never, service as never);
+    const run = provider.showErrorExplanation(document as never, diagnostic as never, 'fix');
+
+    await h.receive!({ type: 'cancel' });
+    expect(seenSignal?.aborted).toBe(true);
+    expect(posted.filter((m) => m.type === 'cancelled')).toHaveLength(1);
+
+    pending.resolve({
+      documentUri: 'a',
+      range: { startLine: 0, startCharacter: 0, endLine: 0, endCharacter: 1 },
+      originalCode: 'a',
+      fixedCode: 'b',
+      explanation: 'e',
+    });
+    await run;
+    expect(posted.some((m) => m.type === 'fixReady')).toBe(false);
+  });
+
+  it('replays the request and its outcome when the webview reports ready late', async () => {
+    const service = { explainError: vi.fn(async () => ({ rootCause: 'R' })) };
+    const provider = new ErrorViewProvider({} as never, service as never);
+    await provider.showErrorExplanation(document as never, diagnostic as never, 'explain');
+    posted.length = 0;
+
+    await h.receive!({ type: 'webviewReady' });
+    expect(posted.map((m) => m.type)).toEqual(['loadError', 'explanationResult']);
+    expect(posted[0].requestId).toBe(posted[1].requestId);
+  });
 });

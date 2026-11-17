@@ -75,4 +75,6 @@ export type ErrorExplainWebviewMessage =
   | { type: 'requestFix'; requestId: string; errorContext: ErrorContext; code: string }
   | { type: 'applyFix'; fixSuggestion?: FixSuggestion }
   | { type: 'retry' }
+  /** Stops the request in flight (the panel's own Cancel button). */
+  | { type: 'cancel' }
   | { type: 'close' };

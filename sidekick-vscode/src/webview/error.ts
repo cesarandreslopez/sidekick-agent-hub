@@ -34,6 +34,11 @@ let errorMessage: string | undefined;
 /** The newest request; replies for any other id are dropped. */
 let currentRequestId: string | undefined;
 let currentMode: 'explain' | 'fix' | undefined;
+/**
+ * The panel only opens for a request, so it starts in the loading state until
+ * the host's `loadError` arrives (instead of flashing "Ready to diagnose").
+ */
+let awaitingFirstRequest = true;
 let cancelled = false;
 let fixApplied = false;
 let applyFixError: string | undefined;
@@ -366,6 +371,16 @@ body {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
+.retry-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.cancel-request-btn {
+  margin-top: 16px;
+  align-self: center;
+}
+
 .cancelled-state {
   display: none;
   color: var(--vscode-descriptionForeground);
@@ -459,11 +474,12 @@ function initializeDOM() {
 
       <div class="loading-spinner" id="loading-spinner" role="status" aria-label="Analyzing error">
         <div class="spinner-dots"><span></span><span></span><span></span></div>
-        <div class="loading-text">Analyzing error...</div>
+        <div class="loading-text" id="loading-text">Analyzing error...</div>
+        <button type="button" class="retry-btn cancel-request-btn" id="cancel-btn">Cancel</button>
       </div>
 
       <div class="error-state" id="error-state" role="alert">
-        <div class="error-state-title">Analysis Failed</div>
+        <div class="error-state-title" id="error-state-title">Analysis Failed</div>
         <div class="error-state-details" id="error-state-details"></div>
         <button type="button" class="retry-btn" id="retry-btn">Try Again</button>
       </div>
@@ -500,7 +516,7 @@ function initializeDOM() {
       <div class="empty-state" id="empty-state">
         <div class="empty-state-icon">\u26A0</div>
         <div class="empty-state-text">Ready to diagnose</div>
-        <div class="empty-state-hint">Put the cursor on an error or warning in the editor, then press <kbd>Ctrl+.</kbd> (<kbd>Cmd+.</kbd> on macOS) and choose "Explain Error" or "Fix Error", or right-click and choose <kbd>Sidekick › Explain Error with AI</kbd>.</div>
+        <div class="empty-state-hint">Put the cursor on an error or warning, then press <kbd>Ctrl+.</kbd> (<kbd>Cmd+.</kbd> on macOS) and choose "Explain Error with AI" or "Fix Error with AI", or right-click and choose <kbd>Sidekick › Explain Error with AI</kbd>.</div>
       </div>
     </main>
   `;
@@ -518,6 +534,9 @@ function setupEventListeners() {
   };
   document.getElementById('retry-btn')?.addEventListener('click', retry);
   document.getElementById('retry-cancelled-btn')?.addEventListener('click', retry);
+  document.getElementById('cancel-btn')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'cancel' } as ErrorExplainWebviewMessage);
+  });
 
   // Apply fix button: the host holds the fix and checks the document version.
   const applyFixBtn = document.getElementById('apply-fix-btn');
@@ -555,6 +574,7 @@ function handleExtensionMessage(event: MessageEvent) {
   switch (message.type) {
     case 'loadError':
       // A new request replaces everything the panel was showing.
+      awaitingFirstRequest = false;
       currentRequestId = message.requestId;
       currentMode = message.mode;
       currentErrorContext = message.errorContext;
@@ -650,8 +670,17 @@ function updateUI() {
     renderErrorHeader(currentErrorContext, currentCode);
   }
 
+  // Fix mode generates a fix; say so instead of "Analyzing".
+  const fixMode = currentMode === 'fix';
+  const loadingLabel = fixMode ? 'Generating fix...' : 'Analyzing error...';
+  const loadingText = document.getElementById('loading-text');
+  if (loadingText) loadingText.textContent = loadingLabel;
+  loadingSpinner?.setAttribute('aria-label', loadingLabel);
+  const errorTitle = document.getElementById('error-state-title');
+  if (errorTitle) errorTitle.textContent = fixMode ? "Couldn't generate a fix" : 'Analysis Failed';
+
   // Show appropriate content based on state
-  if (isLoading) {
+  if (isLoading || awaitingFirstRequest) {
     loadingSpinner?.classList.add('visible');
   } else if (cancelled) {
     cancelledState?.classList.add('visible');

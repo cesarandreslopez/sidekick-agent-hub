@@ -19,6 +19,7 @@ import type {
 } from '../types/errorExplanation';
 import type { ComplexityLevel } from '../types/explain';
 import { getNonce } from '../utils/nonce';
+import { isCancellationError, toErrorMessage } from '../utils/errors';
 
 /** What the current request was made against; Retry and Apply Fix use it. */
 interface ErrorRequestTarget {
@@ -44,6 +45,14 @@ export class ErrorViewProvider implements vscode.Disposable {
   private _target?: ErrorRequestTarget;
   /** The fix the panel is showing, held on the host so Apply never trusts the webview. */
   private _pendingFix?: { suggestion: FixSuggestion; uri: vscode.Uri; version: number };
+  /**
+   * The current request's `loadError` and its outcome (result, failure or
+   * cancelled), replayed on `webviewReady`. VS Code flushes messages queued
+   * for a new panel after its frame loads or a short timeout, whichever comes
+   * first, so the first ones can reach the page before its listener exists.
+   */
+  private _loadMessage?: ErrorExplainExtensionMessage;
+  private _outcome?: ErrorExplainExtensionMessage;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -110,6 +119,7 @@ export class ErrorViewProvider implements vscode.Disposable {
     this._currentRequestId = requestId;
     this._target = target;
     this._pendingFix = undefined;
+    this._outcome = undefined;
 
     // Create or reveal panel
     if (this._panel) {
@@ -124,13 +134,14 @@ export class ErrorViewProvider implements vscode.Disposable {
     }
 
     // Send error context to webview
-    this._panel?.webview.postMessage({
+    this._loadMessage = {
       type: 'loadError',
       requestId,
       mode: target.mode,
       errorContext: target.errorContext,
       code: target.code,
-    } as ErrorExplainExtensionMessage);
+    };
+    this._panel?.webview.postMessage(this._loadMessage);
 
     // Request AI explanation or fix
     if (target.mode === 'explain') {
@@ -145,14 +156,34 @@ export class ErrorViewProvider implements vscode.Disposable {
     return this._currentRequestId === requestId;
   }
 
-  /** Reports a failure, or a neutral "cancelled" when the user stopped it. */
-  private postFailure(requestId: string, signal: AbortSignal, error: string): void {
+  /** Posts the current request's outcome and keeps it for a `webviewReady` replay. */
+  private postOutcome(requestId: string, message: ErrorExplainExtensionMessage): void {
     if (!this.isCurrent(requestId)) return;
-    this._panel?.webview.postMessage(
-      signal.aborted
-        ? ({ type: 'cancelled', requestId } as ErrorExplainExtensionMessage)
-        : ({ type: 'explanationError', requestId, error } as ErrorExplainExtensionMessage),
-    );
+    this._outcome = message;
+    this._panel?.webview.postMessage(message);
+  }
+
+  /**
+   * Reports a failure, or a neutral "cancelled" when the user stopped it: the
+   * panel's Cancel, the toast's Cancel, or a declined timeout retry (the
+   * service rejects with an AbortError-named error for the last two).
+   */
+  private postFailure(
+    requestId: string,
+    signal: AbortSignal,
+    error: unknown,
+    fallback: string,
+  ): void {
+    if (signal.aborted || isCancellationError(error)) {
+      this.postOutcome(requestId, { type: 'cancelled', requestId });
+      return;
+    }
+    console.error(`${fallback}:`, error);
+    this.postOutcome(requestId, {
+      type: 'explanationError',
+      requestId,
+      error: toErrorMessage(error, fallback),
+    });
   }
 
   /**
@@ -178,8 +209,17 @@ export class ErrorViewProvider implements vscode.Disposable {
       async (message: ErrorExplainWebviewMessage) => {
         switch (message.type) {
           case 'webviewReady':
-            // Webview is ready to receive messages
+            // Replay what may have arrived before the page was listening.
+            if (this._loadMessage) this._panel?.webview.postMessage(this._loadMessage);
+            if (this._outcome) this._panel?.webview.postMessage(this._outcome);
             break;
+          case 'cancel': {
+            const requestId = this._currentRequestId;
+            if (!requestId || this._outcome) break;
+            this._currentAbort?.abort();
+            this.postOutcome(requestId, { type: 'cancelled', requestId });
+            break;
+          }
           case 'applyFix':
             await this.applyFix();
             break;
@@ -203,6 +243,8 @@ export class ErrorViewProvider implements vscode.Disposable {
         this._target = undefined;
         this._pendingFix = undefined;
         this._currentRequestId = undefined;
+        this._loadMessage = undefined;
+        this._outcome = undefined;
       },
       undefined,
       this._disposables,
@@ -226,20 +268,11 @@ export class ErrorViewProvider implements vscode.Disposable {
         signal,
       );
 
-      if (this.isCurrent(requestId)) {
-        this._panel?.webview.postMessage({
-          type: 'explanationResult',
-          requestId,
-          explanation,
-        } as ErrorExplainExtensionMessage);
-      }
+      // A request the user cancelled stays cancelled even if it finished.
+      if (signal.aborted) return;
+      this.postOutcome(requestId, { type: 'explanationResult', requestId, explanation });
     } catch (error) {
-      this.postFailure(
-        requestId,
-        signal,
-        error instanceof Error ? error.message : 'Explanation failed',
-      );
-      if (!signal.aborted) console.error('Error explanation failed:', error);
+      this.postFailure(requestId, signal, error, 'Explanation failed');
     }
   }
 
@@ -259,7 +292,7 @@ export class ErrorViewProvider implements vscode.Disposable {
         signal,
       );
 
-      if (!this.isCurrent(requestId)) {
+      if (!this.isCurrent(requestId) || signal.aborted) {
         return;
       }
 
@@ -267,25 +300,16 @@ export class ErrorViewProvider implements vscode.Disposable {
         // The service only knows the file name; the host knows the real URI.
         const suggestion: FixSuggestion = { ...fixSuggestion, documentUri: target.uri.toString() };
         this._pendingFix = { suggestion, uri: target.uri, version: target.version };
-        this._panel?.webview.postMessage({
-          type: 'fixReady',
-          requestId,
-          fixSuggestion: suggestion,
-        } as ErrorExplainExtensionMessage);
+        this.postOutcome(requestId, { type: 'fixReady', requestId, fixSuggestion: suggestion });
       } else {
-        this._panel?.webview.postMessage({
+        this.postOutcome(requestId, {
           type: 'explanationError',
           requestId,
           error: 'Unable to generate automatic fix for this error',
-        } as ErrorExplainExtensionMessage);
+        });
       }
     } catch (error) {
-      this.postFailure(
-        requestId,
-        signal,
-        error instanceof Error ? error.message : 'Fix generation failed',
-      );
-      if (!signal.aborted) console.error('Fix generation failed:', error);
+      this.postFailure(requestId, signal, error, 'Fix generation failed');
     }
   }
 
