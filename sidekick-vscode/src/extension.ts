@@ -120,6 +120,7 @@ import { getNonce } from './utils/nonce';
 import { resolveDiagnosticAtSelection } from './utils/diagnosticAtSelection';
 import { PROVIDER_LABELS, accountDisplayName } from './commands/accountQuickPick';
 import { formatTimeoutSeconds } from './utils/formatTimeout';
+import { currentFirst } from './utils/pickerOrder';
 import { buildReportCsp } from './utils/reportCsp';
 import type { AccountProviderId, SyncReport } from 'sidekick-shared';
 import {
@@ -1290,9 +1291,11 @@ export async function activate(context: vscode.ExtensionContext) {
           if (!knowledgeNoteService || item?.kind !== 'note' || !item.note) return;
 
           const content = await vscode.window.showInputBox({
+            title: 'Edit Knowledge Note (1/3)',
             prompt: 'Edit note content',
             value: item.note.content,
             placeHolder: 'Enter updated note content',
+            ignoreFocusOut: true,
             validateInput: (value) =>
               value.trim().length === 0 ? 'A note needs some content' : undefined,
           });
@@ -1316,10 +1319,15 @@ export async function activate(context: vscode.ExtensionContext) {
             },
             { label: 'Tip', value: 'tip' as const, description: 'A useful shortcut or technique' },
           ];
-          const currentType = typeItems.find((t) => t.value === item.note!.noteType);
-          const selectedType = await vscode.window.showQuickPick(typeItems, {
-            placeHolder: `Note type (current: ${currentType?.label ?? item.note.noteType})`,
-          });
+          // The current value is listed first, so Enter keeps it; Escape still cancels.
+          const selectedType = await vscode.window.showQuickPick(
+            currentFirst(typeItems, item.note.noteType),
+            {
+              title: 'Edit Knowledge Note (2/3)',
+              placeHolder: 'Note type',
+              ignoreFocusOut: true,
+            },
+          );
           if (!selectedType) return;
 
           const importanceItems = [
@@ -1328,10 +1336,14 @@ export async function activate(context: vscode.ExtensionContext) {
             { label: 'Medium', value: 'medium' as const },
             { label: 'Low', value: 'low' as const },
           ];
-          const currentImportance = importanceItems.find((i) => i.value === item.note!.importance);
-          const selectedImportance = await vscode.window.showQuickPick(importanceItems, {
-            placeHolder: `Importance (current: ${currentImportance?.label ?? item.note.importance})`,
-          });
+          const selectedImportance = await vscode.window.showQuickPick(
+            currentFirst(importanceItems, item.note.importance),
+            {
+              title: 'Edit Knowledge Note (3/3)',
+              placeHolder: 'Importance',
+              ignoreFocusOut: true,
+            },
+          );
           if (!selectedImportance) return;
 
           knowledgeNoteService.updateNote(item.note.id, {
