@@ -381,28 +381,61 @@ export class ConversationViewProvider implements vscode.Disposable {
       );
     }
 
-    this.currentPath = targetPath;
-
-    // Set title to session filename
-    const provider = this.sessionMonitor.getProvider();
-    const filename = provider.getSessionId(targetPath) || 'Session';
-    this.panel.title = `Conversation: ${filename.substring(0, 8)}...`;
-
     await this.render(targetPath);
   }
 
-  /** Parses the session and (re)renders the panel. */
+  /**
+   * Parses the session and (re)renders the panel. The panel takes the
+   * session's path and title only once it parsed, so a failed open never
+   * leaves one session's transcript under another session's title.
+   */
   private async render(targetPath: string, options: { fromRefresh?: boolean } = {}): Promise<void> {
     if (!this.panel) return;
     try {
       const chunks = await this.parseSession(targetPath);
       if (!this.panel) return;
-      this.panel.webview.html = this.getHtml(this.panel.webview, chunks);
+      this.currentPath = targetPath;
+      const provider = this.sessionMonitor.getProvider();
+      const filename = provider.getSessionId(targetPath) || 'Session';
+      this.panel.title = `Conversation: ${filename.substring(0, 8)}...`;
+      this.panel.webview.html = this.getHtml(this.panel.webview, chunks, targetPath);
     } catch (err) {
       logError('ConversationViewProvider: Failed to parse session', err);
       vscode.window.showErrorMessage(`Failed to open conversation: ${toErrorMessage(err)}`);
-      if (options.fromRefresh) void this.panel?.webview.postMessage({ type: 'refreshFailed' });
+      if (options.fromRefresh) {
+        void this.panel?.webview.postMessage({ type: 'refreshFailed' });
+      } else if (this.panel && !this.currentPath) {
+        // A new panel would otherwise stay blank.
+        this.panel.webview.html = this.getErrorHtml(this.panel.webview, toErrorMessage(err));
+      }
     }
+  }
+
+  /** In-panel failure state for a panel that has nothing else to show. */
+  private getErrorHtml(webview: vscode.Webview, message: string): string {
+    const nonce = getNonce();
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}';">
+  <style nonce="${nonce}">
+    body {
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+      color: var(--vscode-foreground);
+      background: var(--vscode-editor-background);
+      padding: 16px;
+    }
+    .error-note { color: var(--vscode-errorForeground); margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Session Conversation</h2>
+  <p class="error-note" role="alert">Couldn't open this conversation: ${this.escapeHtml(message)}</p>
+</body>
+</html>`;
   }
 
   /**
@@ -420,9 +453,11 @@ export class ConversationViewProvider implements vscode.Disposable {
   /**
    * Generates the webview HTML.
    */
-  private getHtml(webview: vscode.Webview, chunks: ConversationChunk[]): string {
+  private getHtml(webview: vscode.Webview, chunks: ConversationChunk[], sessionPath = ''): string {
     const nonce = getNonce();
     const cspSource = webview.cspSource;
+    // Inline-script safe: no "</script>" can end the block early.
+    const sessionKey = JSON.stringify(sessionPath).replace(/</g, '\\u003c');
 
     const chunksHtml = chunks
       .map((chunk, i) => {
@@ -793,6 +828,7 @@ export class ConversationViewProvider implements vscode.Disposable {
     }
 
     .hidden { display: none !important; }
+    .empty-note { color: var(--vscode-descriptionForeground); padding: 16px 0; }
   </style>
 </head>
 <body>
@@ -807,11 +843,12 @@ export class ConversationViewProvider implements vscode.Disposable {
     <input type="text" id="search-input" placeholder="Search conversation..." aria-label="Search conversation" />
   </div>
   <div id="conversation">
-    ${chunksHtml}
+    ${chunksHtml || '<p class="empty-note">No conversation entries in this session yet.</p>'}
   </div>
   <script nonce="${nonce}">
     (function() {
       var vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
+      var sessionKey = ${sessionKey};
       var totalLabel = ${JSON.stringify(`${chunks.length} ${chunks.length === 1 ? 'entry' : 'entries'}`)};
 
       function setOpen(header, open) {
@@ -835,6 +872,18 @@ export class ConversationViewProvider implements vscode.Disposable {
         refreshBtn.addEventListener('click', function() {
           refreshBtn.disabled = true;
           refreshBtn.textContent = 'Refreshing…';
+          // A refresh replaces the page; keep the reader's place in it.
+          var open = [];
+          document.querySelectorAll('.tool-toggle[aria-expanded="true"]').forEach(function(t) {
+            var chunk = t.closest('.chunk');
+            if (chunk && chunk.id) open.push(chunk.id);
+          });
+          vscode.setState({
+            sessionKey: sessionKey,
+            scrollY: window.scrollY,
+            query: searchInput.value,
+            open: open,
+          });
           vscode.postMessage({ type: 'refresh' });
         });
         window.addEventListener('message', function(event) {
@@ -918,6 +967,23 @@ export class ConversationViewProvider implements vscode.Disposable {
           if (countEl) countEl.textContent = query ? shown + ' of ' + totalLabel : totalLabel;
         }, 200);
       });
+
+      // After a Refresh: put back the search, the open rows, and the scroll.
+      var restored = vscode && vscode.getState();
+      if (restored && restored.sessionKey === sessionKey) {
+        vscode.setState(null);
+        (restored.open || []).forEach(function(id) {
+          var chunk = document.getElementById(id);
+          var toggle = chunk && chunk.querySelector('.tool-toggle');
+          if (toggle) setOpen(toggle, true);
+        });
+        if (restored.query) {
+          searchInput.value = restored.query;
+          searchInput.dispatchEvent(new Event('input'));
+        }
+        // The search filters after its debounce; scroll once it has.
+        setTimeout(function() { window.scrollTo(0, restored.scrollY || 0); }, restored.query ? 250 : 0);
+      }
     })();
   </script>
 </body>
