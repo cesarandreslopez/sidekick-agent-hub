@@ -178,7 +178,7 @@ export class InlineChatProvider implements vscode.Disposable {
 
     // Handle result
     if (!result.success) {
-      if (result.error !== 'Request cancelled') {
+      if (!result.cancelled && result.error !== 'Request cancelled') {
         logError('Inline chat failed', new Error(result.error));
         // Retry sends the same query with the context captured for this request.
         await showProviderFailure(`Inline chat failed: ${result.error}`, result.cause, () =>

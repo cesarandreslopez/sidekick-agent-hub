@@ -31,7 +31,7 @@ import { ErrorExplanationService } from './services/ErrorExplanationService';
 import { InlineChatService } from './services/InlineChatService';
 import { PreCommitReviewService } from './services/PreCommitReviewService';
 import { PrDescriptionService } from './services/PrDescriptionService';
-import { getTimeoutManager } from './services/TimeoutManager';
+import { getTimeoutManager, type RetryAttempt } from './services/TimeoutManager';
 import { SessionMonitor } from './services/SessionMonitor';
 import { detectProvider } from './services/providers/ProviderDetector';
 import { CodexSessionProvider } from './services/providers/CodexSessionProvider';
@@ -2552,8 +2552,8 @@ export async function activate(context: vscode.ExtensionContext) {
             contextSize,
             showProgress: true,
             cancellable: true,
-            onTimeout: (timeoutMs: number, contextKb: number) =>
-              timeoutManager.promptRetry(operationLabel, timeoutMs, contextKb),
+            onTimeout: (timeoutMs: number, contextKb: number, retry?: RetryAttempt) =>
+              timeoutManager.promptRetry(operationLabel, timeoutMs, contextKb, retry),
           });
 
           if (!result.success) {

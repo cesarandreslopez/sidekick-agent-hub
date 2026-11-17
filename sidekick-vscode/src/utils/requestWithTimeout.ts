@@ -13,6 +13,7 @@
 
 import { CompletionOptions, TimeoutError } from '../types';
 import { DEFAULT_REQUEST_TIMEOUT } from '../constants';
+import { cancellationError } from './errors';
 
 /**
  * Executes an async operation with timeout and abort signal support.
@@ -21,7 +22,10 @@ import { DEFAULT_REQUEST_TIMEOUT } from '../constants';
  * - Checks for early abort before starting work
  * - Creates an internal AbortController with a timeout
  * - Links the external signal (if provided) to the internal controller
- * - Distinguishes between timeout and user cancellation on AbortError
+ * - Distinguishes timeout from user cancellation by its own signals, not by
+ *   the error's name: the Anthropic SDKs' abort errors keep `name === 'Error'`
+ *   (and a stream that just ends may throw something else entirely), so the
+ *   error a client throws on abort can't be trusted to say what happened
  * - Cleans up all listeners in a finally block
  *
  * @param options - Completion options containing timeout and signal
@@ -36,9 +40,7 @@ export async function requestWithTimeout<T>(
 ): Promise<T> {
   // Early abort check
   if (options?.signal?.aborted) {
-    const err = new Error('Request was cancelled');
-    err.name = 'AbortError';
-    throw err;
+    throw cancellationError();
   }
 
   const timeoutMs = options?.timeout ?? DEFAULT_REQUEST_TIMEOUT;
@@ -47,8 +49,12 @@ export async function requestWithTimeout<T>(
   // an explicit inner timeout was requested. This prevents the 30s default
   // from silently capping longer context-aware operations.
   const useInternalTimeout = options?.timeout !== undefined || !options?.signal;
+  let timedOut = false;
   const timeoutId = useInternalTimeout
-    ? setTimeout(() => abortController.abort(), timeoutMs)
+    ? setTimeout(() => {
+        timedOut = true;
+        abortController.abort();
+      }, timeoutMs)
     : undefined;
 
   // Link external signal to our internal abort controller
@@ -61,12 +67,11 @@ export async function requestWithTimeout<T>(
   try {
     return await work(abortController.signal);
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      if (options?.signal?.aborted) {
-        const abortError = new Error('Request was cancelled');
-        abortError.name = 'AbortError';
-        throw abortError;
-      }
+    // Our signals say what happened; whatever the client threw does not.
+    if (options?.signal?.aborted) {
+      throw cancellationError();
+    }
+    if (timedOut) {
       throw new TimeoutError(`Request timed out after ${timeoutMs}ms`, timeoutMs);
     }
     throw error;

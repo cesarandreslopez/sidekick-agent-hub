@@ -7,10 +7,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as vscode from 'vscode';
 import {
   TimeoutManager,
   TimeoutConfig,
   DEFAULT_TIMEOUTS,
+  MAX_AUTO_RETRIES,
   getTimeoutManager,
 } from './TimeoutManager';
 import { TimeoutError } from '../types';
@@ -350,6 +352,195 @@ describe('TimeoutManager', () => {
       // First timeout at 1000ms, then 2000ms (1000 * 2.0)
       expect(timeouts[0]).toBe(1000);
       expect(timeouts[1]).toBe(2000);
+    });
+  });
+
+  describe('cancellation', () => {
+    const config: TimeoutConfig = {
+      baseTimeout: 60_000,
+      maxTimeout: 120_000,
+      perKbTimeout: 0,
+      retryMultiplier: 1.5,
+    };
+
+    it('reports an external cancel as cancelled even when the client throws a plain Error', async () => {
+      const outer = new AbortController();
+      const result = await manager.executeWithTimeout({
+        operation: 'Test operation',
+        // The Anthropic SDKs reject an aborted request with a plain Error.
+        task: (signal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(new Error('process aborted by user')));
+            outer.abort();
+          }),
+        config,
+        showProgress: false,
+        externalSignal: outer.signal,
+      });
+
+      expect(result).toMatchObject({ success: false, timedOut: false, cancelled: true });
+      expect(result.error?.name).toBe('AbortError');
+    });
+
+    it('reports Cancel in the progress toast as cancelled', async () => {
+      vi.mocked(vscode.window.withProgress).mockImplementationOnce((async (
+        _options: unknown,
+        task: (progress: unknown, token: unknown) => Promise<unknown>,
+      ) => {
+        let fire: (() => void) | undefined;
+        const token = {
+          isCancellationRequested: false,
+          onCancellationRequested: (listener: () => void) => {
+            fire = listener;
+            return { dispose: () => undefined };
+          },
+        };
+        const pending = task({ report: vi.fn() }, token);
+        fire?.();
+        return pending;
+      }) as never);
+
+      const result = await manager.executeWithTimeout({
+        operation: 'Test operation',
+        task: (signal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(new Error('stream ended')));
+          }),
+        config,
+        showProgress: true,
+      });
+
+      expect(result).toMatchObject({ success: false, timedOut: false, cancelled: true });
+      expect(result.error?.name).toBe('AbortError');
+    });
+
+    it('still classifies its own deadline as a timeout, not a cancel', async () => {
+      const result = await manager.executeWithTimeout({
+        operation: 'Test operation',
+        task: async () => {
+          throw new TimeoutError('Timed out', 1000);
+        },
+        config,
+        showProgress: false,
+      });
+      expect(result.timedOut).toBe(true);
+      expect(result.cancelled).toBeUndefined();
+    });
+  });
+
+  describe('retry attempts', () => {
+    const config: TimeoutConfig = {
+      baseTimeout: 60_000,
+      maxTimeout: 120_000,
+      perKbTimeout: 0,
+      retryMultiplier: 1.5,
+    };
+
+    it('tells onTimeout the attempt, the capped next timeout and whether it is at the cap', async () => {
+      const seen: unknown[] = [];
+      let calls = 0;
+      await manager.executeWithTimeout({
+        operation: 'Test operation',
+        task: async () => {
+          calls++;
+          if (calls < 4) throw new TimeoutError('Timed out', 1);
+          return 'ok';
+        },
+        config,
+        showProgress: false,
+        onTimeout: async (_ms, _kb, retry) => {
+          seen.push(retry);
+          return 'retry';
+        },
+      });
+
+      expect(seen).toEqual([
+        { attempt: 1, nextTimeoutMs: 90_000, atMax: false },
+        { attempt: 2, nextTimeoutMs: 120_000, atMax: false },
+        { attempt: 3, nextTimeoutMs: 120_000, atMax: true },
+      ]);
+    });
+
+    beforeEach(() => {
+      // Earlier tests may have switched auto-retry on.
+      vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+        get: vi.fn(() => undefined),
+      } as never);
+    });
+
+    function autoRetryConfig(): void {
+      vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+        get: vi.fn((key: string) => (key === 'autoRetryOnTimeout' ? true : undefined)),
+      } as never);
+    }
+
+    it('stops retrying automatically after the cap and asks instead', async () => {
+      autoRetryConfig();
+      vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(undefined as never);
+
+      let calls = 0;
+      const result = await manager.executeWithTimeout({
+        operation: 'Test operation',
+        task: async () => {
+          calls++;
+          throw new TimeoutError('Timed out', 1);
+        },
+        config: { ...config, maxTimeout: 10_000_000 },
+        showProgress: false,
+        onTimeout: (ms, kb, retry) => manager.promptRetry('Test operation', ms, kb, retry),
+      });
+
+      expect(calls).toBe(MAX_AUTO_RETRIES + 1);
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+      expect(result.retryDeclined).toBe(true);
+    });
+
+    it('never retries automatically at the maximum timeout', async () => {
+      autoRetryConfig();
+      vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(undefined as never);
+      const decision = await manager.promptRetry('Op', 120_000, 0, {
+        attempt: 1,
+        nextTimeoutMs: 120_000,
+        atMax: true,
+      });
+      expect(decision).toBe('cancel');
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('labels the retry with the timeout it will really use', async () => {
+      vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(undefined as never);
+      await manager.promptRetry('Op', 100_000, 0, {
+        attempt: 1,
+        nextTimeoutMs: 120_000,
+        atMax: false,
+      });
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        { modal: false },
+        'Retry (120s)',
+        'Open Settings',
+        'Cancel',
+      );
+    });
+
+    it('offers a plain Retry and the maxTimeout setting at the cap', async () => {
+      vi.mocked(vscode.window.showWarningMessage).mockResolvedValue('Open Settings' as never);
+      await manager.promptRetry('Op', 120_000, 0, {
+        attempt: 2,
+        nextTimeoutMs: 120_000,
+        atMax: true,
+      });
+      expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('maximum timeout'),
+        { modal: false },
+        'Retry',
+        'Open Settings',
+        'Cancel',
+      );
+      expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+        'workbench.action.openSettings',
+        'sidekick.maxTimeout',
+      );
     });
   });
 

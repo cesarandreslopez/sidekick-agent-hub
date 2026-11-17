@@ -13,6 +13,7 @@
 
 import * as vscode from 'vscode';
 import { TimeoutError } from '../types';
+import { cancellationError, isCancellationError } from '../utils/errors';
 import { log } from './Logger';
 
 /**
@@ -47,6 +48,11 @@ export interface TimeoutResult<T> {
    * the timeout, so callers should not report it again.
    */
   retryDeclined?: boolean;
+  /**
+   * Set when the user cancelled the request: Cancel in the progress toast or
+   * an aborted external signal. `error` is then an `AbortError`-named error.
+   */
+  cancelled?: boolean;
   /** The timeout used in milliseconds */
   timeoutMs: number;
   /** Context size in KB if provided */
@@ -70,7 +76,11 @@ export interface ExecuteOptions<T> {
   /** Allow user cancellation via progress UI (default: true) */
   cancellable?: boolean;
   /** Callback when timeout occurs, returns whether to retry */
-  onTimeout?: (timeoutMs: number, contextKb: number) => Promise<'retry' | 'cancel'>;
+  onTimeout?: (
+    timeoutMs: number,
+    contextKb: number,
+    attempt?: RetryAttempt,
+  ) => Promise<'retry' | 'cancel'>;
   /**
    * External AbortSignal for cancellation from an outer context
    * (e.g., a VS Code CancellationToken wired to an AbortController).
@@ -78,6 +88,22 @@ export interface ExecuteOptions<T> {
    */
   externalSignal?: AbortSignal;
 }
+
+/**
+ * What a retry after a timeout would look like, passed to `onTimeout` so the
+ * prompt can label the retry honestly and cap automatic retries.
+ */
+export interface RetryAttempt {
+  /** The attempt that just timed out (1 for the first). */
+  attempt: number;
+  /** The timeout a retry would use, already capped at `maxTimeout`. */
+  nextTimeoutMs: number;
+  /** True when the attempt that timed out already used `maxTimeout`. */
+  atMax: boolean;
+}
+
+/** Automatic retries (`sidekick.autoRetryOnTimeout`) stop after this many. */
+export const MAX_AUTO_RETRIES = 2;
 
 /**
  * Operation types for timeout configuration.
@@ -126,7 +152,7 @@ export const DEFAULT_TIMEOUTS: Record<OperationType, number> = {
  *   config: manager.getTimeoutConfig('explanation'),
  *   contextSize: prompt.length,
  *   showProgress: true,
- *   onTimeout: (ms, kb) => manager.promptRetry('explanation', ms, kb),
+ *   onTimeout: (ms, kb, retry) => manager.promptRetry('explanation', ms, kb, retry),
  * });
  * ```
  */
@@ -224,10 +250,17 @@ export class TimeoutManager {
 
       // Timeout occurred - check if we should retry
       if (onTimeout) {
-        const decision = await onTimeout(timeoutMs, contextSizeKb);
+        const nextTimeoutMs = Math.min(
+          Math.round(timeoutMs * config.retryMultiplier),
+          config.maxTimeout,
+        );
+        const decision = await onTimeout(timeoutMs, contextSizeKb, {
+          attempt,
+          nextTimeoutMs,
+          atMax: timeoutMs >= config.maxTimeout,
+        });
         if (decision === 'retry') {
-          // Increase timeout for retry
-          timeoutMs = Math.min(Math.round(timeoutMs * config.retryMultiplier), config.maxTimeout);
+          timeoutMs = nextTimeoutMs;
           attempt++;
           log(`TimeoutManager: Retrying ${operation} with timeout=${timeoutMs}ms`);
           continue;
@@ -262,14 +295,22 @@ export class TimeoutManager {
   ): Promise<TimeoutResult<T>> {
     const abortController = new AbortController();
     let deadlineExpired = false;
+    // Set by our own cancel paths, so a cancel is recognised whatever the
+    // client throws for it (the Anthropic SDKs' abort errors aren't named
+    // AbortError, and a stream that just ends throws something else again).
+    let userCancelled = false;
+    const cancel = () => {
+      userCancelled = true;
+      abortController.abort();
+    };
 
     // Link external signal (e.g., from outer CancellationToken) to internal controller
     let externalAbortHandler: (() => void) | undefined;
     if (externalSignal) {
       if (externalSignal.aborted) {
-        abortController.abort();
+        cancel();
       } else {
-        externalAbortHandler = () => abortController.abort();
+        externalAbortHandler = cancel;
         externalSignal.addEventListener('abort', externalAbortHandler);
       }
     }
@@ -292,9 +333,7 @@ export class TimeoutManager {
           async (_progress, token) => {
             // Link VS Code cancellation to our abort controller
             if (cancellable) {
-              token.onCancellationRequested(() => {
-                abortController.abort();
-              });
+              token.onCancellationRequested(cancel);
             }
 
             return task(abortController.signal);
@@ -334,14 +373,15 @@ export class TimeoutManager {
         };
       }
 
-      // Check if it was an abort (user cancellation)
-      if (error instanceof Error && error.name === 'AbortError') {
+      // User cancellation: our own flag first, then any AbortError-named error.
+      if (userCancelled || isCancellationError(error)) {
         return {
           success: false,
           timedOut: false, // User cancelled, not timeout
+          cancelled: true,
           timeoutMs,
           contextSizeKb,
-          error,
+          error: isCancellationError(error) ? (error as Error) : cancellationError(),
         };
       }
 
@@ -385,40 +425,50 @@ export class TimeoutManager {
    * @param operation - Operation name for display
    * @param timeoutMs - The timeout that was exceeded
    * @param contextSizeKb - Context size for display
+   * @param retry - What a retry would use; passed through from `onTimeout`
    * @returns Promise resolving to 'retry' or 'cancel'
    */
   async promptRetry(
     operation: string,
     timeoutMs: number,
     contextSizeKb: number,
+    retry?: RetryAttempt,
   ): Promise<'retry' | 'cancel'> {
-    // Check if auto-retry is enabled
     const config = vscode.workspace.getConfiguration('sidekick');
     const autoRetry = config.get<boolean>('autoRetryOnTimeout') ?? false;
 
-    if (autoRetry) {
+    // Automatic retries are capped; after that the user decides. A retry at
+    // the cap would use the same timeout again, so it is never automatic.
+    const attempt = retry?.attempt ?? 1;
+    if (autoRetry && attempt <= MAX_AUTO_RETRIES && !retry?.atMax) {
       return 'retry';
     }
 
     const timeoutSec = Math.round(timeoutMs / 1000);
-    const newTimeoutSec = Math.round((timeoutMs * 1.5) / 1000);
+    const nextTimeoutMs = retry?.nextTimeoutMs ?? Math.round(timeoutMs * 1.5);
+    const atMax = retry?.atMax ?? false;
+    const retryLabel = atMax ? 'Retry' : `Retry (${Math.round(nextTimeoutMs / 1000)}s)`;
 
     const contextInfo = contextSizeKb > 1 ? ` (context: ${contextSizeKb.toFixed(1)}KB)` : '';
+    const limitInfo = atMax ? ' This is the maximum timeout (sidekick.maxTimeout).' : '';
 
     const action = await vscode.window.showWarningMessage(
-      `${operation} timed out after ${timeoutSec}s${contextInfo}. The provider may be slow.`,
+      `${operation} timed out after ${timeoutSec}s${contextInfo}. The provider may be slow.${limitInfo}`,
       { modal: false },
-      `Retry (${newTimeoutSec}s)`,
+      retryLabel,
       'Open Settings',
       'Cancel',
     );
 
-    if (action === `Retry (${newTimeoutSec}s)`) {
+    if (action === retryLabel) {
       return 'retry';
     }
 
     if (action === 'Open Settings') {
-      await vscode.commands.executeCommand('workbench.action.openSettings', 'sidekick.timeouts');
+      await vscode.commands.executeCommand(
+        'workbench.action.openSettings',
+        atMax ? 'sidekick.maxTimeout' : 'sidekick.timeouts',
+      );
     }
 
     return 'cancel';

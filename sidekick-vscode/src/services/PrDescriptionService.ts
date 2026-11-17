@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import { GitService } from './GitService';
 import { AuthService } from './AuthService';
 import { resolveModel } from './ModelResolver';
-import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
+import { TimeoutManager, getTimeoutManager, type RetryAttempt } from './TimeoutManager';
 import { formatTimeoutSeconds } from '../utils/formatTimeout';
 import { log, logError } from './Logger';
 import { filterDiff } from '../utils/diffFilter';
@@ -187,8 +187,8 @@ export class PrDescriptionService implements vscode.Disposable {
         showProgress: true,
         cancellable: true,
         externalSignal: signal,
-        onTimeout: (timeoutMs: number, contextKb: number) =>
-          this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
+        onTimeout: (timeoutMs: number, contextKb: number, retry?: RetryAttempt) =>
+          this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb, retry),
       });
 
       if (!result.success) {

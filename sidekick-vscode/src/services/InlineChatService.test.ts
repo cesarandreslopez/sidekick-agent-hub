@@ -61,7 +61,7 @@ describe('InlineChatService', () => {
         externalSignal: controller.signal,
       }),
     );
-    expect(result).toEqual({ success: false, error: 'Request cancelled' });
+    expect(result).toEqual({ success: false, error: 'Request cancelled', cancelled: true });
   });
 });
 
@@ -116,8 +116,41 @@ describe('InlineChatService failure cause', () => {
     const cancelled = await service.process(request);
     expect(cancelled).not.toHaveProperty('cause');
 
-    mockExecuteWithTimeout.mockResolvedValueOnce({ success: false, timedOut: true, timeoutMs: 5 });
+    mockExecuteWithTimeout.mockResolvedValueOnce({
+      success: false,
+      timedOut: true,
+      timeoutMs: 45_000,
+    });
     const timedOut = await service.process(request);
-    expect(timedOut).toEqual({ success: false, error: 'Request timed out after 5ms' });
+    expect(timedOut).toEqual({ success: false, error: 'Request timed out after 45s' });
+  });
+
+  it('marks a cancel, and a declined retry after a timeout, as cancelled', async () => {
+    const authService = {
+      getProviderId: () => 'codex',
+      getProviderDisplayName: () => 'Codex',
+      complete: vi.fn(),
+    };
+    const service = new InlineChatService(authService as never);
+
+    expect(await service.process(request)).toMatchObject({ success: false, cancelled: true });
+
+    // The user already saw the timeout prompt and chose not to retry.
+    mockExecuteWithTimeout.mockResolvedValueOnce({
+      success: false,
+      timedOut: true,
+      retryDeclined: true,
+      timeoutMs: 1000,
+    });
+    expect(await service.process(request)).toMatchObject({ success: false, cancelled: true });
+
+    mockExecuteWithTimeout.mockResolvedValueOnce({
+      success: false,
+      timedOut: false,
+      cancelled: true,
+      timeoutMs: 1000,
+      error: new Error('process aborted by user'),
+    });
+    expect(await service.process(request)).toMatchObject({ success: false, cancelled: true });
   });
 });

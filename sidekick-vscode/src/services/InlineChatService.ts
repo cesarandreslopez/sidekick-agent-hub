@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
 import { resolveModel } from './ModelResolver';
-import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
+import { TimeoutManager, getTimeoutManager, type RetryAttempt } from './TimeoutManager';
 import type { InlineChatRequest, InlineChatResponse, InlineChatResult } from '../types/inlineChat';
 import {
   getInlineChatSystemPrompt,
@@ -18,6 +18,8 @@ import {
   parseInlineChatResponse,
 } from '../utils/prompts';
 import { featureEffort } from '../types/inferenceProvider';
+import { isCancellationError } from '../utils/errors';
+import { formatTimeoutSeconds } from '../utils/formatTimeout';
 
 /**
  * InlineChatService - Handles inline chat AI requests.
@@ -83,16 +85,20 @@ export class InlineChatService {
       showProgress: false,
       cancellable: true,
       externalSignal: abortSignal,
-      onTimeout: (timeoutMs: number, contextKb: number) =>
-        this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
+      onTimeout: (timeoutMs: number, contextKb: number, retry?: RetryAttempt) =>
+        this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb, retry),
     });
 
     if (!result.success) {
-      if (result.timedOut) {
-        return { success: false, error: `Request timed out after ${result.timeoutMs}ms` };
+      // Cancelled, or a declined retry: the user already saw the timeout prompt.
+      if (result.cancelled || result.retryDeclined || isCancellationError(result.error)) {
+        return { success: false, error: 'Request cancelled', cancelled: true };
       }
-      if (result.error?.name === 'AbortError') {
-        return { success: false, error: 'Request cancelled' };
+      if (result.timedOut) {
+        return {
+          success: false,
+          error: `Request timed out after ${formatTimeoutSeconds(result.timeoutMs)}`,
+        };
       }
       return {
         success: false,

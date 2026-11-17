@@ -10,7 +10,9 @@
 import * as vscode from 'vscode';
 import { AuthService } from './AuthService';
 import { resolveModel } from './ModelResolver';
-import { TimeoutManager, getTimeoutManager } from './TimeoutManager';
+import { TimeoutManager, getTimeoutManager, type RetryAttempt } from './TimeoutManager';
+import { cancellationError, isCancellationError } from '../utils/errors';
+import { formatTimeoutSeconds } from '../utils/formatTimeout';
 import type { ContentType, ComplexityLevel } from '../types/explain';
 import { featureEffort } from '../types/inferenceProvider';
 
@@ -86,16 +88,22 @@ export class ExplanationService {
       showProgress: true,
       cancellable: true,
       externalSignal: signal,
-      onTimeout: (timeoutMs: number, contextKb: number) =>
-        this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb),
+      onTimeout: (timeoutMs: number, contextKb: number, retry?: RetryAttempt) =>
+        this.timeoutManager.promptRetry(opLabel, timeoutMs, contextKb, retry),
     });
 
     if (result.success && result.result !== undefined) {
       return result.result;
     }
 
+    // A cancel, or a declined retry after a timeout the user already saw, is
+    // not a failure: reject with the shared AbortError-named error.
+    if (result.cancelled || result.retryDeclined || isCancellationError(result.error)) {
+      throw cancellationError();
+    }
+
     if (result.timedOut) {
-      throw new Error(`Explanation timed out after ${result.timeoutMs}ms`);
+      throw new Error(`Explanation timed out after ${formatTimeoutSeconds(result.timeoutMs)}`);
     }
 
     const message = result.error?.message ?? 'Unknown error';

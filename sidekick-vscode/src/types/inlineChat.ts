@@ -108,4 +108,11 @@ export interface InlineChatResult {
    * caller can offer a retry. Absent for timeouts and cancellation.
    */
   cause?: unknown;
+
+  /**
+   * True when the request ended without an answer the user still wants: they
+   * cancelled it, or declined a retry after a timeout they already saw.
+   * Callers report nothing in that case.
+   */
+  cancelled?: boolean;
 }
