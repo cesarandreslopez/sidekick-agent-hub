@@ -6,6 +6,6 @@ Sidekick registers the Claude Code and Codex accounts you are already signed in 
 
 **Switch:** select the account badge in the status bar, or the arrows icon next to an account in the Accounts view. Sidekick verifies the switch and tells you which running apps still hold the previous login. **Undo** reverts the last switch.
 
-**Run two accounts at once:** *Open Terminal as Account* starts a terminal where `claude` or `codex` use the chosen account without changing the live login.
+**Run two accounts at once:** *Open Terminal as Account…* starts a terminal where `claude` or `codex` use the chosen account without changing the live login.
 
 Saved accounts expire after a few weeks unless they are refreshed. The view shows when; select **Sign In Again to Account…** on an expired account, or turn on `sidekick.accounts.keepAlive`.

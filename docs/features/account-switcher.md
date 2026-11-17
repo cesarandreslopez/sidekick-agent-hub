@@ -45,7 +45,7 @@ To sign in to a _second_ account without disturbing the current one, use **Add A
 
 **After a switch** you get one notification: `Switched to Work (work@example.com) ✓` with **Undo**, **Details**, and, when the Claude Code extension is active, **Reload Window**. Warnings about running Claude apps are folded into that message (a Codex switch is refused outright while Codex apps run); **Details** writes the full list, including process ids, to the Sidekick output channel.
 
-**Open Terminal as Account** starts a VS Code terminal whose `claude` or `codex` use the chosen profile without changing the live login, so two accounts can run side by side. For the account that is already live, the terminal simply uses the normal Claude or Codex home: a session in its profile directory would be a second copy of the live login.
+**Open Terminal as Account…** starts a VS Code terminal whose `claude` or `codex` use the chosen profile without changing the live login, so two accounts can run side by side. For the account that is already live, the terminal simply uses the normal Claude or Codex home: a session in its profile directory would be a second copy of the live login.
 
 Settings:
 

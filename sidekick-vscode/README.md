@@ -245,7 +245,7 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Switch Account…               | `Ctrl+K Ctrl+Shift+A`     | Grouped quick pick of every saved account with health; also Add, Open Terminal, Sign In Again, Undo                                        |
 | Add Account…                  | —                         | Sign in to another account in an isolated profile via the integrated terminal; the current login is untouched                              |
 | Sign In Again to Account…     | Accounts view             | Re-authenticate an expired saved account in place, keeping its label and id                                                                |
-| Open Terminal as Account      | Accounts view             | Start a terminal whose `claude` / `codex` use a saved account without switching the live login (the live account opens in the normal home) |
+| Open Terminal as Account…     | Accounts view             | Start a terminal whose `claude` / `codex` use a saved account without switching the live login (the live account opens in the normal home) |
 | Undo Last Account Switch      | —                         | Revert the most recent switch                                                                                                              |
 | Register Current Login        | —                         | Save the account you are signed in to right now                                                                                            |
 | Remove Account                | —                         | Remove a saved account and its credentials                                                                                                 |
