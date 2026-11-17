@@ -86,11 +86,19 @@ import {
 } from '../utils/cliConfig';
 import { PROVIDER_NAMES, accountDisplayName, summarizeSwitch } from './accounts/format';
 import { staticDataFingerprint } from '../dashboard/staticDataFingerprint';
+import { decideSessionFollow } from '../dashboard/sessionFollow';
 import { initialDataStatus, type DataStatus } from '../dashboard/ink/dataStatus';
 import type { DashboardNotice } from '../dashboard/ink/notice';
 import type { QuotaAlertMemory } from 'sidekick-shared';
 import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
-import { createDashboardSignalHandler, selectSessionProvider } from './dashboardLifecycle';
+import {
+  createDashboardSignalHandler,
+  formatFatalError,
+  installTuiFatalHandlers,
+  selectSessionProvider,
+  signalExitCode,
+  writeToStderr,
+} from './dashboardLifecycle';
 
 function createProviderById(id: ProviderId) {
   switch (id) {
@@ -186,6 +194,10 @@ export async function persistPlan(state: DashboardState, workspacePath: string):
   await writePlans(project.canonicalSlug, [record, ...withoutCurrent]);
 }
 
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** All-zero project data, used before the first load and after a failed one. */
 function emptyStaticData(): StaticData {
   return {
@@ -227,9 +239,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   let altScreen: AltScreenSession | null = null;
   // Until the dashboard installs its own handlers, a signal must still restore
   // the main screen once the picker has entered the alternate one.
-  const leaveOnEarlySignal = () => {
+  const leaveOnEarlySignal = (signal?: NodeJS.Signals) => {
     altScreen?.leave();
-    process.exit(0);
+    process.exit(signalExitCode(signal));
   };
   let sessionId: string | undefined = opts.session;
   let replay = !!opts.replay;
@@ -268,7 +280,6 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         // Clear the picker's last frame while the dashboard loads.
         if (altScreen.active) altScreen.stdout.write('\x1b[2J\x1b[H');
         if (result.sessionPath) {
-          sessionId = path.basename(result.sessionPath, path.extname(result.sessionPath));
           replay = true;
           // Switch to the provider that owns the selected session
           if (result.providerId && result.providerId !== provider.id) {
@@ -279,6 +290,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
               createProviderById,
             );
           }
+          // The owning provider's own id, which is what the watcher resolves:
+          // a Codex rollout's file name is not its session id.
+          sessionId = activeProvider.getSessionId(result.sessionPath);
         }
       } catch {
         // User quit the picker
@@ -366,16 +380,27 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // would be a storm. The status badge still reflects the latest error.
   let lastWatcherErrorAt = 0;
   const WATCHER_ERROR_TOAST_MS = 60_000;
-  function reportWatcherError(err: unknown): void {
+  function reportWatcherError(err: unknown, label = 'Session read error'): void {
     const message = err instanceof Error ? err.message : String(err);
     const now = Date.now();
-    dataStatus.watcherError = message;
+    dataStatus.watcherError = `${label}: ${message}`;
     dataStatus.watcherErrorAt = now;
     if (now - lastWatcherErrorAt > WATCHER_ERROR_TOAST_MS) {
       lastWatcherErrorAt = now;
-      pushNotice(`Session read error: ${message}`, 'error');
+      pushNotice(`${label}: ${message}`, 'error');
     }
     scheduleRender();
+  }
+
+  // The activity map is an auxiliary reader of the same events: a failure in
+  // it is reported, never allowed to cost the dashboard the line it came from.
+  function observeActivity(event: SessionEvent): boolean {
+    try {
+      return state.observeSessionEvent(event);
+    } catch (err) {
+      reportWatcherError(err, 'Activity map error');
+      return false;
+    }
   }
 
   await refreshStaticData('initial');
@@ -428,10 +453,14 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   });
 
   // ── New session detection + auto-switch ──
-  let lastNotifiedSessionPath: string | null = null;
-  const currentSessions = activeProvider.findAllSessions(workspacePath);
-  lastNotifiedSessionPath = currentSessions.length > 0 ? currentSessions[0] : null;
-  let isPinned = false;
+  // Only a session that did not exist yet counts as new. A session that was
+  // already there and is merely written to again must not pull the dashboard
+  // away from the one the user chose (or ping-pong between two live ones).
+  const knownSessions = new Set<string>(activeProvider.findAllSessions(workspacePath));
+  // `--session` names one session to follow, so it starts pinned, as
+  // `sidekick map --follow --session` does. A picker choice still follows
+  // sessions that start later, which is the documented default.
+  let isPinned = Boolean(opts.session);
   let pendingSessionPath: string | null = null;
 
   function checkpointBatch(): void {
@@ -445,7 +474,8 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     lastSnapshotTime = now;
   }
 
-  function switchToSession(newSessionPath: string) {
+  /** Follow another session; false when it could not be opened (already announced). */
+  function switchToSession(newSessionPath: string): boolean {
     // Save snapshot for current session before switching
     if (watcher?.getPosition && sessionPath) {
       state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
@@ -465,8 +495,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     pendingSessionPath = null;
 
     // Create new watcher for the new session
-    const newSessionId = path.basename(newSessionPath, path.extname(newSessionPath));
+    const newSessionId = activeProvider.getSessionId(newSessionPath);
     state.setSessionId(newSessionId);
+    let opened = true;
     try {
       const result = createWatcher({
         provider: activeProvider,
@@ -479,7 +510,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         callbacks: {
           onSessionEvent: (event: SessionEvent) => {
             if (stopped) return;
-            if (state.observeSessionEvent(event)) scheduleRender();
+            if (observeActivity(event)) scheduleRender();
           },
           onEvent: (event: FollowEvent) => {
             if (stopped) return;
@@ -521,13 +552,18 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
         lastSnapshotTime = Date.now();
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      opened = false;
+      pushNotice(
+        `Could not open session ${newSessionId.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`,
+        'error',
+      );
     }
 
-    lastNotifiedSessionPath = newSessionPath;
+    knownSessions.add(newSessionPath);
     refreshSubagentTokens();
     scheduleRender();
+    return opened;
   }
 
   // Auto-refresh persisted project data. The fingerprint gate means an
@@ -559,21 +595,25 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // other session trigger the (cheap, cached) newest-session lookup.
   function checkForNewerSession(): void {
     try {
-      const sessions = activeProvider.findAllSessions(workspacePath);
-      if (sessions.length === 0) return;
-      const latest = sessions[0];
-      if (latest !== lastNotifiedSessionPath) {
-        if (!isPinned) {
-          // Auto-switch
-          switchToSession(latest);
-        } else {
-          // Store as pending and say so: the only other sign is the status
-          // bar badge.
-          pendingSessionPath = latest;
-          pushNotice('New session detected \u2014 press s to switch to it', 'info');
-          scheduleRender();
+      const decision = decideSessionFollow({
+        sessions: activeProvider.findAllSessions(workspacePath),
+        known: knownSessions,
+        followed: sessionPath,
+        pinned: isPinned,
+      });
+      if (decision.action === 'switch') {
+        // Said out loud: a silent switch looked like the dashboard losing the
+        // session the user was reading.
+        if (switchToSession(decision.sessionPath)) {
+          const shortId = activeProvider.getSessionId(decision.sessionPath).slice(0, 8);
+          pushNotice(`Following new session ${shortId} \u2014 p pins`, 'info');
         }
-        lastNotifiedSessionPath = latest;
+      } else if (decision.action === 'pending') {
+        // Store as pending and say so: the only other sign is the status
+        // bar badge.
+        pendingSessionPath = decision.sessionPath;
+        pushNotice('New session detected \u2014 press s to switch to it', 'info');
+        scheduleRender();
       }
     } catch {
       /* ignore */
@@ -691,13 +731,15 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     scheduleRender();
   });
   const switchAccountFromDashboard = (account: AccountView): void => {
-    void switchAccountAsync(account.providerId, account.id).then((result) => {
-      const summary = summarizeSwitch(result, accountDisplayName(account));
-      pushNotice(summary.headline, summary.ok ? 'info' : 'error');
-      for (const warning of summary.warnings.slice(0, 2)) pushNotice(warning, 'warning');
-      refreshAccountViews();
-      scheduleRender();
-    });
+    void switchAccountAsync(account.providerId, account.id)
+      .then((result) => {
+        const summary = summarizeSwitch(result, accountDisplayName(account));
+        pushNotice(summary.headline, summary.ok ? 'info' : 'error');
+        for (const warning of summary.warnings.slice(0, 2)) pushNotice(warning, 'warning');
+        refreshAccountViews();
+        scheduleRender();
+      })
+      .catch((err: unknown) => pushNotice(`Account switch failed: ${errorText(err)}`, 'error'));
   };
   const undoAccountSwitch = (): void => {
     const withRecord = (['claude-code', 'codex'] as const).filter((p) => getLastSwitch(p));
@@ -715,41 +757,45 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       return;
     }
     const provider = withRecord[0];
-    void undoLastSwitch(provider).then((result) => {
-      const target = accountViews.find((view) => view.id === result.accountId);
-      const summary = summarizeSwitch(
-        result,
-        target ? accountDisplayName(target) : result.accountId,
-      );
-      pushNotice(
-        summary.ok ? `Undo: ${summary.headline}` : summary.headline,
-        summary.ok ? 'info' : 'error',
-      );
-      refreshAccountViews();
-      scheduleRender();
-    });
+    void undoLastSwitch(provider)
+      .then((result) => {
+        const target = accountViews.find((view) => view.id === result.accountId);
+        const summary = summarizeSwitch(
+          result,
+          target ? accountDisplayName(target) : result.accountId,
+        );
+        pushNotice(
+          summary.ok ? `Undo: ${summary.headline}` : summary.headline,
+          summary.ok ? 'info' : 'error',
+        );
+        refreshAccountViews();
+        scheduleRender();
+      })
+      .catch((err: unknown) => pushNotice(`Undo failed: ${errorText(err)}`, 'error'));
   };
   // Opt-in keep-alive: refresh inactive accounts through the official CLIs
   // on start and hourly while the dashboard runs.
   let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
   if (readCliConfig().accounts?.keepAlive) {
     const runKeepAlive = (): void => {
-      void refreshInactiveAccounts().then((result) => {
-        if (result.refreshed.length) {
-          pushNotice(
-            `Keep-alive refreshed ${result.refreshed.length} inactive account${result.refreshed.length === 1 ? '' : 's'}.`,
-            'info',
-          );
-        }
-        for (const failed of result.failed) {
-          pushNotice(
-            `Keep-alive: ${PROVIDER_NAMES[failed.providerId]} ${failed.id} — ${failed.error}`,
-            'warning',
-          );
-        }
-        refreshAccountViews();
-        scheduleRender();
-      });
+      void refreshInactiveAccounts()
+        .then((result) => {
+          if (result.refreshed.length) {
+            pushNotice(
+              `Keep-alive refreshed ${result.refreshed.length} inactive account${result.refreshed.length === 1 ? '' : 's'}.`,
+              'info',
+            );
+          }
+          for (const failed of result.failed) {
+            pushNotice(
+              `Keep-alive: ${PROVIDER_NAMES[failed.providerId]} ${failed.id} — ${failed.error}`,
+              'warning',
+            );
+          }
+          refreshAccountViews();
+          scheduleRender();
+        })
+        .catch((err: unknown) => pushNotice(`Keep-alive failed: ${errorText(err)}`, 'warning'));
     };
     setTimeout(runKeepAlive, 5_000).unref?.();
     keepAliveTimer = setInterval(runKeepAlive, 60 * 60 * 1000);
@@ -797,6 +843,26 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     stdout: screen.stdout,
   });
   renderReady = true;
+
+  // Teardown in the order the signal path uses: stop the work, unmount Ink,
+  // release the mouse, leave the alternate screen. Every step is idempotent.
+  const teardownTui = (): void => {
+    cleanup();
+    try {
+      instance.unmount();
+    } catch {
+      /* already unmounted */
+    }
+    disableMouse();
+    screen.leave();
+  };
+  // An error nobody catches from here on tears the TUI down and exits 1,
+  // instead of leaving raw mode and timers running with the message wiped
+  // along with the alternate screen.
+  const disposeFatalHandlers = installTuiFatalHandlers({
+    teardown: teardownTui,
+    write: writeToStderr,
+  });
 
   // Re-render bridge: throttled rerender with new props
   let renderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1018,7 +1084,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       callbacks: {
         onSessionEvent: (event: SessionEvent) => {
           if (stopped) return;
-          if (state.observeSessionEvent(event)) scheduleRender();
+          if (observeActivity(event)) scheduleRender();
         },
         onEvent: (event: FollowEvent) => {
           if (stopped) return;
@@ -1042,8 +1108,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     });
     watcher = result.watcher;
     sessionPath = result.sessionPath;
+    knownSessions.add(sessionPath);
     if (!sessionId && sessionPath) {
-      sessionId = path.basename(sessionPath, path.extname(sessionPath));
+      sessionId = activeProvider.getSessionId(sessionPath);
       state.setSessionId(sessionId);
     }
 
@@ -1053,45 +1120,65 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
       restoredFromSnapshot =
         state.tryRestoreFromSnapshot(sessionId, activeProvider.id, sessionPath, watcher) !== null;
     }
-  } catch {
-    // No active session — still show dashboard with static data
-  }
-
-  // Start quota polling + provider status polling + update check
-  // Only poll Claude OAuth quota for claude-code; Codex quota arrives via event stream
-  if (activeProvider.id === 'claude-code') {
-    quotaService.start();
-  }
-  providerStatusService.start();
-  updateCheckService.check();
-
-  // Initial render
-  scheduleRender();
-
-  // Start the watcher
-  if (watcher) {
-    if (restoredFromSnapshot) {
-      // Start with replay=true to pick up events after the snapshot position
-      watcher.start(true);
-      // Save updated snapshot after catching up
-      if (watcher.getPosition && sessionPath) {
-        state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
-        lastSnapshotTime = Date.now();
-      }
-    } else {
-      watcher.start(replay);
-      if (replay) state.markHistoryReplayed(activeProvider.id);
-      // Save initial snapshot after full replay
-      if (replay && watcher.getPosition && sessionPath) {
-        state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
-        lastSnapshotTime = Date.now();
-      }
+  } catch (err) {
+    // No session yet: the dashboard still opens on project data. A session
+    // the user named (picker or --session) that cannot be opened is said out
+    // loud instead of leaving the splash waiting for events that never come.
+    if (sessionId) {
+      pushNotice(
+        `Could not open session ${sessionId.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`,
+        'error',
+      );
     }
-    refreshSubagentTokens();
   }
 
-  // Wait for exit
-  await instance.waitUntilExit();
+  try {
+    // Start quota polling + provider status polling + update check
+    // Only poll Claude OAuth quota for claude-code; Codex quota arrives via event stream
+    if (activeProvider.id === 'claude-code') {
+      quotaService.start();
+    }
+    providerStatusService.start();
+    updateCheckService.check();
+
+    // Initial render
+    scheduleRender();
+
+    // Start the watcher
+    if (watcher) {
+      if (restoredFromSnapshot) {
+        // Start with replay=true to pick up events after the snapshot position
+        watcher.start(true);
+        // Save updated snapshot after catching up
+        if (watcher.getPosition && sessionPath) {
+          state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
+          lastSnapshotTime = Date.now();
+        }
+      } else {
+        watcher.start(replay);
+        if (replay) state.markHistoryReplayed(activeProvider.id);
+        // Save initial snapshot after full replay
+        if (replay && watcher.getPosition && sessionPath) {
+          state.persistSnapshot(watcher.getPosition(), sessionPath, watcher.getResumeState?.());
+          lastSnapshotTime = Date.now();
+        }
+      }
+      refreshSubagentTokens();
+    }
+
+    // Wait for exit. A render error makes Ink unmount and this reject.
+    await instance.waitUntilExit();
+  } catch (err) {
+    // Tear down first so the message lands on the main screen, then exit
+    // nonzero once it is flushed; the open timers would otherwise keep the
+    // process alive after the error.
+    disposeFatalHandlers();
+    for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
+    teardownTui();
+    writeToStderr(formatFatalError(err), () => process.exit(1));
+    return;
+  }
+  disposeFatalHandlers();
   altScreen.leave();
   for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
   cleanup();

@@ -17,7 +17,12 @@ import {
   observedSessionSourceFromProvider,
 } from 'sidekick-shared';
 import type { SessionEvent, SessionProviderBase } from 'sidekick-shared';
-import { createDashboardSignalHandler } from '../commands/dashboardLifecycle';
+import {
+  createDashboardSignalHandler,
+  formatFatalError,
+  installTuiFatalHandlers,
+  writeToStderr,
+} from '../commands/dashboardLifecycle';
 import { DASHBOARD_EXIT_SIGNALS, createAltScreen } from '../dashboard/altScreen';
 import { buildFollowFrame } from './frame';
 import type { FollowMode, FollowPanel } from './frame';
@@ -106,7 +111,15 @@ export async function runMapFollow(options: MapFollowOptions): Promise<void> {
           onEvent: () => {},
           onSessionEvent: (event: SessionEvent) => {
             if (stopped) return;
-            if (live.observe(event) > 0) requestRender();
+            // A failure on one line is reported and the follow carries on,
+            // instead of the watcher dropping the line as unreadable.
+            try {
+              if (live.observe(event) > 0) requestRender();
+            } catch (error) {
+              showNotice(
+                `Activity map error: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
           },
           onReset: () => {
             if (stopped) return;
@@ -311,13 +324,30 @@ export async function runMapFollow(options: MapFollowOptions): Promise<void> {
   const altScreen = createAltScreen();
   altScreen.enter();
   instance = render(element(), { exitOnCtrlC: false, maxFps: 15, stdout: altScreen.stdout });
+  const teardown = (): void => {
+    cleanup();
+    instance?.unmount();
+    altScreen.leave();
+  };
+  // An uncaught error tears the map down and exits 1 with the message on the
+  // main screen, rather than leaving the process running in raw mode.
+  const disposeFatalHandlers = installTuiFatalHandlers({ teardown, write: writeToStderr });
   scheduleTick();
   const onSignal = createDashboardSignalHandler(cleanup, () => {
     instance?.unmount();
     altScreen.leave();
   });
   for (const signal of DASHBOARD_EXIT_SIGNALS) process.once(signal, onSignal);
-  await instance.waitUntilExit();
+  try {
+    await instance.waitUntilExit();
+  } catch (error) {
+    disposeFatalHandlers();
+    for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
+    teardown();
+    writeToStderr(formatFatalError(error), () => process.exit(1));
+    return;
+  }
+  disposeFatalHandlers();
   altScreen.leave();
   for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
   cleanup();
