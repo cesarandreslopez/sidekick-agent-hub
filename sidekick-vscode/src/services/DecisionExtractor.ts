@@ -63,7 +63,12 @@ export function fromUserQuestions(toolCalls: ToolCall[], sessionId: string): Dec
           if (typeof o === 'string') return o;
           return o.label;
         })
-        .filter((l): l is string => typeof l === 'string' && l.length > 0);
+        // A bounded tool input can replace an option object with a
+        // "[nested value omitted]" placeholder; that is not an option.
+        .filter(
+          (l): l is string =>
+            typeof l === 'string' && l.length > 0 && !l.startsWith('[nested value'),
+        );
 
       entries.push({
         id: randomUUID(),

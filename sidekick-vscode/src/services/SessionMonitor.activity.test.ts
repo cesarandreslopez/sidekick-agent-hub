@@ -360,3 +360,33 @@ describe('SessionMonitor when the activity map fails', () => {
     expect(station(monitor, 'shell')?.count).toBe(1);
   });
 });
+
+describe('AskUserQuestion decisions', () => {
+  it('keeps the option labels when bounding the tool input', async () => {
+    const question = toolUse(1, 'q1', 'AskUserQuestion', {
+      questions: [
+        {
+          question: 'Which layout?',
+          header: 'Layout',
+          multiSelect: false,
+          options: [
+            { label: 'Sidebar', description: 'Narrow column' },
+            { label: 'Panel', description: 'Bottom panel' },
+          ],
+        },
+      ],
+    });
+    fs.writeFileSync(file, user(0, 'go') + question);
+    const { monitor, internals } = monitorOn(file);
+
+    await internals.readInitialContent();
+
+    const call = monitor.getStats().toolCalls.find((c) => c.name === 'AskUserQuestion');
+    const options = (call?.input as { questions: Array<{ options: unknown[] }> }).questions[0]
+      .options;
+    expect(options).toEqual([
+      { label: 'Sidebar', description: 'Narrow column' },
+      { label: 'Panel', description: 'Bottom panel' },
+    ]);
+  });
+});

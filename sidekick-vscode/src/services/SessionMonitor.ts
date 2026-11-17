@@ -3595,7 +3595,7 @@ export class SessionMonitor implements vscode.Disposable {
           name: toolUse.name,
           rawName: rawToolName,
           providerId: this.provider.id,
-          input: this.boundToolInput(toolUse.input),
+          input: this.boundToolInput(toolUse.input, toolUse.name),
           timestamp: new Date(timestamp),
           toolUseId: toolUse.id,
         };
@@ -4212,14 +4212,25 @@ export class SessionMonitor implements vscode.Disposable {
     logError('SessionMonitor: activity map skipped an event it could not read', error);
   }
 
-  /** Retains useful structured metadata while bounding large tool payloads. */
-  private boundToolInput(input: Record<string, unknown>): Record<string, unknown> {
+  /**
+   * Retains useful structured metadata while bounding large tool payloads.
+   *
+   * AskUserQuestion keeps two more levels: its option labels sit at
+   * `questions[i].options[j].label`, which the general limit would replace
+   * with a placeholder. The deeper limit applies to that tool only, since
+   * raising it everywhere would multiply the worst-case retained size.
+   */
+  private boundToolInput(
+    input: Record<string, unknown>,
+    toolName?: string,
+  ): Record<string, unknown> {
+    const maxDepth = toolName === 'AskUserQuestion' ? 6 : 4;
     const visit = (value: unknown, depth: number): unknown => {
       if (typeof value === 'string') {
         return value.length > 8_000 ? `${value.slice(0, 8_000)}… [truncated]` : value;
       }
       if (value == null || typeof value !== 'object') return value;
-      if (depth >= 4) return '[nested value omitted]';
+      if (depth >= maxDepth) return '[nested value omitted]';
       if (Array.isArray(value)) return value.slice(0, 25).map((item) => visit(item, depth + 1));
 
       const bounded: Record<string, unknown> = {};

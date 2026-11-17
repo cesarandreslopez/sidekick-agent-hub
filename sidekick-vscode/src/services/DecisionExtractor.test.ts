@@ -101,6 +101,34 @@ describe('DecisionExtractor', () => {
       expect(entries[0].source).toBe('user_question');
     });
 
+    it('drops placeholder strings left by a bounded tool input', () => {
+      const toolCalls: ToolCall[] = [
+        makeToolCall({
+          name: 'AskUserQuestion',
+          input: {
+            questions: [
+              {
+                question: 'Which layout?',
+                options: [
+                  '[nested value omitted]',
+                  { label: 'Sidebar', description: 'Narrow column' },
+                ],
+              },
+              {
+                question: 'Keep going?',
+                options: ['[nested value omitted]', '[nested value omitted]'],
+              },
+            ],
+          },
+        }),
+      ];
+
+      const entries = fromUserQuestions(toolCalls, SESSION_ID);
+
+      expect(entries[0].alternatives).toEqual(['Sidebar']);
+      expect(entries[1].alternatives).toBeUndefined();
+    });
+
     it('ignores non-AskUserQuestion tool calls', () => {
       const toolCalls: ToolCall[] = [
         makeToolCall({ name: 'Read', input: { file_path: '/foo.ts' } }),
