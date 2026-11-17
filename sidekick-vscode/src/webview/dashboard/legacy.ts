@@ -469,7 +469,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
        */
       function updateInlineStats() {
         if (inlineDuration) inlineDuration.textContent = sessionState.sessionDuration;
-        if (inlineBurnRate) inlineBurnRate.textContent = formatNumber(sessionState.burnRate);
+        if (inlineBurnRate) inlineBurnRate.textContent = compactNumber(sessionState.burnRate);
         if (inlineApiCalls) inlineApiCalls.textContent = formatNumber(sessionState.messageCount);
       }
 
@@ -624,6 +624,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       // History records a session when it ends: while one is live, say so
       // beside the top-level ranges (all of which include today).
       let sessionIsLive = false;
+      // Live Summary refresh throttle (see updateBurnRate).
+      const LIVE_SUMMARY_REFRESH_MS = 30000;
+      let lastLiveSummaryRequestMs = 0;
       function syncHistoryLiveNote() {
         const note = document.getElementById('history-live-note');
         if (!note) return;
@@ -731,7 +734,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
        * Formats a number with commas for readability.
        */
       function formatNumber(num) {
-        return num.toLocaleString();
+        // One grouping everywhere, whatever the machine's locale.
+        return Number(num).toLocaleString('en-US');
       }
 
       /**
@@ -1615,16 +1619,15 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           const cost = compactions.reduce(function(sum, item) { return sum + (item.reestablishmentCostUsd || 0); }, 0);
           const sources = new Set(compactions.map(function(item) { return item.source; }));
           const source = sources.size > 1 ? 'mixed' : (compactions[0].source || 'heuristic');
-          ledgerEl.textContent = compactions.length + ' compaction' + (compactions.length === 1 ? '' : 's') + ' · ' + formatNumber(evicted) + ' tokens evicted · ' + (priced ? ('~' + formatCost(cost) + ' re-establishing context') : 'cost unavailable') + ' · ' + source;
+          ledgerEl.textContent = compactions.length + ' compaction' + (compactions.length === 1 ? '' : 's') + ' · ' + compactNumber(evicted) + ' tokens evicted · ' + (priced ? ('~' + formatCost(cost) + ' re-establishing context') : 'cost unavailable') + ' · ' + source;
         }
         listEl.innerHTML = compactions.map(function(c) {
-          const beforeK = Math.round(c.contextBefore / 1000);
-          const afterK = Math.round(c.contextAfter / 1000);
-          const reclaimedK = Math.round(c.tokensReclaimed / 1000);
-          return '<div class="compaction-item">' +
+          // The shared token format ("12.3k"), never "0K → 0K" for small ones.
+          const exact = exactNumber(c.contextBefore) + ' → ' + exactNumber(c.contextAfter) + ' tokens';
+          return '<div class="compaction-item" title="' + exact + '">' +
             '<span class="compaction-time">' + c.time + '</span>' +
-            '<span class="compaction-delta">' + beforeK + 'K → ' + afterK + 'K</span>' +
-            '<span class="compaction-reclaimed">-' + reclaimedK + 'K (' + c.reclaimedPercent + '% · ' + c.source + ')</span>' +
+            '<span class="compaction-delta">' + compactNumber(c.contextBefore) + ' → ' + compactNumber(c.contextAfter) + '</span>' +
+            '<span class="compaction-reclaimed">-' + compactNumber(c.tokensReclaimed) + ' (' + c.reclaimedPercent + '% · ' + c.source + ')</span>' +
           '</div>';
         }).join('');
       }
@@ -2150,7 +2153,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               item.className = 'model-item';
               item.title = model.model;
               item.innerHTML = '<span class="name">' + escapeHtml(getShortModelName(model.model)) + '</span>' +
-                '<span class="stats">' + model.calls + ' calls, ' + formatNumber(model.tokens) + ' tokens, ' + rowCostText(model) + '</span>';
+                '<span class="stats" title="' + exactNumber(model.tokens) + ' tokens">' + plural(model.calls, 'call') + ', ' + compactNumber(model.tokens) + ' tokens, ' + rowCostText(model) + '</span>';
               modelListEl.appendChild(item);
             });
             if (sessionState.unpricedModelIds.length) {
@@ -2279,7 +2282,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             const min = Math.floor(sec / 60);
             parts.push(min > 0 ? min + 'm ' + (sec % 60) + 's' : sec + 's');
           }
-          if (s.tokensUsed) parts.push(s.tokensUsed >= 1000 ? (s.tokensUsed / 1000).toFixed(1) + 'k' : s.tokensUsed + '');
+          if (s.tokensUsed) parts.push(compactNumber(s.tokensUsed));
           if (s.toolCalls) parts.push(s.toolCalls + ' calls');
           return parts.length > 0 ? '<span class="plan-md-step-meta">' + parts.join(' \u00B7 ') + '</span>' : '';
         }
@@ -2571,8 +2574,10 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
                 var b = buckets[ci];
                 var intensity = maxCount > 0 ? b.count / maxCount : 0;
                 var alpha = Math.max(0.08, intensity * 0.9 + 0.1);
-                var bgColor = withAlpha(chartColor('blue'), Number(alpha.toFixed(2)));
-                if (b.count === 0) bgColor = withAlpha(cssVar('--vscode-descriptionForeground', '#8b949e'), 0.1);
+                // CSS variables, not resolved colours, so a theme switch
+                // re-colours the cells without a new analytics message.
+                var bgColor = 'color-mix(in srgb, var(--vscode-charts-blue, #3794ff) ' + Math.round(alpha * 100) + '%, transparent)';
+                if (b.count === 0) bgColor = 'color-mix(in srgb, var(--vscode-descriptionForeground, #8b949e) 10%, transparent)';
                 var time = b.timestamp ? new Date(b.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                 cellsHtml += '<div class="heatmap-cell" style="background:' + bgColor + ';" title="' + time + ': ' + b.count + ' events"></div>';
               }
@@ -2846,6 +2851,15 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             // Stops at the last event once the session is idle (or a past one is viewed).
             sessionState.sessionDuration = sessionDurationText(message.sessionStartTime, message.lastActivityTime);
             updateInlineStats();
+            // A Summary on screen during a live session refreshes, at most every
+            // 30 s (each request rebuilds the whole summary on the host).
+            if (sessionIsLive && Date.now() - lastLiveSummaryRequestMs >= LIVE_SUMMARY_REFRESH_MS) {
+              const summaryTab = document.querySelector('.tab-btn[data-tab="summary"]');
+              if (summaryTab && summaryTab.getAttribute('aria-selected') === 'true') {
+                lastLiveSummaryRequestMs = Date.now();
+                vscode.postMessage({ type: 'requestSessionSummary' });
+              }
+            }
             break;
 
           case 'updateSessionAvailability':
@@ -3087,7 +3101,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
               }
               const totalTokens = plan.steps.reduce(function(sum, s) { return sum + (s.tokensUsed || 0); }, 0);
               if (totalTokens > 0) {
-                statParts.push(totalTokens >= 1000 ? (totalTokens / 1000).toFixed(1) + 'k tokens' : totalTokens + ' tokens');
+                statParts.push(compactNumber(totalTokens) + ' tokens');
               }
               planStats.textContent = statParts.join(' · ');
             }
@@ -3112,7 +3126,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
                   metaParts.push(sMin > 0 ? sMin + 'm ' + sRemSec + 's' : sSec + 's');
                 }
                 if (step.tokensUsed) {
-                  metaParts.push(step.tokensUsed >= 1000 ? (step.tokensUsed / 1000).toFixed(1) + 'k' : step.tokensUsed + '');
+                  metaParts.push(compactNumber(step.tokensUsed));
                 }
                 if (step.toolCalls) metaParts.push(step.toolCalls + ' calls');
                 if (step.complexity) metaParts.push(step.complexity);
@@ -3169,7 +3183,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
                 phParts.push('avg ' + (dMin > 0 ? dMin + 'm' : dSec + 's'));
               }
               if (history.avgTokensPerPlan > 0) {
-                phParts.push('avg ' + (history.avgTokensPerPlan >= 1000 ? (history.avgTokensPerPlan / 1000).toFixed(1) + 'k' : Math.round(history.avgTokensPerPlan)) + ' tokens');
+                phParts.push('avg ' + compactNumber(Math.round(history.avgTokensPerPlan)) + ' tokens');
               }
               phStats.textContent = phParts.join(' · ');
             }
@@ -3659,7 +3673,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         const diffMs = now - then;
         const diffMin = Math.floor(diffMs / 60000);
         if (diffMin < 1) return 'just now';
-        if (diffMin < 60) return diffMin + 'min ago';
+        if (diffMin < 60) return diffMin + 'm ago';
         const diffHours = Math.floor(diffMin / 60);
         if (diffHours < 24) return diffHours + 'h ago';
         const diffDays = Math.floor(diffHours / 24);
@@ -3693,7 +3707,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         const trendIcon = TREND_ICONS[data.trendDirection] || '→';
 
         let html = '<div class="panel-metrics-row">' +
-          '<div class="panel-metric-card"><div class="val">' + formatNumber(Math.round(data.currentRate)) + '</div><div class="lbl">tok/min</div></div>' +
+          '<div class="panel-metric-card"><div class="val" title="' + exactNumber(data.currentRate) + ' tokens per minute">' + compactNumber(Math.round(data.currentRate)) + '</div><div class="lbl">tok/min</div></div>' +
           '<div class="panel-metric-card"><div class="val"><span class="trend-indicator ' + data.trendDirection + '">' + trendIcon + ' ' + data.trendDirection + '</span></div><div class="lbl">Trend</div></div>' +
           '</div>';
 
@@ -3705,7 +3719,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         if (data.rateByModel.length > 0) {
           html += '<div style="font-size:11px;font-weight:600;margin-bottom:4px;">By Model</div>';
           data.rateByModel.forEach(function(m) {
-            html += '<div style="font-size:11px;padding:2px 0;">' + escapeHtml(getShortModelName(m.model)) + ': ' + formatNumber(m.tokensPerMin) + ' tok/min</div>';
+            html += '<div style="font-size:11px;padding:2px 0;">' + escapeHtml(getShortModelName(m.model)) + ': ' + compactNumber(m.tokensPerMin) + ' tok/min</div>';
           });
         }
         body.innerHTML = html;

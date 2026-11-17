@@ -51,8 +51,12 @@ const TOOL_COST_WEIGHTS: Record<string, number> = {
 
 const DEFAULT_TOOL_WEIGHT = 1;
 
-/** A session counts as live while its newest event is at most this old. */
-export const SESSION_IDLE_AFTER_MS = 5 * 60_000;
+/**
+ * A session counts as live while its newest event is at most this old: the
+ * Live/Viewing pill's window (`SESSION_LIVE_WINDOW_MS`), so the Summary's
+ * duration and the dashboard's agree with the pill.
+ */
+export const SESSION_IDLE_AFTER_MS = 2 * 60_000;
 
 /** Newest event time in a session's timeline (ms epoch), or 0 when it has none. */
 export function newestActivityMs(stats: Pick<SessionStats, 'timeline'>): number {

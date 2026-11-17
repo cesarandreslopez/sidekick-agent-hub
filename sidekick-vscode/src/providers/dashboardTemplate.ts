@@ -63,7 +63,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
 </head>
 <body>
   <div class="header">
-    <img src="${options.iconUri}" alt="Sidekick" />
+    <img src="${options.iconUri}" alt="" />
     <h1>Session Analytics</h1>
     <button type="button" class="version-badge" id="version-badge" title="What's New" aria-haspopup="dialog">v${options.extVersion}</button>
     <span id="status" class="status inactive" aria-live="polite">No session</span>

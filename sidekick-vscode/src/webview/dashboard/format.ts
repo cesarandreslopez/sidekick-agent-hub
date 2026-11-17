@@ -33,8 +33,13 @@ export function axisCost(value: number): string {
   return `${sign}$${abs.toFixed(2).replace(/\.?0+$/, '') || '0'}`;
 }
 
-/** Duration stops counting once the newest event is this old (the session is idle). */
-export const SESSION_IDLE_AFTER_MS = 5 * 60_000;
+/**
+ * Duration stops counting once the newest event is this old (the session is
+ * idle). The same 2 minutes as the Live/Viewing pill (`SESSION_LIVE_WINDOW_MS`
+ * in utils/sessionLiveness, which this browser bundle cannot import), so the
+ * clock stops when the pill says Viewing and steps back by at most that much.
+ */
+export const SESSION_IDLE_AFTER_MS = 2 * 60_000;
 
 /**
  * Session duration text (`12m`, `1h 4m`): start to now while live, start to

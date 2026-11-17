@@ -407,6 +407,51 @@ describe('legacy dashboard script', () => {
     expect(errors).toEqual([]);
   });
 
+  it('formats compactions in the shared token vocabulary and refreshes a live Summary', () => {
+    send({
+      type: 'updateCompactions',
+      compactions: [
+        {
+          time: '9:00',
+          contextBefore: 400,
+          contextAfter: 120,
+          tokensReclaimed: 280,
+          reclaimedPercent: 70,
+          source: 'reported',
+          reestablishmentCostUsd: null,
+        },
+      ],
+    });
+    const compaction = document.getElementById('compaction-list')!.textContent!;
+    expect(compaction).toContain('400 → 120');
+    expect(compaction).not.toContain('0K');
+
+    send({
+      type: 'updateSessionAvailability',
+      availability: {
+        status: 'active',
+        live: true,
+        providerName: 'Claude Code',
+        workspacePath: '/w',
+        sessionDirectory: '/s',
+      },
+    });
+    document.querySelector<HTMLButtonElement>('.tab-btn[data-tab="summary"]')!.click();
+    const requests = () => posted.filter((m) => m.type === 'requestSessionSummary').length;
+    const before = requests();
+    const burn = {
+      type: 'updateBurnRate',
+      burnRate: 5,
+      sessionStartTime: new Date().toISOString(),
+      lastActivityTime: new Date().toISOString(),
+    };
+    send(burn);
+    send(burn);
+    // Throttled: one refresh for a burst of burn-rate updates.
+    expect(requests()).toBe(before + 1);
+    expect(errors).toEqual([]);
+  });
+
   it('says a live session joins History when it ends', () => {
     const availability = (live: boolean) => ({
       type: 'updateSessionAvailability',

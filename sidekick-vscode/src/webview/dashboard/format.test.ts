@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { SESSION_LIVE_WINDOW_MS } from '../../utils/sessionLiveness';
+import { SESSION_IDLE_AFTER_MS as SUMMARY_IDLE_AFTER_MS } from '../../services/SessionSummaryService';
 import {
+  SESSION_IDLE_AFTER_MS,
   axisCost,
   compactNumber,
   exactNumber,
@@ -53,5 +56,15 @@ describe('dashboard format helpers', () => {
     // A week-old session reads as its own length, not "172h".
     expect(sessionDurationText('2026-11-08T10:00:00Z', '2026-11-08T10:42:00Z', now)).toBe('42m');
     expect(sessionDurationText(null, null, now)).toBe('0m');
+  });
+
+  it('stops the clock when the pill turns Viewing, in both the dashboard and the Summary', () => {
+    expect(SESSION_IDLE_AFTER_MS).toBe(SESSION_LIVE_WINDOW_MS);
+    expect(SUMMARY_IDLE_AFTER_MS).toBe(SESSION_LIVE_WINDOW_MS);
+    // Idle 1:59 still counts to now; 2:01 stops at the last event.
+    const last = Date.parse('2026-11-15T11:00:00Z');
+    const start = '2026-11-15T10:00:00Z';
+    expect(sessionDurationText(start, new Date(last).toISOString(), last + 119_000)).toBe('1h 1m');
+    expect(sessionDurationText(start, new Date(last).toISOString(), last + 121_000)).toBe('1h 0m');
   });
 });
