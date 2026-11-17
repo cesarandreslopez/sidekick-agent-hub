@@ -121,7 +121,15 @@ describe('printStatsSummary layout', () => {
         sessionCount: 7771,
         firstDate: '2026-03-26',
         lastDate: '2026-11-16',
-        modelUsage: [{ model: 'claude-opus-5-5', calls: 1, tokens: 1, cost: 1 }],
+        modelUsage: [
+          { model: 'claude-opus-5-5', calls: 1, tokens: 1, cost: 1 },
+          {
+            model: 'gpt-5.5-codex-max-high-reasoning-preview',
+            calls: 2,
+            tokens: 1,
+            cost: 1,
+          },
+        ],
         toolUsage: [
           {
             tool: 'mcp__plugin_context7_context7__query-docs',
@@ -146,6 +154,8 @@ describe('printStatsSummary layout', () => {
     expect(valueColumns).toHaveLength(4);
     expect(new Set(valueColumns).size).toBe(1);
     expect(text).toContain('mcp__plugin_context7_context7…');
+    // Model ids keep their tail; only tool names are cut to the column.
+    expect(text).toContain('gpt-5.5-codex-max-high-reasoning-preview');
     expect(text).toContain('(2,897 failed)');
     expect(text).toMatch(/1 call(?!s)/);
     expect(text).not.toContain('Unused');

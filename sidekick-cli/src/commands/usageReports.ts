@@ -475,7 +475,11 @@ export async function usageReportAction(
       : defaultWindowStart(granularity, now);
     if (localOpts.until) until = parseTimeOption(String(localOpts.until), now);
     if (since.getTime() > until.getTime()) {
-      throw new RangeError('--since is after --until; swap them or drop --until.');
+      throw new RangeError(
+        localOpts.until
+          ? '--since is after --until; swap them or drop --until.'
+          : '--since is in the future.',
+      );
     }
   } catch (error) {
     process.stderr.write(

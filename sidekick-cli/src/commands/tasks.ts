@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import { readTasks, resolveProjectIdentity } from 'sidekick-shared';
 import type { PersistedTask } from 'sidekick-shared';
-import { taskStatusLabel } from '../displayLabels';
+import { ownEntry, taskStatusLabel } from '../displayLabels';
 import { parseLimit } from '../utils/parseLimit';
 
 const STATUS_COLORS: Record<string, (s: string) => string> = {
@@ -49,7 +49,8 @@ export function openTasksFirst(tasks: readonly PersistedTask[]): PersistedTask[]
     .map((task, index) => ({ task, index }))
     .sort(
       (a, b) =>
-        (STATUS_RANK[a.task.status] ?? 4) - (STATUS_RANK[b.task.status] ?? 4) || a.index - b.index,
+        (ownEntry(STATUS_RANK, a.task.status) ?? 4) - (ownEntry(STATUS_RANK, b.task.status) ?? 4) ||
+        a.index - b.index,
     )
     .map(({ task }) => task);
 }
@@ -70,8 +71,8 @@ export function printTasksTable(tasks: PersistedTask[], total = tasks.length): v
   process.stdout.write(chalk.dim('─'.repeat(80) + '\n'));
 
   for (const task of tasks) {
-    const colorFn = STATUS_COLORS[task.status] || chalk.white;
-    const icon = STATUS_ICONS[task.status] || '?';
+    const colorFn = ownEntry(STATUS_COLORS, task.status) ?? chalk.white;
+    const icon = ownEntry(STATUS_ICONS, task.status) ?? '?';
 
     process.stdout.write(
       `${colorFn(icon)} ${chalk.dim(taskReference(task))}  ${chalk.bold(task.subject)}\n`,

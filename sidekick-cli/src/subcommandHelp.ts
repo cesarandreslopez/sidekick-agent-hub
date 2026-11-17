@@ -64,17 +64,29 @@ export function rejectUnknownSubcommands(parent: Command): void {
   parent.allowExcessArguments(true);
   parent.hook('preAction', (_hooked, actionCommand) => {
     if (actionCommand !== parent || parent.args.length === 0) return;
+    // `tasks help add` / `quota help`: the help Commander gives parents
+    // without an action of their own. help() prints and exits 0.
+    if (parent.args[0] === 'help') {
+      const named = parent.args[1];
+      const sub = named ? parent.commands.find((command) => command.name() === named) : undefined;
+      if (named && !sub) parent.error(unknownSubcommandMessage(parent, named));
+      (sub ?? parent).help();
+    }
     parent.error(unknownSubcommandMessage(parent, parent.args[0]));
   });
 }
 
+/** Global flags that may follow a command without being a subcommand or its argument. */
+const GLOBAL_BOOLEAN_FLAGS = new Set(['--json', '--no-color', '--offline']);
+
 /**
  * A parent without an action prints its help on stdout with exit 0 when it is
- * run alone. Only registered when nothing follows it, so `note ad x` still
- * gets Commander's own "unknown command … (Did you mean add?)".
+ * run alone (global boolean flags such as `--json` aside). Only registered
+ * when nothing else follows it, so `note ad x` still gets Commander's own
+ * "unknown command … (Did you mean add?)".
  */
 export function helpWhenRunAlone(parent: Command, argsAfterCommand: readonly string[]): void {
-  if (argsAfterCommand.length > 0) return;
+  if (argsAfterCommand.some((argument) => !GLOBAL_BOOLEAN_FLAGS.has(argument))) return;
   parent.action(() => {
     parent.outputHelp();
   });

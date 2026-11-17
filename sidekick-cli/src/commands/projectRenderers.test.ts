@@ -65,6 +65,13 @@ describe('project renderers', () => {
     expect(text).toContain('· cli');
   });
 
+  it('prints an unknown status as written, even one named like an Object member', () => {
+    printNotesList([note({ status: 'constructor' as never, noteType: 'toString' as never })]);
+    const text = out.join('');
+    expect(text).toContain('constructor');
+    expect(text).not.toContain('function');
+  });
+
   it('notes read their status and say project-wide for a note with no file', () => {
     printNotesList([note()]);
     const text = out.join('');

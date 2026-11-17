@@ -457,4 +457,11 @@ describe('usageReportAction', () => {
     expect(process.exitCode).toBe(1);
     expect(mockCollect).not.toHaveBeenCalled();
   });
+
+  it('calls a future --since a future date when --until was not given', async () => {
+    await usageReportAction('day', {}, makeCmd(false, { since: '2999-01-01' }));
+    expect(stderrData).toContain('--since is in the future');
+    expect(stderrData).not.toContain('--until');
+    expect(process.exitCode).toBe(1);
+  });
 });

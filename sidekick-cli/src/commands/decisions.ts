@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import { readDecisions, resolveProjectIdentity } from 'sidekick-shared';
 import type { DecisionEntry } from 'sidekick-shared';
-import { decisionAlternatives, isOmittedPlaceholder } from '../displayLabels';
+import { decisionAlternatives, isOmittedPlaceholder, ownEntry } from '../displayLabels';
 import { parseLimit } from '../utils/parseLimit';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -37,7 +37,9 @@ export function printDecisionsList(decisions: DecisionEntry[]): void {
     meta.push(chalk.dim(formatDate(d.timestamp)));
     // Decisions added with `sidekick decision add` are filed under the
     // generic text-pattern source; name them by where they came from.
-    meta.push(chalk.cyan(d.sessionId === 'cli' ? 'cli' : SOURCE_LABELS[d.source] || d.source));
+    meta.push(
+      chalk.cyan(d.sessionId === 'cli' ? 'cli' : (ownEntry(SOURCE_LABELS, d.source) ?? d.source)),
+    );
     if (d.tags && d.tags.length > 0) {
       meta.push(chalk.dim(d.tags.map((t) => `#${t}`).join(' ')));
     }

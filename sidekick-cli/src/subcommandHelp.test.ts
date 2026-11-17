@@ -54,6 +54,36 @@ describe('subcommand help', () => {
     write.mockRestore();
   });
 
+  it('still prints that help when only a global boolean flag follows', async () => {
+    const { root, note } = program();
+    helpWhenRunAlone(note, ['--json']);
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await root.parseAsync(['note', '--json'], { from: 'user' });
+    expect(write.mock.calls.map(([chunk]) => String(chunk)).join('')).toContain(
+      'Usage: sidekick note',
+    );
+    write.mockRestore();
+  });
+
+  it('answers `tasks help add` and `tasks help` with help, exit 0', async () => {
+    const { root, tasks, ran } = program();
+    rejectUnknownSubcommands(tasks);
+    const out: string[] = [];
+    for (const command of [tasks, ...tasks.commands]) {
+      command.exitOverride().configureOutput({ writeOut: (text) => out.push(text) });
+    }
+    await expect(root.parseAsync(['tasks', 'help', 'add'], { from: 'user' })).rejects.toMatchObject(
+      { exitCode: 0 },
+    );
+    expect(out.join('')).toContain('Usage: sidekick tasks add');
+    out.length = 0;
+    await expect(root.parseAsync(['tasks', 'help'], { from: 'user' })).rejects.toMatchObject({
+      exitCode: 0,
+    });
+    expect(out.join('')).toContain('Usage: sidekick tasks');
+    expect(ran).toEqual([]);
+  });
+
   it('lists the global options in subcommand help', () => {
     const { root, tasks } = program();
     showGlobalOptionsEverywhere(root);

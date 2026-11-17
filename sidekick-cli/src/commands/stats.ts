@@ -38,11 +38,12 @@ function calls(n: number): string {
 }
 
 const NAME_WIDTH = 30;
+const MODEL_MAX_WIDTH = 64;
 const TOOL_ROWS = 15;
 
 /** A model or tool name cut to its column, so the count column stays put. */
-function fitName(name: string): string {
-  return name.length > NAME_WIDTH ? `${name.slice(0, NAME_WIDTH - 1)}…` : name.padEnd(NAME_WIDTH);
+function fitName(name: string, width = NAME_WIDTH): string {
+  return name.length > width ? `${name.slice(0, width - 1)}…` : name.padEnd(width);
 }
 
 /** The local `YYYY-MM-DD` keys of today and the six days before it. */
@@ -122,6 +123,12 @@ export function printStatsSummary(
     const sorted = mergeModelUsage(at.modelUsage.filter((usage) => usage.model !== SYNTHETIC_MODEL))
       .filter((m) => m.calls > 0)
       .sort((a, b) => b.calls - a.calls);
+    // Model ids tell versions apart at the end (`…-high-reasoning-preview`), so
+    // the column widens to the longest one instead of cutting it.
+    const modelWidth = Math.min(
+      MODEL_MAX_WIDTH,
+      Math.max(NAME_WIDTH, ...sorted.map((m) => m.model.length)),
+    );
     const unpricedModels: string[] = [];
     for (const m of sorted) {
       // Honest rendering: priced === false means no pricing was available
@@ -136,7 +143,7 @@ export function printStatsSummary(
         costStr = chalk.dim(` (${formatCost(m.cost)})`);
       }
       process.stdout.write(
-        `  ${chalk.cyan(fitName(m.model))} ${calls(m.calls).padStart(14)}${costStr}\n`,
+        `  ${chalk.cyan(fitName(m.model, modelWidth))} ${calls(m.calls).padStart(14)}${costStr}\n`,
       );
     }
     if (unpricedModels.length > 0) {

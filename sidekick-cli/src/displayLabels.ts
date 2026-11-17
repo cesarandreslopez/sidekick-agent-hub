@@ -18,12 +18,20 @@ export const NOTE_STATUS_LABELS: Record<string, string> = {
   obsolete: 'Obsolete',
 };
 
+/**
+ * A table entry for a value read from a store file, or `undefined`. Only the
+ * table's own keys count: `constructor` must not come back as a function.
+ */
+export function ownEntry<T>(table: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(table, key) ? table[key] : undefined;
+}
+
 export function taskStatusLabel(status: string): string {
-  return TASK_STATUS_LABELS[status] ?? status;
+  return ownEntry(TASK_STATUS_LABELS, status) ?? status;
 }
 
 export function noteStatusLabel(status: string): string {
-  return NOTE_STATUS_LABELS[status] ?? status;
+  return ownEntry(NOTE_STATUS_LABELS, status) ?? status;
 }
 
 /**

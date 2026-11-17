@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import { readNotes, resolveProjectIdentity } from 'sidekick-shared';
 import type { KnowledgeNote, KnowledgeNoteType, KnowledgeNoteStatus } from 'sidekick-shared';
-import { noteStatusLabel } from '../displayLabels';
+import { noteStatusLabel, ownEntry } from '../displayLabels';
 
 const TYPE_COLORS: Record<string, (s: string) => string> = {
   gotcha: chalk.red,
@@ -37,8 +37,8 @@ export function printNotesList(notes: KnowledgeNote[]): void {
   process.stdout.write(chalk.dim('─'.repeat(80) + '\n'));
 
   for (const note of notes) {
-    const typeFn = TYPE_COLORS[note.noteType] || chalk.white;
-    const impFn = IMPORTANCE_COLORS[note.importance] || chalk.white;
+    const typeFn = ownEntry(TYPE_COLORS, note.noteType) ?? chalk.white;
+    const impFn = ownEntry(IMPORTANCE_COLORS, note.importance) ?? chalk.white;
 
     const title = note.title || note.content.split('\n')[0].slice(0, 80);
     process.stdout.write(`${typeFn(`[${note.noteType}]`)} ${chalk.bold(title)}\n`);

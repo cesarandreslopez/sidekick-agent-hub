@@ -44,6 +44,22 @@ describe('tasks', () => {
     expect(ordered.map((entry) => entry.taskId)).toEqual(['3', '2', '4', '1']);
   });
 
+  it('sorts and prints a status named like an Object member as an unknown one', () => {
+    const odd = task('9', 'constructor' as never);
+    expect(openTasksFirst([odd, task('1', 'pending')]).map((entry) => entry.taskId)).toEqual([
+      '1',
+      '9',
+    ]);
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      out.push(String(chunk));
+      return true;
+    });
+    printTasksTable([odd]);
+    expect(out.join('')).toContain('? cli:9');
+    expect(out.join('')).not.toContain('function');
+  });
+
   it('prints each row with a reference `tasks done` accepts, and the shown count', () => {
     const out: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
