@@ -82,10 +82,11 @@ export function formatTime(ts: string): string {
   }
 }
 
-/** Format elapsed time from a start timestamp. */
-export function formatElapsed(startTime: string): string {
+/** Format elapsed time from a start timestamp (to `endTime`, or now). */
+export function formatElapsed(startTime: string, endTime?: string | number): string {
   const start = new Date(startTime).getTime();
-  const diffMs = Date.now() - start;
+  const end = endTime === undefined ? Date.now() : new Date(endTime).getTime();
+  const diffMs = end - start;
   if (isNaN(diffMs) || diffMs < 0) return '--:--:--';
   const secs = Math.floor(diffMs / 1000);
   const h = Math.floor(secs / 3600);

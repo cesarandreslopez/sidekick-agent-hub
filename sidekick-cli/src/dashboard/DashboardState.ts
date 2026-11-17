@@ -292,6 +292,8 @@ export interface DashboardMetrics {
   openaiStatus: ProviderStatusState | null;
   eventCount: number;
   sessionStartTime?: string;
+  /** Timestamp of the session's latest event; decides Live versus ended. */
+  lastEventTime?: string;
   currentModel?: string;
   providerId?: string;
   providerName?: string;
@@ -1031,6 +1033,7 @@ export class DashboardState {
       openaiStatus: this._openaiStatus,
       eventCount: m.eventCount,
       sessionStartTime: m.sessionStartTime ?? undefined,
+      lastEventTime: m.lastEventTime ?? undefined,
       currentModel: m.currentModel ?? undefined,
       providerId: m.providerId ?? undefined,
       providerName: this._providerName,

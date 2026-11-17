@@ -343,3 +343,67 @@ describe('SessionsPanel narrative ownership', () => {
     panel.dispose?.();
   });
 });
+
+describe('SessionsPanel past sessions', () => {
+  const activeItem: PanelItem = { id: 'active', label: 's', sortKey: 0, data: { type: 'active' } };
+
+  it('stops the clock at the last event for a session that has ended', () => {
+    const panel = new SessionsPanel();
+    const start = Date.now() - 3 * 24 * 3_600_000;
+    const metrics = {
+      ...metricsWithTasks(),
+      sessionStartTime: new Date(start).toISOString(),
+      lastEventTime: new Date(start + 3_600_000).toISOString(),
+    };
+    const out = panel.detailTabs[0].render(activeItem, metrics, { sessions: [] } as never, {
+      width: 80,
+    } as never);
+    expect(out).toContain('01:00:00');
+    expect(out).toContain('ran');
+    expect(out).toContain('ended 2d ago');
+    expect(out).not.toContain('elapsed{');
+    // The side list shows a hollow dot for a session that is not live.
+    const label = panel.getItems(metrics, { sessions: [] } as never)[0].label;
+    expect(label.startsWith('○')).toBe(true);
+    panel.dispose?.();
+  });
+
+  it('keeps counting while the session is live', () => {
+    const panel = new SessionsPanel();
+    const metrics = {
+      ...metricsWithTasks(),
+      sessionStartTime: new Date(Date.now() - 60_000).toISOString(),
+      lastEventTime: new Date(Date.now() - 10_000).toISOString(),
+    };
+    const out = panel.detailTabs[0].render(activeItem, metrics, { sessions: [] } as never, {
+      width: 80,
+    } as never);
+    expect(out).toContain('elapsed');
+    panel.dispose?.();
+  });
+});
+
+describe('SessionsPanel Files tab', () => {
+  it('keeps the read/write/edit counts on the same row as a long path', () => {
+    const panel = new SessionsPanel();
+    const metrics = {
+      ...metricsWithTasks(),
+      fileTouches: [
+        {
+          path: '/Users/someone/projects/sidekick/src/dashboard/ink/SessionPickerInk.frame.test.tsx',
+          reads: 3,
+          writes: 1,
+          edits: 2,
+        },
+      ],
+    };
+    const activeItem: PanelItem = { id: 'active', label: 's', sortKey: 0, data: { type: 'active' } };
+    const out = panel.detailTabs[4].render(activeItem, metrics, {} as never, { width: 50 } as never);
+    const row = out.split('\n').find((line) => line.includes('R:3')) ?? '';
+    expect(row).toContain('W:1');
+    expect(row).toContain('E:2');
+    expect(row).toContain('SessionPickerInk.frame.test.tsx');
+    expect(row.replace(/\{[^}]+\}/g, '').length).toBeLessThanOrEqual(50);
+    panel.dispose?.();
+  });
+});

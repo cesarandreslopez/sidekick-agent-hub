@@ -78,6 +78,8 @@ import {
 } from 'sidekick-shared';
 import { localDateOnlyTimestamp } from '../dateFilterExpression';
 import { truncateTagged, wrapTaggedLines } from '../blessedText';
+import { isWithinLiveWindow } from '../sessionLiveness';
+import { formatRelativeTime } from '../SessionPickerHelpers';
 
 type MindMapView = 'tree' | 'boxed' | 'flow';
 type MindMapFilter =
@@ -174,9 +176,14 @@ export class SessionsPanel implements SidePanel {
       const runningAgents = metrics.subagents.filter(isSubagentRunning).length;
       const agentBadge =
         runningAgents > 0 ? ` {magenta-fg}[${runningAgents}\u229B]{/magenta-fg}` : '';
+      // Filled and green only while the session is live (the picker's
+      // meaning); a past session being viewed gets the hollow dot.
+      const lastEventMs = metrics.lastEventTime ? Date.parse(metrics.lastEventTime) : NaN;
+      const live = !Number.isFinite(lastEventMs) || isWithinLiveWindow(lastEventMs, Date.now());
+      const dot = live ? '{green-fg}\u25CF{/green-fg}' : '\u25CB';
       items.push({
         id: 'active',
-        label: `{green-fg}\u25CF{/green-fg} session-${sessionId}${providerSuffix}${agentBadge}`,
+        label: `${dot} session-${sessionId}${providerSuffix}${agentBadge}`,
         sortKey: 0,
         data: { type: 'active', metrics },
       });
@@ -408,7 +415,16 @@ export class SessionsPanel implements SidePanel {
       const contextColor = getUtilizationColor(c.percent);
       const w = ctx?.width ?? detailWidth();
 
-      const elapsed = m.sessionStartTime ? formatElapsed(m.sessionStartTime) : '--:--:--';
+      // A past session's clock stops at its last event: counting to now made a
+      // three-day-old session read "87:20:36 elapsed" and keep growing.
+      const lastEventMs = m.lastEventTime ? Date.parse(m.lastEventTime) : NaN;
+      const ended = Number.isFinite(lastEventMs) && !isWithinLiveWindow(lastEventMs, Date.now());
+      const elapsed = m.sessionStartTime
+        ? formatElapsed(m.sessionStartTime, ended ? lastEventMs : undefined)
+        : '--:--:--';
+      const elapsedLabel = ended
+        ? ` ran{/grey-fg} {grey-fg}· ended ${formatRelativeTime(new Date(lastEventMs))}`
+        : ' elapsed';
 
       // Most recent non-user, non-tool_result timeline event
       const recentEvent = [...m.timeline]
@@ -428,7 +444,7 @@ export class SessionsPanel implements SidePanel {
           ? `  {bold}${m.compactionCount}{/bold}{grey-fg} compaction${m.compactionCount !== 1 ? 's' : ''}{/grey-fg}`
           : '';
       const lines = [
-        `{bold}${elapsed}{/bold}{grey-fg} elapsed{/grey-fg}  {bold}${m.eventCount}{/bold}{grey-fg} events{/grey-fg}${compactionSuffix}`,
+        `{bold}${elapsed}{/bold}{grey-fg}${elapsedLabel}{/grey-fg}  {bold}${m.eventCount}{/bold}{grey-fg} events{/grey-fg}${compactionSuffix}`,
         `{grey-fg}Provider{/grey-fg} {bold}${m.providerName || 'unknown'}{/bold}  {grey-fg}Model{/grey-fg} {bold}${m.currentModel || 'unknown'}{/bold}`,
         recentLine,
       ];
@@ -787,7 +803,9 @@ export class SessionsPanel implements SidePanel {
       this.mindMapFilter !== 'all' ? this.mindMapFilter : undefined,
       (filePath) => this.diffCache?.toRelative(filePath) ?? filePath,
     );
-    return viewLabel + '\n' + renderTreeToText(tree, 0).join('\n');
+    // The pane's width, not the terminal's: labels sized to the terminal
+    // wrapped and lost their tree guides.
+    return viewLabel + '\n' + renderTreeToText(tree, 0, ctx?.width ?? detailWidth()).join('\n');
   }
 
   /** Time-ordered flow view: recent events grouped by minute. */
@@ -887,10 +905,7 @@ export class SessionsPanel implements SidePanel {
       );
     }
 
-    // Stats columns: " R:nn W:nn E:nn  +nn -nn" ≈ 30 chars
-    const pathColWidth = Math.max(20, (ctx?.width ?? detailWidth()) - 30);
-    for (const f of files.slice(0, 40)) {
-      const short = shortenPath(f.path);
+    const rows = files.slice(0, 40).map((f) => {
       const r = f.reads > 0 ? `{green-fg}R:${f.reads}{/green-fg}` : `{grey-fg}R:0{/grey-fg}`;
       const wr = f.writes > 0 ? `{yellow-fg}W:${f.writes}{/yellow-fg}` : `{grey-fg}W:0{/grey-fg}`;
       const e = f.edits > 0 ? `{red-fg}E:${f.edits}{/red-fg}` : `{grey-fg}E:0{/grey-fg}`;
@@ -901,8 +916,17 @@ export class SessionsPanel implements SidePanel {
       const diffSuffix = ds
         ? `  {green-fg}+${ds.additions}{/green-fg} {red-fg}-${ds.deletions}{/red-fg}`
         : '';
+      return { path: shortenPath(f.path), stats: `${r} ${wr} ${e}${diffSuffix}` };
+    });
 
-      lines.push(`{cyan-fg}${short.padEnd(pathColWidth)}{/cyan-fg} ${r} ${wr} ${e}${diffSuffix}`);
+    // The path gives way, never the counts: a path that filled the row pushed
+    // R/W/E onto a row of their own at column 0.
+    const statsWidth = Math.max(...rows.map((row) => visibleLength(row.stats)));
+    const pathColWidth = Math.max(8, (ctx?.width ?? detailWidth()) - statsWidth - 1);
+    for (const row of rows) {
+      const shown = fitPathToWidth(row.path, pathColWidth);
+      const padding = ' '.repeat(Math.max(0, pathColWidth - visibleLength(shown)));
+      lines.push(`{cyan-fg}${escapeBlessed(shown)}{/cyan-fg}${padding} ${row.stats}`);
     }
 
     return lines.join('\n');
@@ -971,6 +995,21 @@ export class SessionsPanel implements SidePanel {
 
     return lines.join('\n');
   }
+}
+
+/**
+ * Fit a path into `width` columns by dropping its start: the file name at
+ * the end is the part that identifies it.
+ */
+function fitPathToWidth(path: string, width: number): string {
+  if (visibleLength(path) <= width) return path;
+  const chars = Array.from(path);
+  let tail = '';
+  for (let i = chars.length - 1; i >= 0; i--) {
+    if (visibleLength('\u2026' + chars[i] + tail) > width) break;
+    tail = chars[i] + tail;
+  }
+  return '\u2026' + tail;
 }
 
 /** Below this many columns after a prefix, text moves to rows of its own. */

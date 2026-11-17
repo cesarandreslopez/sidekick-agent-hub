@@ -33,6 +33,7 @@ export interface TreeData {
 }
 import type { StaticData } from './StaticDataLoader';
 import { shortenPath, formatDuration, truncate } from './formatters';
+import { truncateTagged as truncateTaggedToWidth, visibleWidth } from './blessedText';
 
 // ── Color mapping (VS Code palette → blessed tag names) ──
 
@@ -610,12 +611,12 @@ export function renderTreeToText(node: TreeData, depth: number, columns?: number
         const color = DEPTH_COLORS[(depth - 1) % DEPTH_COLORS.length];
         const connector = isLast ? '\u2514\u2500 ' : '\u251C\u2500 ';
         const coloredConnector = `{${color}-fg}${connector}{/${color}-fg}`;
-        // Truncate label to fit available width
-        const availableWidth = termCols - depth * 2 - 4;
-        const plainLabel = label.replace(/\{[^}]*\}/g, '');
+        // Truncate the label to the columns left after the guide, so it never
+        // wraps to a row of its own without the guide in front of it.
+        const availableWidth = Math.max(1, termCols - depth * 2 - 3);
         const truncLabel =
-          plainLabel.length > availableWidth && availableWidth > 10
-            ? truncateTagged(label, availableWidth)
+          visibleWidth(label) > availableWidth
+            ? truncateTaggedToWidth(label, availableWidth)
             : label;
         lines.push(`${indent}${coloredConnector}${truncLabel}`);
       }
