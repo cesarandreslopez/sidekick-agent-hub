@@ -104,7 +104,8 @@ export function formatSessionText(
       const total = t.successCount + t.failureCount;
       const failStr = t.failureCount > 0 ? ` (${t.failureCount} failed)` : '';
       const avgMs = t.completedCount > 0 ? Math.round(t.totalDuration / t.completedCount) : 0;
-      const durationStr = avgMs > 0 ? ` avg ${avgMs}ms` : '';
+      const durationStr =
+        avgMs > 0 ? ` avg ${formatDurationMs(avgMs, { includeMilliseconds: true })}` : '';
       lines.push(`  ${t.name}: ${total}${failStr}${durationStr}`);
     }
     lines.push('');
@@ -237,7 +238,7 @@ export function formatSessionMarkdown(
       const total = t.successCount + t.failureCount;
       const avgMs = t.completedCount > 0 ? Math.round(t.totalDuration / t.completedCount) : 0;
       lines.push(
-        `| ${t.name} | ${total} | ${t.failureCount} | ${avgMs > 0 ? `${avgMs}ms` : '-'} |`,
+        `| ${t.name} | ${total} | ${t.failureCount} | ${avgMs > 0 ? formatDurationMs(avgMs, { includeMilliseconds: true }) : '-'} |`,
       );
     }
     lines.push('');

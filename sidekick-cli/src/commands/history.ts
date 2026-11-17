@@ -161,8 +161,8 @@ export async function historyAction(_opts: Record<string, unknown>, cmd: Command
       process.stdout.write('[]\n');
     } else {
       process.stderr.write(
-        'No prompt history found. Codex records prompts in ~/.codex/history.jsonl; ' +
-          'Claude Code and OpenCode are not yet supported.\n',
+        'No Codex prompt history found (Codex records prompts in ~/.codex/history.jsonl).\n' +
+          'For Claude Code and Codex prompts grouped by session, run: sidekick dump --prompts --all\n',
       );
     }
     return;

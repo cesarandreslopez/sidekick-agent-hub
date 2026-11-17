@@ -296,13 +296,23 @@ async function claudeQuotaAction(
   printClaudeQuota(quota, peak);
 }
 
+/** `Title: message`, with any detail on its own indented line. */
+export function quotaFailureText(failure: {
+  title?: string;
+  message?: string;
+  detail?: string;
+}): string {
+  const head = [failure.title, failure.message].filter(Boolean).join(': ');
+  return failure.detail ? `${head}\n  ${failure.detail}` : head;
+}
+
 function printClaudeQuotaError(quota: ClaudeQuota): void {
   const descriptor = describeQuotaFailure(quota);
   let msg: string;
   let color = chalk.red;
 
   if (descriptor) {
-    msg = [descriptor.title, descriptor.message, descriptor.detail].filter(Boolean).join(' ');
+    msg = quotaFailureText(descriptor);
     color =
       descriptor.severity === 'warning'
         ? chalk.yellow
@@ -519,9 +529,7 @@ function printCodexQuota(quota: ResolvedQuota<'codex'>, resolved: ResolvedActive
   if (quota.failure) {
     metaRows.push({
       label: 'Refresh',
-      value: [quota.failure.title, quota.failure.message, quota.failure.detail]
-        .filter(Boolean)
-        .join(' '),
+      value: quotaFailureText(quota.failure),
       color: chalk.yellow,
     });
   }

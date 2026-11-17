@@ -192,7 +192,7 @@ export function renderProviderHeatmap(
     `Peak ${peakColor(`${peak}%`)}`,
     `Avg ${avgColor(`${avg}%`)}`,
     unavailableDays > 0 ? chalk.red(`Unavailable ${unavailableDays} day(s)`) : null,
-    chalk.dim(`Samples ${totalSamples.toLocaleString()}`),
+    chalk.dim(`Samples ${totalSamples.toLocaleString('en-US')}`),
   ]
     .filter(Boolean)
     .join('  ·  ');

@@ -58,7 +58,7 @@ export function resolveSessionPath(
     throw new Error(
       `Session ${sessionId} not found. Available: ${sessions
         .slice(0, 5)
-        .map((s) => path.basename(s))
+        .map((s) => provider.getSessionId(s))
         .join(', ')}`,
     );
   }

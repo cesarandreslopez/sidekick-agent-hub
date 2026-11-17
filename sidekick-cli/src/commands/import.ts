@@ -164,7 +164,7 @@ export async function importAction(_opts: Record<string, unknown>, cmd: Command)
       return;
     }
     process.stdout.write(
-      `Imported ${chalk.bold(String(report.sessionsImported))} session${report.sessionsImported === 1 ? '' : 's'} (${report.messagesImported.toLocaleString()} messages) from ${report.providers.join(', ')} into ${chalk.dim(storePath)}\n`,
+      `Imported ${chalk.bold(String(report.sessionsImported))} session${report.sessionsImported === 1 ? '' : 's'} (${report.messagesImported.toLocaleString('en-US')} messages) from ${report.providers.join(', ')} into ${chalk.dim(storePath)}\n`,
     );
     const notes: string[] = [];
     if (report.filesSkipped > 0)

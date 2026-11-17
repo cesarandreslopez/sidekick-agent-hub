@@ -85,6 +85,7 @@ Examples:
   $ sidekick history --limit 5              Only the five most recent prompts
   $ sidekick history --path 0198a3c2        Rollout transcript path for a session
   $ sidekick history --json                 Machine-readable prompt entries
+  $ sidekick dump --prompts --all           Claude Code and Codex prompts, by session
 `;
 
 export const STATUSLINE_HELP = `

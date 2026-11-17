@@ -591,7 +591,10 @@ const handoffCmd = new Command('handoff')
 handoffCmd
   .command('open')
   .description('Open a configured external session-handoff target')
-  .option('--url-template <template>', 'URL with {sessionId}, {provider}, and {projectPath}')
+  .option(
+    '--url-template <template>',
+    'URL with {sessionId}, {provider}, and {projectPath} (default: $SIDEKICK_HANDOFF_URL_TEMPLATE)',
+  )
   .option('--session <id>', 'Override the active session ID')
   .option('--no-open', 'Render without opening the URL')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {

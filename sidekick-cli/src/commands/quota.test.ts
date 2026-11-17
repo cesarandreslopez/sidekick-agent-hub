@@ -1,5 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getUtilizationColor, makeChalkBar, formatTimeUntil } from './quota';
+import { getUtilizationColor, makeChalkBar, formatTimeUntil, quotaFailureText } from './quota';
+
+describe('quotaFailureText', () => {
+  it('separates the title from the message and puts the detail on its own line', () => {
+    expect(
+      quotaFailureText({
+        title: 'Sign in required',
+        message: 'No Claude Code credentials are available in this environment.',
+        detail: 'Run `claude` to sign in, then retry quota refresh.',
+      }),
+    ).toBe(
+      'Sign in required: No Claude Code credentials are available in this environment.\n  Run `claude` to sign in, then retry quota refresh.',
+    );
+    expect(quotaFailureText({ title: 'Offline' })).toBe('Offline');
+  });
+});
 import chalk from 'chalk';
 import * as fs from 'fs';
 import * as os from 'os';
