@@ -117,6 +117,38 @@ describe('buildHistoricalSummary', () => {
     expect(buildHourlyPoints(source(), TODAY)).toHaveLength(3);
   });
 
+  it('compares an in-progress day or month against the same stretch of the previous one', () => {
+    const at10 = new Date(2026, 8, 4, 10, 15); // 2026-09-04 10:15, the real "now"
+    const today = buildHistoricalSummary(source(), 'today', { now: NOW, wallClock: at10 });
+    // 12AM through 10AM have elapsed.
+    expect(today.comparableSlots).toBe(11);
+    const month = buildHistoricalSummary(source(), 'month', { now: NOW, wallClock: at10 });
+    // September 1-4 against August 1-4.
+    expect(month.comparableSlots).toBe(4);
+    expect(month.previousPeriod!.length).toBeGreaterThan(4);
+
+    // A past day, the rolling 7 days, and a drilled past month compare whole.
+    const pastDay = buildHistoricalSummary(source(), 'today', {
+      now: new Date(2026, 8, 2),
+      wallClock: at10,
+    });
+    expect(pastDay.comparableSlots).toBeUndefined();
+    expect(
+      buildHistoricalSummary(source(), 'week', { now: NOW, wallClock: at10 }).comparableSlots,
+    ).toBeUndefined();
+    const drilledAugust = buildHistoricalSummary(source(), 'month', {
+      now: new Date(2026, 7, 31),
+      wallClock: at10,
+    });
+    expect(drilledAugust.comparableSlots).toBeUndefined();
+    // Drilling into today (a synthetic midnight anchor) still counts real hours.
+    const drilledToday = buildHistoricalSummary(source(), 'today', {
+      now: new Date(2026, 8, 4),
+      wallClock: at10,
+    });
+    expect(drilledToday.comparableSlots).toBe(11);
+  });
+
   it('zero-fills days without activity so a week always has seven slots', () => {
     const base = source();
     const sparse: HistoricalSummarySource = {

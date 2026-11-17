@@ -694,7 +694,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
     <div class="history-controls">
       <div class="range-selector" role="toolbar" aria-label="Time range">
         <button class="range-btn" data-range="today" aria-pressed="false">Today</button>
-        <button class="range-btn active" data-range="week" aria-pressed="true">This Week</button>
+        <button class="range-btn active" data-range="week" aria-pressed="true">Last 7 Days</button>
         <button class="range-btn" data-range="month" aria-pressed="false">This Month</button>
         <button class="range-btn" data-range="all" aria-pressed="false">All Time</button>
       </div>
@@ -722,6 +722,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
       <span class="breadcrumb-current" id="drill-label"></span>
     </div>
     <div class="history-series-note" id="history-series-note" hidden></div>
+    <p class="history-live-note" id="history-live-note" hidden>The session in progress is added here when it ends.</p>
 
     <div class="history-summary" id="history-summary">
       <div class="history-stat">

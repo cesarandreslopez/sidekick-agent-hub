@@ -46,7 +46,13 @@ export interface HistoricalSummarySource {
 export interface HistoricalSummaryOptions {
   series?: HistoricalSeries;
   project?: string | null;
+  /** Anchors the window: a drill-down passes the drilled day or the drilled month's last day. */
   now?: Date;
+  /**
+   * The real current time, for how much of an in-progress period has
+   * elapsed. Separate from `now`, which a drill-down sets to a synthetic date.
+   */
+  wallClock?: Date;
 }
 
 interface Totals {
@@ -252,6 +258,25 @@ function previousWindow(range: HistoricalRange, window: Window): Window | null {
     case 'all':
       return null;
   }
+}
+
+/**
+ * How many slots of an in-progress window have elapsed, so its tiles compare
+ * against the same stretch of the previous period: today at 10:00 has 11
+ * hours, the 5th of a month has 5 days. `null` when the window is not in
+ * progress (a past day or month, the rolling 7 days, all time).
+ */
+function elapsedSlots(range: HistoricalRange, window: Window, wallClock: Date): number | null {
+  const wallToday = formatLocalDateKey(wallClock);
+  if (range === 'today') {
+    return window.start === wallToday ? wallClock.getHours() + 1 : null;
+  }
+  if (range === 'month') {
+    return window.start <= wallToday && wallToday <= window.end
+      ? Number(wallToday.slice(8, 10))
+      : null;
+  }
+  return null;
 }
 
 /** A slot with no recorded activity. */
@@ -543,12 +568,18 @@ export function buildHistoricalSummary(
   // A previous period with no activity draws no overlay and no deltas.
   const previousPeriod = previousPoints.some(pointHasActivity) ? previousPoints : [];
   const unpricedModelIds = unpricedModelsIn(source, range, window, projectRecords);
+  const comparableSlots = elapsedSlots(range, window, options.wallClock ?? new Date());
 
   return {
     range,
     granularity,
     dataPoints,
     totals: sumTotals(dataPoints),
+    ...(previousPeriod.length > 0 &&
+    comparableSlots !== null &&
+    comparableSlots < previousPeriod.length
+      ? { comparableSlots }
+      : {}),
     ...(unpricedModelIds.length > 0 ? { unpricedModelIds } : {}),
     series,
     seriesKeys: seriesKeysOf(dataPoints, series),

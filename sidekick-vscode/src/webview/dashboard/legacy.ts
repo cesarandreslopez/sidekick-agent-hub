@@ -604,6 +604,16 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         }
         const historyChartContainer = document.querySelector('.history-chart');
         if (historyChartContainer) historyChartContainer.classList.toggle('empty', emptyState.empty);
+        syncHistoryLiveNote();
+      }
+
+      // History records a session when it ends: while one is live, say so
+      // beside the top-level ranges (all of which include today).
+      let sessionIsLive = false;
+      function syncHistoryLiveNote() {
+        const note = document.getElementById('history-live-note');
+        if (!note) return;
+        note.hidden = !(sessionIsLive && currentHistoryData && !currentHistoryData.drill);
       }
 
       // Context gauge chart
@@ -2776,6 +2786,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
           case 'updateSessionAvailability':
             helpers.navigation.renderAvailability(message.availability);
+            sessionIsLive = Boolean(message.availability && message.availability.status === 'active' && message.availability.live);
+            syncHistoryLiveNote();
             break;
 
           case 'updateSessionList':

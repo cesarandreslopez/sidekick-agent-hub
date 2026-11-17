@@ -246,6 +246,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Current drill-down level for historical data */
   private _drillDownStack: Array<{ range: string; timestamp: string }> = [];
+  /** This webview has opened the History tab, so a session end refreshes it. */
+  private _historyRequested = false;
 
   /** GuidanceAdvisor for generating instruction file suggestions */
   private _guidanceAdvisor?: GuidanceAdvisor;
@@ -630,8 +632,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
       case 'webviewReady':
         log('Dashboard webview ready, sending initial state');
-        // A reloaded webview starts with an empty search box.
+        // A reloaded webview starts with an empty search box and no History.
         this._decisionsQuery = undefined;
+        this._historyRequested = false;
         // Always sync from session monitor to get current data
         if (this._sessionMonitor.isActive()) {
           this._syncFromSessionMonitor();
@@ -737,6 +740,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           : 'total';
         this._currentHistoricalProject = message.project ?? null;
         this._drillDownStack = [];
+        this._historyRequested = true;
         this._sendHistoricalData(message.range);
         break;
 
@@ -1899,6 +1903,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     // Build and cache full session summary on session end
     this._buildAndSendSummary();
+
+    // The extension saved the ended session's totals and plan (its listener
+    // runs first): show them in History and Plan History without a reload.
+    // A drilled-down view is left where the user put it.
+    this._sendPlanHistory();
+    if (this._historyRequested && this._drillDownStack.length === 0) {
+      this._sendHistoricalData(this._currentHistoricalRange);
+    }
   }
 
   /**

@@ -561,6 +561,13 @@ export interface HistoricalSummary {
   /** The same range one period earlier (yesterday, the previous 7 days, the previous month); empty for `all`. */
   previousPeriod?: HistoricalDataPoint[];
 
+  /**
+   * For a period still in progress (today, the current month): how many of
+   * its slots have elapsed. The tile deltas compare against that many slots
+   * of `previousPeriod`, not all of it. Absent when the whole period compares.
+   */
+  comparableSlots?: number;
+
   /** Aggregated totals for the range */
   totals: {
     inputTokens: number;

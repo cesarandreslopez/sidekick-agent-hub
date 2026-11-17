@@ -3136,6 +3136,11 @@ export const DASHBOARD_STYLES = `
       color: var(--vscode-descriptionForeground);
       margin: -8px 0 12px;
     }
+    .history-live-note {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      margin: 0 0 12px;
+    }
     .history-chart.empty { display: none; }
 
     /* Attached to a past (not live) session: neutral pill with a hollow dot */

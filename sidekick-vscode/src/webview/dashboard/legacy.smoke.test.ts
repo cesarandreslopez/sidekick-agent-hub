@@ -250,6 +250,38 @@ describe('legacy dashboard script', () => {
     expect(errors).toEqual([]);
   });
 
+  it('says a live session joins History when it ends', () => {
+    const availability = (live: boolean) => ({
+      type: 'updateSessionAvailability',
+      availability: {
+        status: 'active',
+        live,
+        providerName: 'Claude Code',
+        workspacePath: '/w',
+        sessionDirectory: '/s',
+      },
+    });
+    send(availability(true));
+    send({
+      type: 'updateHistoricalData',
+      data: {
+        range: 'today',
+        granularity: 'hourly',
+        dataPoints: [point('9AM', 0)],
+        totals: { inputTokens: 0, outputTokens: 0, totalCost: 0, messageCount: 0, sessionCount: 0 },
+        hasAnyHistory: true,
+      },
+    });
+    const note = document.getElementById('history-live-note')!;
+    expect(note.hidden).toBe(false);
+    expect(document.getElementById('history-empty-message')!.textContent).toBe(
+      'No finished sessions today.',
+    );
+    send(availability(false));
+    expect(note.hidden).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
   it("ignores a quota sample stamped for another provider than the card's", () => {
     send({ type: 'updateSessionProvider', providerId: 'codex', displayName: 'Codex CLI' });
     const sample = (providerId: string) => ({

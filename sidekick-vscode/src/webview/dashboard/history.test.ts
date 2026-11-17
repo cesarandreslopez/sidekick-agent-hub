@@ -3,6 +3,7 @@ import {
   buildHistoryChartData,
   computeHistoryTiles,
   costTile,
+  deltaText,
   effectiveMetric,
   formatAxisValue,
   formatDelta,
@@ -108,6 +109,32 @@ describe('tiles and requests', () => {
     expect(
       computeHistoryTiles({ ...base, previousPeriod: [point('a', 0)] }).deltas?.tokens,
     ).toBeNull();
+  });
+
+  it('compares a period in progress against only its elapsed slots of the previous one', () => {
+    // Today at 10:00 (11 slots elapsed) against all of yesterday read as a drop.
+    const yesterday = Array.from({ length: 24 }, (_, hour) => point(`${hour}`, 100));
+    const today = Array.from({ length: 24 }, (_, hour) => point(`${hour}`, hour <= 10 ? 100 : 0));
+    const whole = computeHistoryTiles({ ...base, dataPoints: today, previousPeriod: yesterday });
+    expect(whole.deltas?.tokens).toBeLessThan(-0.5);
+    const partial = computeHistoryTiles({
+      ...base,
+      dataPoints: today,
+      previousPeriod: yesterday,
+      comparableSlots: 11,
+    });
+    expect(partial.deltas?.tokens).toBeCloseTo(0);
+  });
+
+  it('says what a delta compares against', () => {
+    expect(deltaText(0.1, { granularity: 'daily' })).toBe('+10% vs previous');
+    expect(deltaText(0.1, { granularity: 'hourly', comparableSlots: 11 })).toBe(
+      '+10% vs same time yesterday',
+    );
+    expect(deltaText(-0.2, { granularity: 'daily', comparableSlots: 5 })).toBe(
+      '−20% vs same point last month',
+    );
+    expect(deltaText(null, { granularity: 'daily' })).toBe('no prior activity');
   });
 
   it('formats deltas and resolves the plotted metric', () => {
@@ -305,7 +332,7 @@ describe('labels and empty states', () => {
     });
     expect(historyEmptyState({ ...zero, hasAnyHistory: true })).toEqual({
       empty: true,
-      message: 'No activity this week.',
+      message: 'No finished sessions in the last 7 days.',
       showImport: false,
     });
     expect(

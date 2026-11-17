@@ -333,12 +333,17 @@ function delta(current: number, previous: number): number | null {
   return (current - previous) / previous;
 }
 
-/** Summary tiles with deltas versus the previous period (null deltas when there is none). */
+/**
+ * Summary tiles with deltas versus the previous period (null deltas when
+ * there is none). A period still in progress compares against the same
+ * stretch of the previous one (`comparableSlots`): today at 10:00 against
+ * yesterday until 10:59, not all of yesterday.
+ */
 export function computeHistoryTiles(summary: HistoricalSummary): HistoryTiles {
   const current = totalsOf(summary.dataPoints);
   const previous = summary.previousPeriod ?? [];
   if (previous.length === 0) return { ...current, deltas: null };
-  const before = totalsOf(previous);
+  const before = totalsOf(previous.slice(0, summary.comparableSlots ?? previous.length));
   return {
     ...current,
     deltas: {
@@ -377,11 +382,13 @@ export interface HistoryEmptyState {
   showImport: boolean;
 }
 
+// History records sessions when they end, so the copy says "finished": a
+// session running all morning is not in it yet (see the live note).
 const EMPTY_RANGE_TEXT: Record<HistoricalRange, string> = {
-  today: 'No activity today yet.',
-  week: 'No activity this week.',
-  month: 'No activity this month.',
-  all: 'No activity recorded.',
+  today: 'No finished sessions today.',
+  week: 'No finished sessions in the last 7 days.',
+  month: 'No finished sessions this month.',
+  all: 'No finished sessions recorded.',
 };
 
 /**
@@ -416,6 +423,25 @@ export function formatDelta(value: number | null): string {
   const pct = Math.round(value * 100);
   if (pct === 0) return '0%';
   return `${pct > 0 ? '+' : '−'}${Math.abs(pct)}%`;
+}
+
+/**
+ * A tile's delta line: `+12% vs same time yesterday` for a partial day,
+ * `vs same point last month` for a partial month, `vs previous` otherwise,
+ * and `no prior activity` when the previous stretch had nothing.
+ */
+export function deltaText(
+  value: number | null,
+  summary: Pick<HistoricalSummary, 'comparableSlots' | 'granularity'>,
+): string {
+  if (value === null) return 'no prior activity';
+  const versus =
+    summary.comparableSlots === undefined
+      ? 'vs previous'
+      : summary.granularity === 'hourly'
+        ? 'vs same time yesterday'
+        : 'vs same point last month';
+  return `${formatDelta(value)} ${versus}`;
 }
 
 // ── DOM binding ──────────────────────────────────────────────────────────
@@ -620,7 +646,7 @@ export function createHistoryView(doc: Document): HistoryView {
           deltaEl.className = 'stat-delta';
           continue;
         }
-        deltaEl.textContent = `${formatDelta(d)} vs previous`;
+        deltaEl.textContent = deltaText(d, summary);
         deltaEl.className = `stat-delta ${d === null ? 'neutral' : d > 0 ? 'up' : d < 0 ? 'down' : 'neutral'}`;
       }
     },

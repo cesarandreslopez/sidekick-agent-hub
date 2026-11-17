@@ -1637,3 +1637,59 @@ describe('DashboardViewProvider Event Log checkbox', () => {
     provider.dispose();
   });
 });
+
+describe('DashboardViewProvider History after a session ends', () => {
+  it('re-sends History and Plan History so the ended session shows without a reload', () => {
+    const history = {
+      getDailyData: vi.fn(() => []),
+      getHourlyData: vi.fn(() => []),
+      getMonthlyData: vi.fn(() => []),
+      getAllTimeStats: vi.fn(() => ({ firstDate: '', lastDate: '' })),
+      getSessionRecords: vi.fn(() => []),
+      getQualityTrend: vi.fn(() => null),
+      getLatestSessionRecord: vi.fn(() => null),
+    };
+    const monitor = makeSessionMonitor();
+    monitor.getStats.mockReturnValue({ ...liveStatsView(), lastUpdated: new Date() } as never);
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+      undefined,
+      history as never,
+    );
+    provider.setPlanPersistenceService({
+      getPlans: () => [
+        {
+          title: 'Ship it',
+          status: 'completed',
+          completionRate: 1,
+          createdAt: new Date().toISOString(),
+          source: 'claude-code',
+          steps: [],
+        },
+      ],
+    } as never);
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    const host = provider as unknown as {
+      _handleSessionEnd(): void;
+      _handleDashboardWebviewMessage(message: unknown): void;
+    };
+    const count = (type: string) =>
+      postMessage.mock.calls.filter((call) => call[0].type === type).length;
+
+    // History never opened: only Plan History is refreshed.
+    host._handleSessionEnd();
+    expect(count('updatePlanHistory')).toBe(1);
+    expect(count('updateHistoricalData')).toBe(0);
+
+    host._handleDashboardWebviewMessage({ type: 'requestHistoricalData', range: 'today' });
+    expect(count('updateHistoricalData')).toBe(1);
+    host._handleSessionEnd();
+    expect(count('updateHistoricalData')).toBe(2);
+    expect(
+      postMessage.mock.calls.filter((c) => c[0].type === 'updateHistoricalData').pop()![0],
+    ).toMatchObject({ data: { range: 'today' } });
+    provider.dispose();
+  });
+});
