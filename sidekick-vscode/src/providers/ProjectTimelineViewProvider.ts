@@ -182,10 +182,19 @@ export class ProjectTimelineViewProvider implements vscode.WebviewViewProvider, 
     return this._dataService;
   }
 
-  /** Tick: re-send only when the attached session's Live/Viewing changed. */
+  /**
+   * Tick: re-send when the attached session's Live/Viewing changed, or when
+   * the provider switched with no session attached (no session event fires
+   * then, and a scan the switch abandoned would leave "Loading" up).
+   */
   private _checkLiveness(): void {
     if (!this._view?.visible) return;
-    if (getSessionLiveness(this._sessionMonitor) !== this._postedLiveness) this._sendTimeline();
+    if (
+      this._sessionMonitor.getProvider() !== this._dataProvider ||
+      getSessionLiveness(this._sessionMonitor) !== this._postedLiveness
+    ) {
+      this._sendTimeline();
+    }
   }
 
   private _sendTimeline(): void {

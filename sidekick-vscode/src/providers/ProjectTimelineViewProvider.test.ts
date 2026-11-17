@@ -209,6 +209,24 @@ describe('ProjectTimelineViewProvider lifecycle', () => {
     provider.dispose();
   });
 
+  it('rescans on the next tick after a provider switch with no session attached', async () => {
+    const sessionMonitor = monitor();
+    const provider = new ProjectTimelineViewProvider({} as never, sessionMonitor as never);
+    const { view, hooks, postMessage } = fakeView(true);
+    provider.resolveWebviewView(view as never, {} as never, {} as never);
+    hooks.message!({ type: 'ready' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(posted(postMessage, 'updateTimeline')).toHaveLength(1);
+
+    // No session event fires for this switch; only the tick can notice it.
+    const codex = { name: 'codex' };
+    sessionMonitor.setProvider(codex);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mocks.constructedWith.at(-1)).toBe(codex);
+    expect(posted(postMessage, 'updateTimeline')).toHaveLength(2);
+    provider.dispose();
+  });
+
   it('re-sends the timeline when the attached session decays from Live to Viewing', async () => {
     const sessionMonitor = monitor();
     const provider = new ProjectTimelineViewProvider({} as never, sessionMonitor as never);
