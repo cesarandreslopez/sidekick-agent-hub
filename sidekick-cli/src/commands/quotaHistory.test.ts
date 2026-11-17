@@ -3,7 +3,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import chalk from 'chalk';
-import { bucketForUtilization, renderProviderHeatmap } from './quotaHistory';
+import {
+  bucketForUtilization,
+  clampWeeks,
+  parseWindow,
+  renderProviderHeatmap,
+} from './quotaHistory';
 import {
   appendQuotaHistorySample,
   getWorkspaceIdFromPath,
@@ -29,6 +34,23 @@ describe('bucketForUtilization', () => {
     expect(bucketForUtilization(40)).toBe(2);
     expect(bucketForUtilization(60)).toBe(3);
     expect(bucketForUtilization(90)).toBe(4);
+  });
+});
+
+describe('quota history options', () => {
+  it('keeps the window aliases and rejects unknown windows', () => {
+    expect(parseWindow(undefined)).toBe('5h');
+    expect(parseWindow('Weekly')).toBe('7d');
+    expect(parseWindow('seven-day')).toBe('7d');
+    expect(parseWindow('both')).toBe('max');
+    expect(() => parseWindow('1h')).toThrow('Use 5h, 7d, or max');
+  });
+
+  it('clamps numeric weeks and rejects anything else', () => {
+    expect(clampWeeks(undefined)).toBe(13);
+    expect(clampWeeks('0')).toBe(1);
+    expect(clampWeeks('40')).toBe(26);
+    expect(() => clampWeeks('abc')).toThrow('not a number of weeks');
   });
 });
 
@@ -145,6 +167,36 @@ describe('quotaHistoryAction end-to-end', () => {
     expect(
       parsed.providers.claude.cells.some((c: { utilization: number }) => c.utilization === 60),
     ).toBe(true);
+  });
+
+  it('says the window is empty, not the history, when older samples exist', async () => {
+    await appendQuotaHistorySample(
+      {
+        timestamp: new Date(Date.now() - 60 * 86_400_000).toISOString(),
+        runtimeProvider: 'claude',
+        providerId: 'claude-1',
+        workspaceId: getWorkspaceIdFromPath(workspacePath),
+        fiveHour: { utilization: 60, resetsAt: 'x' },
+        sevenDay: { utilization: 45, resetsAt: 'x' },
+        available: true,
+      } satisfies QuotaHistorySample,
+      { minIntervalMs: 0 },
+    );
+    const { quotaHistoryAction } = await import('./quotaHistory');
+    await quotaHistoryAction({}, makeCmd({ weeks: '4' }));
+    expect(stdoutData).toMatch(/No quota samples in the last 4 weeks/);
+    expect(stdoutData).toMatch(/try --weeks 26/);
+  });
+
+  it('reads the workspace from the global --project', async () => {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), 'sidekick-quota-history-other-'));
+    try {
+      const { quotaHistoryAction } = await import('./quotaHistory');
+      await quotaHistoryAction({}, makeCmd({ weeks: '4' }, { json: true, project: other }));
+      expect(JSON.parse(stdoutData).workspaceId).toBe(getWorkspaceIdFromPath(other));
+    } finally {
+      fs.rmSync(other, { recursive: true, force: true });
+    }
   });
 
   it('reports an empty-history hint when no samples exist for either provider', async () => {

@@ -201,10 +201,18 @@ export async function dumpAction(_opts: Record<string, unknown>, cmd: Command): 
   const sessionId: string | undefined = opts.session;
   // The global --json flag means JSON here too, so `sidekick --json dump` and
   // `sidekick dump --format json` are the same request.
+  if (opts.format === 'jsonl') {
+    provider.dispose();
+    throw new Error('--format jsonl needs --prompts; use json for a single session.');
+  }
   const format: OutputFormat = globalOpts.json ? 'json' : (opts.format as OutputFormat) || 'text';
-  const termWidth: number = opts.width
-    ? parseInt(opts.width as string, 10)
-    : process.stdout.columns || 120;
+  let termWidth: number;
+  try {
+    termWidth = parseLimit(opts.width as string | undefined) ?? (process.stdout.columns || 120);
+  } catch {
+    provider.dispose();
+    throw new Error('--width must be a positive whole number of columns.');
+  }
   const expand: boolean = !!opts.expand;
 
   // Collect all events by replaying through the watcher

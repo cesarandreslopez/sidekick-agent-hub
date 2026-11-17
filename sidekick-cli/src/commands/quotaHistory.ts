@@ -75,9 +75,10 @@ export type QuotaHistoryWindow = '5h' | '7d' | 'max';
 export function parseWindow(value: unknown): QuotaHistoryWindow {
   if (typeof value !== 'string') return '5h';
   const lower = value.toLowerCase();
+  if (lower === '5h' || lower === 'five-hour' || lower === '5-hour') return '5h';
   if (lower === '7d' || lower === 'weekly' || lower === 'seven-day') return '7d';
   if (lower === 'max' || lower === 'both') return 'max';
-  return '5h';
+  throw new Error(`--window ${value} is not a quota window. Use 5h, 7d, or max.`);
 }
 
 export function windowLabel(window: QuotaHistoryWindow): string {
@@ -216,11 +217,22 @@ function parseProviderFilter(value: unknown): QuotaHistoryRuntimeProvider | 'aut
   );
 }
 
-function clampWeeks(value: unknown): number {
-  const parsed =
-    typeof value === 'string' ? Number.parseInt(value, 10) : typeof value === 'number' ? value : 13;
+export function clampWeeks(value: unknown): number {
+  if (value === undefined || value === null) return 13;
+  if (typeof value === 'string' && !/^\d+$/.test(value.trim())) {
+    throw new Error(`--weeks ${value} is not a number of weeks. Use a whole number from 1 to 26.`);
+  }
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
   if (!Number.isFinite(parsed)) return 13;
   return Math.max(1, Math.min(26, parsed));
+}
+
+/** `~/code/app` for a path under the home directory. */
+function displayPath(path: string): string {
+  const home = process.env.HOME;
+  return home && (path === home || path.startsWith(`${home}/`))
+    ? `~${path.slice(home.length)}`
+    : path;
 }
 
 function isDefaultOption(cmd: Command, name: string): boolean {
@@ -263,7 +275,9 @@ export async function quotaHistoryAction(
   const workspacePath =
     typeof localOpts.workspace === 'string' && localOpts.workspace
       ? localOpts.workspace
-      : process.cwd();
+      : typeof globalOpts.project === 'string' && globalOpts.project
+        ? globalOpts.project
+        : process.cwd();
   const workspaceId = getWorkspaceIdFromPath(workspacePath);
 
   const toMs = Date.now();
@@ -329,11 +343,34 @@ export async function quotaHistoryAction(
   const zaiHasData = (payload.providers.zai?.cells ?? []).some((c) => c.samples > 0);
 
   if (providerFilter === 'auto' && !claudeHasData && !codexHasData && !zaiHasData) {
+    // An empty window is not an empty history: say which one it is.
+    const longest = 26;
+    const olderExists =
+      weeks < longest &&
+      (
+        await Promise.all(
+          wanted.map((provider) =>
+            readQuotaHistoryDailyBuckets({
+              workspaceId,
+              provider,
+              from: new Date(toMs - (longest * 7 - 1) * MS_PER_DAY).toISOString(),
+              to,
+            }),
+          ),
+        )
+      ).some((buckets) => buckets.some((bucket) => bucket.samples > 0));
+    const span = `${weeks} week${weeks === 1 ? '' : 's'}`;
     process.stdout.write(
-      chalk.yellow(`No quota history yet for workspace ${chalk.bold(workspaceId)}.`) +
+      chalk.yellow(
+        olderExists
+          ? `No quota samples in the last ${span} for ${chalk.bold(displayPath(workspacePath))}.`
+          : `No quota history yet for ${chalk.bold(displayPath(workspacePath))}.`,
+      ) +
         '\n' +
         chalk.dim(
-          `Run a Claude Max, Codex, or z.ai/OpenCode session in this workspace, or override with --workspace <path>.`,
+          olderExists
+            ? `Older samples exist; try --weeks ${longest}.`
+            : `Run a Claude Max, Codex, or z.ai/OpenCode session in this workspace, or override with --workspace <path>.`,
         ) +
         '\n',
     );
@@ -351,7 +388,7 @@ export async function quotaHistoryAction(
   }
 
   const header = chalk.dim(
-    `workspace ${workspaceId}  ·  ${formatLocalDateKey(fromMs)} → ${formatLocalDateKey(toMs)}  ·  ${windowLabel(window)}` +
+    `${displayPath(workspacePath)}  ·  ${formatLocalDateKey(fromMs)} → ${formatLocalDateKey(toMs)}  ·  ${windowLabel(window)}` +
       (autoWeekly ? ' (no 5-hour limit on this plan; --window 5h to override)' : ''),
   );
   process.stdout.write(`${header}\n${legend()}\n\n${sections.join('\n\n')}\n`);

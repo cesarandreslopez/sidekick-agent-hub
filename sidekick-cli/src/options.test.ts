@@ -5,6 +5,12 @@
 import { describe, it, expect } from 'vitest';
 import { Command, CommanderError, type Option } from 'commander';
 import {
+  contextFidelityOption,
+  dumpFormatOption,
+  noteImportanceOption,
+  noteStatusOption,
+  noteTypeOption,
+  quotaProviderChoice,
   quotaHistoryProviderOption,
   quotaProviderOption,
   reportThemeOption,
@@ -88,5 +94,35 @@ describe('option factories', () => {
   it('tasks status accepts pending/completed/all only', () => {
     expect(parse(tasksStatusOption(), ['--status', 'pending']).status).toBe('pending');
     expect(() => parse(tasksStatusOption(), ['--status', 'done'])).toThrow(CommanderError);
+  });
+
+  it('context fidelity rejects a typo instead of reading every session', () => {
+    expect(parse(contextFidelityOption(), []).fidelity).toBe('full');
+    expect(parse(contextFidelityOption(), ['--fidelity', 'brief']).fidelity).toBe('brief');
+    expect(() => parse(contextFidelityOption(), ['--fidelity', 'bogus'])).toThrow(CommanderError);
+  });
+
+  it('note options accept only the values the store understands', () => {
+    expect(parse(noteTypeOption('tip'), []).type).toBe('tip');
+    expect(parse(noteImportanceOption(), []).importance).toBe('medium');
+    expect(() => parse(noteTypeOption('tip'), ['--type', 'bogus'])).toThrow(CommanderError);
+    expect(() => parse(noteImportanceOption(), ['--importance', 'huge'])).toThrow(CommanderError);
+    expect(() => parse(noteTypeOption(), ['--type', 'nonsense'])).toThrow(CommanderError);
+    expect(() => parse(noteStatusOption(), ['--status', 'weird'])).toThrow(CommanderError);
+    expect(parse(noteTypeOption(), []).type).toBeUndefined();
+  });
+
+  it('dump format rejects unknown formats', () => {
+    expect(() => parse(dumpFormatOption(), ['--format', 'yaml'])).toThrow(CommanderError);
+    expect(parse(dumpFormatOption(), ['--format', 'markdown']).format).toBe('markdown');
+  });
+
+  it('quota names its own providers and points at --all', () => {
+    expect(quotaProviderChoice('zai')).toBe('zai');
+    expect(quotaProviderChoice(undefined)).toBeUndefined();
+    expect(() => quotaProviderChoice('claude')).toThrow(
+      /claude-code, opencode, codex, zai, or auto/,
+    );
+    expect(() => quotaProviderChoice('all')).toThrow('or --all for every provider');
   });
 });

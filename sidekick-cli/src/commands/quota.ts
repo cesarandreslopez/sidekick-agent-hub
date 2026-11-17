@@ -22,6 +22,7 @@ import {
 } from 'sidekick-shared';
 import type { PeakHoursState, ResolvedActiveAccount, ResolvedQuota } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import { quotaProviderChoice } from '../options';
 import { formatPeakHoursLine } from './peakHoursRender';
 
 const ZAI_ROUTING_PROVIDER_IDS = ['zai', 'zai-coding-plan'] as const;
@@ -223,6 +224,7 @@ export async function quotaAction(_opts: Record<string, unknown>, cmd: Command):
 
   // Local --provider overrides the global one
   const providerOpts = localOpts.provider ? { provider: localOpts.provider } : globalOpts;
+  quotaProviderChoice(providerOpts.provider);
 
   // z.ai is an inference-routing target, not a session provider. Short-circuit
   // before resolveProvider() so the user doesn't need --provider opencode.

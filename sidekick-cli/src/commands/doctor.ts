@@ -6,6 +6,7 @@ import {
   type HealthReport,
   type ProviderId,
 } from 'sidekick-shared';
+import { sessionProviderChoice } from '../options';
 import { pricingHealthCheck } from '../pricingBasis';
 
 /**
@@ -25,9 +26,11 @@ export function withPricingCheck(
 
 export async function doctorAction(_opts: Record<string, unknown>, cmd: Command): Promise<void> {
   const globalOpts = cmd.parent!.opts();
+  // Doctor checks session sources, so only a session provider makes sense.
+  const provider = sessionProviderChoice(globalOpts.provider || undefined);
   const report = withPricingCheck(
     await runDoctor({
-      provider: globalOpts.provider as ProviderId | 'auto' | undefined,
+      provider: provider as ProviderId | 'auto' | undefined,
       cwd: (globalOpts.project as string | undefined) || process.cwd(),
     }),
   );

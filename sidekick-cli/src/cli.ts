@@ -1,6 +1,6 @@
 declare const __CLI_VERSION__: string;
 
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import chalk from 'chalk';
 import {
   BLOCKS_EXAMPLES,
@@ -17,15 +17,21 @@ import { firstCommandToken } from './argvScan';
 import { isOfflineRun, needsFullStartup, runStartupSideEffects } from './startup';
 import { shouldRunUpdateNotice, startUpdateNotice, type UpdateNoticeHandle } from './updateCheck';
 import {
+  contextFidelityOption,
+  dumpFormatOption,
   mapFormatOption,
   mapLabelsOption,
   mapMotionOption,
   mapThemeOption,
+  noteImportanceOption,
+  noteStatusOption,
+  noteTypeOption,
   quotaHistoryProviderOption,
   quotaProviderOption,
   reportThemeOption,
   rootProviderOption,
   sessionProviderChoice,
+  sessionProviderOption,
   tasksStatusOption,
 } from './options';
 import { detectProvider } from 'sidekick-shared';
@@ -165,10 +171,7 @@ const dumpCmd = new Command('dump')
   .option('--session <id>', 'Target a specific session (default: most recent)')
   .option('--width <cols>', 'Terminal width for text output (default: auto-detect)')
   .option('--expand', 'Show all events including noise')
-  .option(
-    '--format <fmt>',
-    'Output format: text, json, markdown (default: text); jsonl too with --prompts',
-  )
+  .addOption(dumpFormatOption())
   .option('--prompts', 'Dump every human prompt grouped by session (Claude Code and Codex)')
   .option('--all', 'With --prompts, every session of this project and its worktrees')
   .option(
@@ -205,7 +208,7 @@ program.addCommand(historyCmd);
 // Context command — composite project context (tasks + decisions + notes + handoff)
 const ctxCmd = new Command('context')
   .description('Output composite project context: tasks, decisions, notes, and handoff')
-  .option('--fidelity <level>', 'Detail level: full, compact, brief (default: full)')
+  .addOption(contextFidelityOption())
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { contextAction } = await import('./commands/context');
     return contextAction(_opts, cmd);
@@ -314,8 +317,8 @@ program.addCommand(decisionsCmd);
 const notesCmd = new Command('notes')
   .description('List knowledge notes (gotchas, patterns, tips) for the current project')
   .option('--file <path>', 'Filter notes by file path')
-  .option('--type <type>', 'Filter by type: gotcha, pattern, guideline, tip')
-  .option('--status <status>', 'Filter by status: active, needs_review, stale, obsolete')
+  .addOption(noteTypeOption())
+  .addOption(noteStatusOption())
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { notesAction } = await import('./commands/notes');
     return notesAction(_opts, cmd);
@@ -329,8 +332,8 @@ noteCmd
   .argument('<content>', 'Note content')
   .option('--file <path>', 'Related project file', '.')
   .option('--title <title>', 'Short note title')
-  .option('--type <type>', 'gotcha, pattern, guideline, or tip', 'tip')
-  .option('--importance <level>', 'critical, high, medium, or low', 'medium')
+  .addOption(noteTypeOption('tip'))
+  .addOption(noteImportanceOption())
   .option('--tags <tags>', 'Comma-separated tags')
   .action(async (content: string, _opts: Record<string, unknown>, cmd: Command) => {
     const { noteAddAction } = await import('./commands/capture');
@@ -394,8 +397,10 @@ program.addCommand(statsCmd);
 // Blocks command — five-hour billing blocks from session logs
 const blocksCmd = new Command('blocks')
   .description('Show five-hour billing blocks computed from session logs')
-  .option('--active', 'Only the block that is open right now')
-  .option('--recent', 'Blocks from the last three days (default)')
+  .addOption(
+    new Option('--active', 'Only the block that is open right now').conflicts(['since', 'recent']),
+  )
+  .addOption(new Option('--recent', 'Blocks from the last three days (default)').conflicts('since'))
   .option(
     '--since <time>',
     'Blocks since an ISO date, YYYY-MM-DD, or a relative window such as 7d or 24h',
@@ -491,13 +496,12 @@ const quotaCmd = new Command('quota')
 quotaCmd
   .command('history')
   .description('Render a 13-week heatmap of quota utilization for the current workspace')
-  .option('--weeks <n>', 'Weeks of history to render (default: 13, clamped 1-26)', '13')
+  .option('--weeks <n>', 'Weeks of history to render, 1-26 (default: 13)')
   .addOption(quotaHistoryProviderOption())
   .option('--workspace <path>', 'Workspace path used to derive the history scope (default: cwd)')
   .option(
     '--window <window>',
     'Which limit the heatmap shows: 5h (default; 7d on plans without a 5-hour limit), 7d, or max',
-    '5h',
   )
   .option('--csv', 'Print the daily buckets as CSV instead of a heatmap')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
@@ -527,7 +531,7 @@ program.addCommand(statuslineCmd);
 // Peak command — one-shot Claude peak-hours check (promoclock.co)
 const peakCmd = new Command('peak')
   .description('Show whether Claude is currently in peak hours (faster session-limit drain)')
-  .addOption(rootProviderOption())
+  .addOption(sessionProviderOption())
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { peakAction } = await import('./commands/peak');
     return peakAction(_opts, cmd);

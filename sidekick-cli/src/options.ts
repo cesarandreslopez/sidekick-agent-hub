@@ -49,18 +49,42 @@ export function sessionProviderChoice(value: unknown): SessionProviderChoice | u
     return value as SessionProviderChoice;
   }
   throw new Error(
-    `--provider ${String(value)} is not a session provider for this command. Use claude-code, opencode, codex, or auto.`,
+    `--provider ${String(value)} is not a session provider for this command. Use ${listChoices(SESSION_PROVIDER_CHOICES)}.`,
   );
+}
+
+/** `a, b, c, or d`. */
+export function listChoices(values: readonly string[]): string {
+  if (values.length <= 1) return values.join('');
+  return `${values.slice(0, -1).join(', ')}, or ${values[values.length - 1]}`;
+}
+
+/** Providers `sidekick quota` reports on: the session providers plus quota-only zai. */
+export const QUOTA_PROVIDER_CHOICES = ['claude-code', 'opencode', 'codex', 'zai', 'auto'] as const;
+
+/** The value `sidekick quota --provider` was given, or an error naming what it accepts. */
+export function quotaProviderChoice(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'string' && (QUOTA_PROVIDER_CHOICES as readonly string[]).includes(value)) {
+    return value;
+  }
+  throw new Error(
+    `--provider ${String(value)} is not a quota provider. Use ${listChoices(QUOTA_PROVIDER_CHOICES)}${value === 'all' ? ', or --all for every provider' : ' (--all shows every provider)'}.`,
+  );
+}
+
+/** `sidekick peak --provider`: session providers only (help text; the root option parses it). */
+export function sessionProviderOption(): Option {
+  return new Option(
+    '--provider <id>',
+    `Session provider: ${listChoices(SESSION_PROVIDER_CHOICES)} (default: auto)`,
+  ).choices([...SESSION_PROVIDER_CHOICES]);
 }
 
 /** Quota provider: adds zai, which is quota-only. */
 export function quotaProviderOption(): Option {
   return new Option('--provider <id>', 'Provider to inspect (default: auto)').choices([
-    'claude-code',
-    'opencode',
-    'codex',
-    'zai',
-    'auto',
+    ...QUOTA_PROVIDER_CHOICES,
   ]);
 }
 
@@ -118,4 +142,41 @@ export function tasksStatusOption(): Option {
     'completed',
     'all',
   ]);
+}
+
+/** `sidekick context --fidelity`. */
+export function contextFidelityOption(): Option {
+  return new Option('--fidelity <level>', 'Detail level')
+    .choices(['full', 'compact', 'brief'])
+    .default('full');
+}
+
+export const NOTE_TYPES = ['gotcha', 'pattern', 'guideline', 'tip'] as const;
+export const NOTE_IMPORTANCE = ['critical', 'high', 'medium', 'low'] as const;
+export const NOTE_STATUSES = ['active', 'needs_review', 'stale', 'obsolete'] as const;
+
+/** Knowledge-note type, for filtering (`notes`) or for a new note (`note add`, default tip). */
+export function noteTypeOption(defaultValue?: string): Option {
+  const option = new Option('--type <type>', defaultValue ? 'Note type' : 'Filter by type').choices(
+    [...NOTE_TYPES],
+  );
+  return defaultValue ? option.default(defaultValue) : option;
+}
+
+export function noteImportanceOption(): Option {
+  return new Option('--importance <level>', 'How much the note matters')
+    .choices([...NOTE_IMPORTANCE])
+    .default('medium');
+}
+
+export function noteStatusOption(): Option {
+  return new Option('--status <status>', 'Filter by status').choices([...NOTE_STATUSES]);
+}
+
+/** `sidekick dump --format`; jsonl is only valid with --prompts (checked by the command). */
+export function dumpFormatOption(): Option {
+  return new Option(
+    '--format <fmt>',
+    'Output format (default: text); jsonl only with --prompts',
+  ).choices(['text', 'json', 'markdown', 'jsonl']);
 }
