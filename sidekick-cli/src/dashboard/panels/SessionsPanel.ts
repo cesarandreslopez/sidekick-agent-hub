@@ -77,7 +77,7 @@ import {
   TOKEN_TOTAL_LABEL,
 } from 'sidekick-shared';
 import { localDateOnlyTimestamp } from '../dateFilterExpression';
-import { truncateTagged } from '../blessedText';
+import { truncateTagged, wrapTaggedLines } from '../blessedText';
 
 type MindMapView = 'tree' | 'boxed' | 'flow';
 type MindMapFilter =
@@ -945,18 +945,15 @@ export class SessionsPanel implements SidePanel {
         (a.isParallel && a.status === 'completed' ? ' {magenta-fg}(parallel){/magenta-fg}' : '') +
         stateFlag;
 
-      // Compute available width for description, accounting for suffix on first line
-      const prefixVisible = 2 + visibleLength(a.subagentType) + 1; // "icon type "
-      const suffixVisible = visibleLength(durationSuffix) + visibleLength(parallelFlag);
-      const descWidth = Math.max(20, w - prefixVisible - suffixVisible);
-      const indent = ' '.repeat(prefixVisible);
-      const wrapped = wordWrap(a.description, descWidth, indent);
-      const firstLine = wrapped.split('\n')[0];
-      const restLines = wrapped.split('\n').slice(1);
-      lines.push(
-        `${icon} {magenta-fg}${a.subagentType}{/magenta-fg} ${firstLine}${durationSuffix}${parallelFlag}`,
+      const prefix = `${icon} {magenta-fg}${a.subagentType}{/magenta-fg} `;
+      const suffix = `${durationSuffix}${parallelFlag}`;
+      const [first, ...rest] = hangingWrap(
+        a.description,
+        w,
+        visibleLength(prefix),
+        visibleLength(suffix),
       );
-      for (const rl of restLines) lines.push(rl);
+      lines.push(`${prefix}${first}${suffix}`, ...rest);
     }
 
     // Cross-reference: tasks created by subagents
@@ -966,16 +963,52 @@ export class SessionsPanel implements SidePanel {
       for (const t of subagentTasks) {
         const statusIcon =
           t.status === 'completed' ? '\u2713' : t.status === 'in_progress' ? '\u2192' : '\u25CB';
-        const taskPrefix = `  ${statusIcon} ${t.subagentType} #${t.taskId}: `;
-        const taskIndent = ' '.repeat(taskPrefix.length);
-        lines.push(
-          `  ${statusIcon} {magenta-fg}${t.subagentType}{/magenta-fg} #${t.taskId}: ${wordWrap(t.subject, w - taskPrefix.length, taskIndent)}`,
-        );
+        const prefix = `  ${statusIcon} {magenta-fg}${t.subagentType}{/magenta-fg} #${shortTaskId(t.taskId)}: `;
+        const [first, ...rest] = hangingWrap(t.subject, w, visibleLength(prefix));
+        lines.push(`${prefix}${first}`, ...rest);
       }
     }
 
     return lines.join('\n');
   }
+}
+
+/** Below this many columns after a prefix, text moves to rows of its own. */
+const MIN_HANGING_TEXT_WIDTH = 16;
+const OWN_ROW_INDENT = '    ';
+
+/**
+ * Wrap `text` to follow a `prefixWidth`-column prefix: the first row also
+ * leaves `firstRowReserve` columns for a suffix, and the rest hang under the
+ * text at the full remaining width. When a long prefix (a subagent task id)
+ * leaves too little room, the text starts on its own indented row instead;
+ * wrapping it into the sliver left over produced one character per row.
+ * The first entry is what follows the prefix ('' when the text moved down).
+ */
+function hangingWrap(
+  text: string,
+  width: number,
+  prefixWidth: number,
+  firstRowReserve = 0,
+): string[] {
+  const textWidth = width - prefixWidth;
+  if (textWidth - firstRowReserve < MIN_HANGING_TEXT_WIDTH) {
+    const rows = wrapTaggedLines(text, Math.max(1, width - OWN_ROW_INDENT.length));
+    return ['', ...rows.map((row) => OWN_ROW_INDENT + row)];
+  }
+  const [first = '', ...rest] = wrapTaggedLines(text, textWidth - firstRowReserve);
+  if (rest.length === 0) return [first];
+  const indent = ' '.repeat(prefixWidth);
+  return [first, ...wrapTaggedLines(rest.join(' '), textWidth).map((row) => indent + row)];
+}
+
+/**
+ * A task id short enough to read: Claude's subagent tasks carry the tool-use
+ * id (`agent-toolu_01AaF9aPPWXcsumffvSpkwbo`), which alone filled the row.
+ */
+function shortTaskId(taskId: string): string {
+  const bare = taskId.replace(/^agent-/, '').replace(/^toolu_/, '');
+  return bare.length > 8 ? bare.slice(-6) : bare;
 }
 
 // ── Helpers ──

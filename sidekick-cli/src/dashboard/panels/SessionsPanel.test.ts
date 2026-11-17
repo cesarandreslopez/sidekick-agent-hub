@@ -247,6 +247,51 @@ describe('SessionsPanel narrative retry hint', () => {
   });
 });
 
+describe('SessionsPanel Agents tab', () => {
+  const stripTags = (line: string) => line.replace(/\{[^}]*\}/g, '');
+
+  it('keeps subagent tasks and descriptions readable at a narrow width', () => {
+    const panel = new SessionsPanel();
+    const base = metricsWithTasks();
+    const metrics = {
+      ...base,
+      subagents: [
+        {
+          id: 'a1',
+          subagentType: 'general-purpose',
+          description:
+            'Survey the knowledge builder and the sidekick usage reports for every place they disagree',
+          status: 'completed',
+          durationMs: 61_000,
+        },
+      ],
+      tasks: [
+        {
+          taskId: 'agent-toolu_01AaF9aPPWXcsumffvSpkwbo',
+          subject: 'Survey the repository layout and summarise the build scripts',
+          status: 'completed',
+          subagentType: 'general-purpose',
+        },
+      ],
+    } as unknown as DashboardMetrics;
+    const item: PanelItem = { id: 'active', label: 's', sortKey: 0, data: { type: 'active' } };
+    const out = panel.detailTabs[5].render(item, metrics, { width: 52 } as never);
+    const lines = out.split('\n');
+
+    // The prefix used to leave a width of 1, so the subject came out one
+    // character per row (about 940 rows for one session).
+    expect(lines.length).toBeLessThan(20);
+    expect(lines.some((line) => /^\s*\S\s*$/.test(stripTags(line)))).toBe(false);
+    for (const line of lines) expect(stripTags(line).length).toBeLessThanOrEqual(52);
+    // The tool-use id is shortened for display.
+    expect(out).toContain('#Spkwbo:');
+    expect(out).not.toContain('agent-toolu_');
+    // Words stay whole: no "kn" / "owledge" split.
+    expect(out).toContain('knowledge');
+    panel.dispose?.();
+  });
+});
+
 describe('SessionsPanel narrative ownership', () => {
   function setup(reply: { text: string; error?: string }) {
     const panel = new SessionsPanel();
