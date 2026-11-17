@@ -7,10 +7,13 @@ import {
   effectiveMetric,
   formatAxisValue,
   formatDelta,
+  formatPointValue,
   formatTooltipLabel,
+  historyChartLabel,
   historyEmptyState,
   historyRequest,
   isStackable,
+  pointName,
   pointValue,
   seriesFallbackNote,
 } from './history';
@@ -124,6 +127,27 @@ describe('tiles and requests', () => {
       comparableSlots: 11,
     });
     expect(partial.deltas?.tokens).toBeCloseTo(0);
+  });
+
+  it('names the chart and its points for screen readers', () => {
+    const fmt = (v: number) => `$${v.toFixed(2)}`;
+    expect(historyChartLabel(base, 'tokens', fmt)).toBe(
+      'Tokens per day, last 7 days: total 400 tokens, peak Tue 300 tokens',
+    );
+    expect(historyChartLabel({ ...base, dataPoints: [point('Mon', 0)] }, 'tokens', fmt)).toBe(
+      'Tokens per day, last 7 days: no activity',
+    );
+    expect(
+      historyChartLabel(
+        { ...base, granularity: 'hourly', drill: { depth: 1, label: 'Tue, Nov 3 · hourly' } },
+        'cost',
+        fmt,
+      ),
+    ).toBe('Cost per hour, Tue, Nov 3 · hourly: total $0.40, peak Tue $0.30');
+    expect(pointName({ ...point('3', 1), timestamp: '2026-11-03' })).toBe('Tue, Nov 3');
+    expect(pointName(point('9AM', 1))).toBe('9AM');
+    expect(formatPointValue('messages', 1, fmt)).toBe('1 message');
+    expect(formatPointValue('calls', 3, fmt)).toBe('3 tool calls');
   });
 
   it('says what a delta compares against', () => {

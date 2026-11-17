@@ -555,6 +555,12 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
       }
 
       function updateHistoryChart(data) {
+        // Where keyboard focus is before the redraw: a drill from the points
+        // list moves it to Back, and Back to the top level moves it to the range.
+        const historyPointsEl = document.getElementById('history-points');
+        const focusInPoints = Boolean(historyPointsEl && historyPointsEl.contains(document.activeElement));
+        const focusInBreadcrumb = Boolean(drillBreadcrumb && drillBreadcrumb.contains(document.activeElement));
+        const previousDepth = currentHistoryData && currentHistoryData.drill ? currentHistoryData.drill.depth : 0;
         currentHistoryData = data;
 
         if (!historyChart) {
@@ -572,6 +578,13 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
           const drill = data.drill;
           drillBreadcrumb.hidden = !drill;
           if (drillLabel) drillLabel.textContent = drill ? drill.label : '';
+          const depth = drill ? drill.depth : 0;
+          if (depth > previousDepth && focusInPoints && drillUpBtn) {
+            drillUpBtn.focus({ preventScroll: true });
+          } else if (!drill && focusInBreadcrumb) {
+            const activeRangeBtn = document.querySelector('.range-selector .range-btn.active');
+            if (activeRangeBtn) activeRangeBtn.focus({ preventScroll: true });
+          }
         }
 
         const qualitySection = document.getElementById('quality-trend-section');
@@ -1670,6 +1683,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         if (!canvas || !window.Chart) return;
 
         const labels = turns.map(function(t) { return '#' + t.turnIndex; });
+        canvas.setAttribute('aria-label', 'Tokens per turn by category, ' + plural(turns.length, 'turn'));
 
         // Build datasets per category
         const categoryMap = {};
@@ -1759,6 +1773,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
         const labels = waterfall.points.map(function(p) { return '#' + p.turnIndex; });
         const data = waterfall.points.map(function(p) { return p.tokens; });
+        canvas.setAttribute('aria-label', 'Context size over ' + plural(waterfall.points.length, 'turn') + ', peak ' + compactNumber(Math.max.apply(null, data)) + ' tokens');
 
         // Build compaction annotation lines
         const compactionIndices = [];
@@ -2410,6 +2425,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             var top = tf.slice(0, 10);
             var tfLabels = top.map(function(t) { return t.name; });
             var tfData = top.map(function(t) { return t.count; });
+            var tfCanvas = document.getElementById('toolFreqChart');
+            if (tfCanvas) tfCanvas.setAttribute('aria-label', 'Calls per tool: ' + top.slice(0, 5).map(function(t) { return t.name + ' ' + t.count; }).join(', '));
 
             if (toolFreqChart) {
               toolFreqChart.data.labels = tfLabels;
@@ -2476,6 +2493,8 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             var topWords = wf;
             var wLabels = topWords.map(function(w) { return w.name; });
             var wData = topWords.map(function(w) { return w.count; });
+            var wCanvas = document.getElementById('eventDistChart');
+            if (wCanvas) wCanvas.setAttribute('aria-label', 'Frequent words in event summaries: ' + wLabels.join(', '));
             var wColors = chartPalette(0.7);
 
             if (eventDistChart) {

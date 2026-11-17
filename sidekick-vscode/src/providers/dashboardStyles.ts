@@ -3146,6 +3146,40 @@ export const DASHBOARD_STYLES = `
       color: var(--vscode-descriptionForeground);
       margin: 0 0 12px;
     }
+    /* The chart's points as text: hidden until a keyboard user tabs into it
+       (screen readers read it either way). */
+    .history-points:not(:focus-within) {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+    .history-points ul {
+      list-style: none;
+      margin: 0 0 12px;
+      padding: 0;
+      display: grid;
+      gap: 2px;
+      font-size: 11px;
+    }
+    .history-points li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .history-point-drill {
+      font-size: 11px;
+      padding: 1px 6px;
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+      border: none;
+      border-radius: 2px;
+      cursor: pointer;
+    }
     .history-chart.empty { display: none; }
 
     /* Attached to a past (not live) session: neutral pill with a hollow dot */

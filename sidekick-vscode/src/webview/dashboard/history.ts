@@ -16,7 +16,8 @@ import type {
   HistoricalSummary,
 } from '../../types/dashboard';
 import { modelLabel, unpricedNote } from './cost';
-import { axisCost, compactNumber, exactNumber } from './format';
+import { captureFocus, restoreFocus } from './focus';
+import { axisCost, compactNumber, exactNumber, plural } from './format';
 
 export type HistoryMetric = 'tokens' | 'cost' | 'messages';
 /** The value actually plotted: tool series always plot calls. */
@@ -444,6 +445,122 @@ export function deltaText(
   return `${formatDelta(value)} ${versus}`;
 }
 
+// ── Text alternative to the chart ────────────────────────────────────────
+
+export const POINTS_ID = 'history-points';
+
+const RANGE_NAMES: Record<HistoricalRange, string> = {
+  today: 'today',
+  week: 'last 7 days',
+  month: 'this month',
+  all: 'all time',
+};
+
+const SLOT_NAMES: Record<HistoricalSummary['granularity'], string> = {
+  hourly: 'hour',
+  daily: 'day',
+  monthly: 'month',
+};
+
+/** Day and month bars drill down; an hourly view is the deepest level. */
+export function historyCanDrill(summary: Pick<HistoricalSummary, 'granularity'>): boolean {
+  return summary.granularity !== 'hourly';
+}
+
+/** A readable name for a slot: `Mon, Nov 3` for a day; the chart label otherwise. */
+export function pointName(point: HistoricalDataPoint): string {
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(point.timestamp);
+  if (!day) return point.label;
+  return new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+/** `1.2M tokens`, `$3.40`, `12 messages`, `8 tool calls`. */
+export function formatPointValue(
+  metric: HistoryValueMetric,
+  value: number,
+  formatCost: (value: number) => string,
+): string {
+  switch (metric) {
+    case 'cost':
+      return formatCost(value);
+    case 'messages':
+      return plural(Math.round(value), 'message');
+    case 'calls':
+      return plural(Math.round(value), 'tool call');
+    default:
+      return `${compactNumber(value)} tokens`;
+  }
+}
+
+/**
+ * The chart's accessible name: what it plots, over which period, the total,
+ * and the busiest slot (`Tokens per day, last 7 days: total 4.1M, peak Tue,
+ * Nov 3 1.2M tokens`).
+ */
+export function historyChartLabel(
+  summary: HistoricalSummary,
+  metric: HistoryValueMetric,
+  formatCost: (value: number) => string,
+): string {
+  const scope = summary.drill?.label ?? RANGE_NAMES[summary.range];
+  const head = `${METRIC_LABELS[metric]} per ${SLOT_NAMES[summary.granularity]}, ${scope}`;
+  const values = summary.dataPoints.map((p) => pointValue(p, metric));
+  const total = values.reduce((sum, v) => sum + v, 0);
+  if (!(total > 0)) return `${head}: no activity`;
+  const peakIndex = values.indexOf(Math.max(...values));
+  const peak = summary.dataPoints[peakIndex];
+  return (
+    `${head}: total ${formatPointValue(metric, total, formatCost)}, ` +
+    `peak ${pointName(peak)} ${formatPointValue(metric, values[peakIndex], formatCost)}`
+  );
+}
+
+/**
+ * The chart's points as a list: read by screen readers, and shown when a
+ * keyboard user tabs into it, with a drill-down button per day or month
+ * (the chart's own drill-down is a mouse click on a bar).
+ */
+export function renderHistoryPoints(
+  container: HTMLElement,
+  summary: HistoricalSummary,
+  metric: HistoryValueMetric,
+  formatCost: (value: number) => string,
+): void {
+  const doc = container.ownerDocument;
+  const focus = captureFocus(container, 'data-point');
+  container.replaceChildren();
+  const active = summary.dataPoints.filter((p) => !pointIsEmpty(p));
+  if (active.length === 0) return;
+  const canDrill = historyCanDrill(summary);
+  const action = summary.granularity === 'monthly' ? 'Show days' : 'Show hours';
+  const list = doc.createElement('ul');
+  list.setAttribute('aria-label', historyChartLabel(summary, metric, formatCost));
+  for (const point of active) {
+    const item = doc.createElement('li');
+    item.setAttribute('data-point', point.timestamp);
+    const text = doc.createElement('span');
+    const name = pointName(point);
+    text.textContent = `${name}: ${formatPointValue(metric, pointValue(point, metric), formatCost)}`;
+    item.appendChild(text);
+    if (canDrill) {
+      const button = doc.createElement('button');
+      button.type = 'button';
+      button.className = 'history-point-drill';
+      button.setAttribute('data-timestamp', point.timestamp);
+      button.textContent = action;
+      button.setAttribute('aria-label', `${action} for ${name}`);
+      item.appendChild(button);
+    }
+    list.appendChild(item);
+  }
+  container.appendChild(list);
+  restoreFocus(container, 'data-point', focus);
+}
+
 // ── DOM binding ──────────────────────────────────────────────────────────
 
 /** What the legacy script lends the view: its state, its post function, its formatters. */
@@ -499,6 +616,8 @@ const TILE_IDS: Record<keyof Omit<HistoryTiles, 'deltas'>, string> = {
 
 export function createHistoryView(doc: Document): HistoryView {
   let mounted: HistoryMountOptions | null = null;
+  /** The summary on screen, which the points list's drill buttons act on. */
+  let shown: HistoricalSummary | null = null;
   const seriesSelect = doc.getElementById(SERIES_SELECT_ID) as HTMLSelectElement | null;
   const projectSelect = doc.getElementById(PROJECT_SELECT_ID) as HTMLSelectElement | null;
   const metricSelect = doc.getElementById('history-metric-select') as HTMLSelectElement | null;
@@ -568,6 +687,13 @@ export function createHistoryView(doc: Document): HistoryView {
         repost();
       });
       projectSelect?.addEventListener('change', repost);
+      // The points list's drill-down buttons do what clicking a bar does.
+      doc.getElementById(POINTS_ID)?.addEventListener('click', (event) => {
+        const button = (event.target as Element | null)?.closest?.('.history-point-drill');
+        const timestamp = button?.getAttribute('data-timestamp');
+        if (!timestamp || !shown || !historyCanDrill(shown)) return;
+        options.post({ type: 'drillDown', timestamp, currentRange: shown.range });
+      });
     },
     request,
     effectiveMetric,
@@ -609,6 +735,16 @@ export function createHistoryView(doc: Document): HistoryView {
         },
       };
       chart.update();
+      // The canvas is a picture: name it, and list its points beside it.
+      shown = summary;
+      const fmtCost = mounted?.formatCost ?? ((v: number) => `$${v.toFixed(2)}`);
+      const canvas = doc.getElementById('historyChart');
+      if (canvas) {
+        canvas.setAttribute('role', 'img');
+        canvas.setAttribute('aria-label', historyChartLabel(summary, metric, fmtCost));
+      }
+      const points = doc.getElementById(POINTS_ID);
+      if (points) renderHistoryPoints(points, summary, metric, fmtCost);
     },
     applyTiles(summary) {
       const tiles = computeHistoryTiles(summary);

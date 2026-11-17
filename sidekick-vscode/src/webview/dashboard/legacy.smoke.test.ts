@@ -306,6 +306,70 @@ describe('legacy dashboard script', () => {
     expect(errors).toEqual([]);
   });
 
+  it('gives History a keyboard drill-down and a text alternative', () => {
+    const totals = {
+      inputTokens: 100,
+      outputTokens: 0,
+      totalCost: 0.1,
+      messageCount: 1,
+      sessionCount: 1,
+    };
+    send({
+      type: 'updateHistoricalData',
+      data: {
+        range: 'week',
+        granularity: 'daily',
+        dataPoints: [{ ...point('Mon', 100), timestamp: '2026-11-02' }, point('Tue', 0)],
+        totals,
+        hasAnyHistory: true,
+      },
+    });
+    expect(document.getElementById('historyChart')!.getAttribute('aria-label')).toContain(
+      'Tokens per day, last 7 days',
+    );
+    const drill = document.querySelector<HTMLButtonElement>(
+      '#history-points .history-point-drill',
+    )!;
+    expect(drill.getAttribute('aria-label')).toBe('Show hours for Mon, Nov 2');
+    drill.focus();
+    drill.click();
+    expect(posted.at(-1)).toEqual({
+      type: 'drillDown',
+      timestamp: '2026-11-02',
+      currentRange: 'week',
+    });
+
+    // The drilled view arrives: focus goes to Back, not the page.
+    send({
+      type: 'updateHistoricalData',
+      data: {
+        range: 'today',
+        granularity: 'hourly',
+        dataPoints: [point('9AM', 100)],
+        totals,
+        hasAnyHistory: true,
+        drill: { depth: 1, label: 'Mon, Nov 2 · hourly' },
+      },
+    });
+    expect(document.activeElement).toBe(document.getElementById('drill-up'));
+    // An hourly view has nothing deeper to drill into.
+    expect(document.querySelector('#history-points .history-point-drill')).toBeNull();
+
+    // Back to the top level: focus lands on the selected range, not the page.
+    send({
+      type: 'updateHistoricalData',
+      data: {
+        range: 'week',
+        granularity: 'daily',
+        dataPoints: [{ ...point('Mon', 100), timestamp: '2026-11-02' }],
+        totals,
+        hasAnyHistory: true,
+      },
+    });
+    expect(document.activeElement?.classList.contains('range-btn')).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
   it('says a live session joins History when it ends', () => {
     const availability = (live: boolean) => ({
       type: 'updateSessionAvailability',

@@ -173,7 +173,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
         <div class="gauge-row-item context-item" title="How much of the model's context window (200K–1M tokens depending on model) is currently in use">
           <div class="section-title">Context Window</div>
           <div class="context-gauge" title="Green: &lt;50% | Orange: 50-79% | Red: ≥80%. When full, older context is summarized.">
-            <canvas id="contextChart"></canvas>
+            <canvas id="contextChart" aria-hidden="true"></canvas>
             <span class="context-percent" id="context-percent">0%</span>
           </div>
           <div id="context-health" style="display: none; align-items: center; gap: 4px; font-size: 0.85em; margin-top: 4px;"></div>
@@ -188,7 +188,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
               <div class="quota-card" id="quota-5h-card" title="Usage in the last 5 hours">
                 <div class="quota-label" id="quota-5h-label">5-Hour</div>
                 <div class="quota-gauge">
-                  <canvas id="quota5hChart"></canvas>
+                  <canvas id="quota5hChart" aria-hidden="true"></canvas>
                   <span class="quota-percent" id="quota-5h-percent">0%</span>
                 </div>
                 <div class="quota-reset" id="quota-5h-reset">-</div>
@@ -197,7 +197,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
               <div class="quota-card" id="quota-7d-card" title="Usage in the last 7 days">
                 <div class="quota-label" id="quota-7d-label">7-Day</div>
                 <div class="quota-gauge">
-                  <canvas id="quota7dChart"></canvas>
+                  <canvas id="quota7dChart" aria-hidden="true"></canvas>
                   <span class="quota-percent" id="quota-7d-percent">0%</span>
                 </div>
                 <div class="quota-reset" id="quota-7d-reset">-</div>
@@ -377,7 +377,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
               </div></span>
             </div>
             <div class="chart-container" style="height: 180px;">
-              <canvas id="turnAttributionChart"></canvas>
+              <canvas id="turnAttributionChart" role="img" aria-label="Tokens per turn by category"></canvas>
             </div>
           </div>
 
@@ -391,7 +391,7 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
               </div></span>
             </div>
             <div class="chart-container" style="height: 160px;">
-              <canvas id="contextWaterfallChart"></canvas>
+              <canvas id="contextWaterfallChart" role="img" aria-label="Context size per turn"></canvas>
             </div>
           </div>
 
@@ -612,20 +612,20 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
           <div class="section" id="tool-freq-section" style="display: none;">
             <div class="section-title">Tool Frequency</div>
             <div class="chart-container" style="height:160px;">
-              <canvas id="toolFreqChart"></canvas>
+              <canvas id="toolFreqChart" role="img" aria-label="Calls per tool"></canvas>
             </div>
           </div>
 
           <div class="section" id="event-dist-section" style="display: none;">
             <div class="section-title">Frequent Words <span class="section-hint">in event summaries</span></div>
             <div class="chart-container" style="height:140px;">
-              <canvas id="eventDistChart"></canvas>
+              <canvas id="eventDistChart" role="img" aria-label="Frequent words in event summaries"></canvas>
             </div>
           </div>
 
           <div class="section" id="heatmap-section" style="display: none;">
             <div class="section-title">Activity Heatmap <span style="font-weight:normal;font-size:10px;opacity:0.7;">(60 min)</span></div>
-            <div id="heatmap-grid"></div>
+            <div id="heatmap-grid" aria-hidden="true"></div>
             <div id="heatmap-stats" style="font-size:10px;color:var(--vscode-descriptionForeground);margin-top:4px;"></div>
           </div>
 
@@ -714,8 +714,10 @@ export function renderDashboardHtml(options: DashboardTemplateOptions): string {
     </div>
 
     <div class="chart-container history-chart">
-      <canvas id="historyChart"></canvas>
+      <canvas id="historyChart" role="img" aria-label="Usage history"></canvas>
     </div>
+    <!-- The chart's points as text: read by screen readers, shown on keyboard focus. -->
+    <div class="history-points" id="history-points"></div>
 
     <div class="breadcrumb" id="drill-breadcrumb" hidden>
       <button type="button" class="breadcrumb-back" id="drill-up" aria-label="Back to the previous range">← Back</button>
