@@ -305,7 +305,9 @@ sidekick --provider codex doctor  # diagnose Codex monitoring
 sidekick statusline  # fast one-line account/quota/burn-rate footer
 ```
 
-`doctor` checks the selected session provider (`--provider`, or auto-detection). It also reports the pricing catalog behind cost estimates: its source, age, entry count and digest. It warns when only the built-in table or a stale cache is active, or when `cli-config.json` pricing has invalid entries. Missing sessions or dependencies for that provider include a repair hint; unused integrations and missing saved accounts are informational. Existing sessions can be monitored without adding a Sidekick account.
+`doctor` checks the selected session provider (`--provider`, or auto-detection). It also reports the pricing catalog behind cost estimates: its source, age, entry count and digest. It warns when only the built-in table or a stale cache is active, or when `cli-config.json` pricing has invalid entries. Missing sessions or dependencies for that provider include a repair hint; unused integrations and missing saved accounts are informational. Existing sessions can be monitored without adding a Sidekick account. `doctor` exits 1 when the report is unhealthy (an "attention" report still exits 0), so scripts can gate on it.
+
+`today` lists In Progress tasks before Pending ones. Its token count is compact; `today --json` carries the exact `yesterdayTotalTokens`.
 
 `today` and `statusline` bypass account bootstrap, pricing hydration, and quota network calls. To install the status line without VS Code, add `"statusLine": { "type": "command", "command": "sidekick statusline" }` to `~/.claude/settings.json`; in VS Code, `Sidekick: Install Statusline` merges the same block into Claude Code settings, and uninstalling it restores the previous block. `sidekick statusline --help` prints the snippet.
 
@@ -347,10 +349,13 @@ jq -r '"5h \(.quota.claude.fiveHour.utilization)% · $\(.session.costUsd)"' ~/.c
 
 ```bash
 sidekick tasks add "Investigate retry spike"
-sidekick tasks done <task-id>
+sidekick tasks --limit 10        # open tasks first, each with its reference
+sidekick tasks done a1b2c3d4     # the reference `sidekick tasks` printed
 sidekick note add "Migration requires a cache clear" --type gotcha
 sidekick decision add "Use SQLite" --rationale "Local and portable"
 ```
+
+`sidekick tasks` starts each row with the reference `tasks done` accepts: the first 8 characters of a task added from the CLI, or `<session>:<id>` for a task an agent created (agents reuse short ids such as `5` across sessions). A reference that still matches several tasks lists them instead of guessing. Capture commands refuse blank text.
 
 Capture commands atomically merge with the same per-project stores used by VS Code. An open Kanban board refreshes when a CLI write lands, without restarting the extension. With the global `--json` flag each capture command prints the stored record (`{ ok, action, task | note | decision }`) instead of a sentence.
 
