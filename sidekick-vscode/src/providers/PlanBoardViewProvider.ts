@@ -720,13 +720,13 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
     <button type="button" class="filter-chip" data-filter="date" data-value="7d" aria-pressed="false">7d</button>
     <button type="button" class="filter-chip" data-filter="date" data-value="30d" aria-pressed="false">30d</button>
     <span class="filter-divider" aria-hidden="true"></span>
-    <button type="button" class="filter-chip" data-filter="source" data-value="claude-code" aria-pressed="false">claude-code</button>
-    <button type="button" class="filter-chip" data-filter="source" data-value="opencode" aria-pressed="false">opencode</button>
-    <button type="button" class="filter-chip" data-filter="source" data-value="codex" aria-pressed="false">codex</button>
+    <button type="button" class="filter-chip" data-filter="source" data-value="claude-code" aria-pressed="false">Claude Code</button>
+    <button type="button" class="filter-chip" data-filter="source" data-value="opencode" aria-pressed="false">OpenCode</button>
+    <button type="button" class="filter-chip" data-filter="source" data-value="codex" aria-pressed="false">Codex</button>
     <span class="filter-divider" aria-hidden="true"></span>
-    <button type="button" class="filter-chip" data-filter="status" data-value="completed" aria-pressed="false">completed</button>
-    <button type="button" class="filter-chip" data-filter="status" data-value="failed" aria-pressed="false">failed</button>
-    <button type="button" class="filter-chip" data-filter="status" data-value="abandoned" aria-pressed="false">abandoned</button>
+    <button type="button" class="filter-chip" data-filter="status" data-value="completed" aria-pressed="false">Completed</button>
+    <button type="button" class="filter-chip" data-filter="status" data-value="failed" aria-pressed="false">Failed</button>
+    <button type="button" class="filter-chip" data-filter="status" data-value="abandoned" aria-pressed="false">Abandoned</button>
   </div>
   <div id="content" class="content"></div>
   <div id="empty" class="empty-state" hidden>
@@ -780,6 +780,17 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       abandoned: 'Abandoned'
     };
 
+    // Provider names as the rest of the extension writes them.
+    const SOURCE_LABELS = {
+      'claude-code': 'Claude Code',
+      opencode: 'OpenCode',
+      codex: 'Codex'
+    };
+
+    function sourceLabel(source) {
+      return SOURCE_LABELS[source] || String(source || '');
+    }
+
     function persist() {
       vscode.setState({
         search: currentSearchQuery,
@@ -804,12 +815,15 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (!value) return '';
       var d = new Date(value);
       if (Number.isNaN(d.getTime())) return '';
-      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      // Same shape as Kanban and Timeline: time today, "Nov 17 09:15" otherwise.
+      var time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (d.toDateString() === new Date().toDateString()) return time;
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
     }
 
     function matchesSearch(plan, query) {
       if (!query) return true;
-      var haystack = [plan.title || '', plan.source || '', plan.status || ''];
+      var haystack = [plan.title || '', plan.source || '', sourceLabel(plan.source), plan.status || ''];
       if (plan.steps) {
         plan.steps.forEach(function(s) { haystack.push(s.description || ''); });
       }
@@ -924,11 +938,13 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (match) match.focus({ preventScroll: true });
     }
 
-    function makeCopyButton(label, planId) {
+    function makeCopyButton(label, planId, planTitle) {
       var copyBtn = document.createElement('button');
       copyBtn.type = 'button';
       copyBtn.className = 'icon-button copy-btn';
       copyBtn.textContent = label;
+      // Every card has one; name the plan so they can be told apart.
+      copyBtn.setAttribute('aria-label', 'Copy plan markdown: ' + (planTitle || 'plan'));
       copyBtn.dataset.copyPlan = planId;
       copyBtn.dataset.label = label;
       copyBtn.addEventListener('click', function(e) {
@@ -952,12 +968,12 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (plan.source) {
         var srcChip = document.createElement('span');
         srcChip.className = 'chip';
-        srcChip.textContent = plan.source;
+        srcChip.textContent = sourceLabel(plan.source);
         meta.appendChild(srcChip);
       }
       var statusChip = document.createElement('span');
       statusChip.className = 'chip ' + (plan.active ? 'in_progress' : 'completed');
-      statusChip.textContent = plan.active ? 'In Progress' : 'Done';
+      statusChip.textContent = plan.active ? 'In Progress' : 'Completed';
       meta.appendChild(statusChip);
 
       var rateText = document.createElement('span');
@@ -975,7 +991,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
 
       card.appendChild(renderStepList(plan.steps));
 
-      if (plan.rawMarkdown) card.appendChild(makeCopyButton('Copy Markdown', 'active'));
+      if (plan.rawMarkdown) card.appendChild(makeCopyButton('Copy Markdown', 'active', plan.title));
 
       return card;
     }
@@ -1016,14 +1032,14 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       }
 
       headerRow.appendChild(header);
-      if (plan.rawMarkdown) headerRow.appendChild(makeCopyButton('Copy', plan.id));
+      if (plan.rawMarkdown) headerRow.appendChild(makeCopyButton('Copy', plan.id, plan.title));
       card.appendChild(headerRow);
 
       var meta = document.createElement('div');
       meta.className = 'plan-meta';
       var srcChip = document.createElement('span');
       srcChip.className = 'chip';
-      srcChip.textContent = plan.source;
+      srcChip.textContent = sourceLabel(plan.source);
       meta.appendChild(srcChip);
 
       if (!plan.rawOnly || (plan.steps && plan.steps.length > 0)) {

@@ -118,6 +118,8 @@ describe('ConversationViewProvider panel', () => {
       }) as never,
     );
     await provider.open('/sessions/aaaaaaaaaa');
+    // Times are formatted by the page, in the viewer's zone.
+    expect(h.panel!.webview.html).toContain('datetime="2026-11-17T10:01:00.000Z"');
 
     const first = bootInlineWebview(h.panel!.webview.html);
     const input = first.document.getElementById('search-input') as unknown as HTMLInputElement;

@@ -89,6 +89,33 @@ describe('ToolInspectorProvider', () => {
 });
 
 describe('truncateHeadTail', () => {
+  it('lets screen readers hear the ERROR badge, duration and time', () => {
+    const html = render({
+      name: 'Bash',
+      timestamp: new Date('2026-11-01T10:15:00Z'),
+      duration: 1200,
+      isError: true,
+      input: { command: 'npm test' },
+    });
+    const header = html.slice(html.indexOf('<button'), html.indexOf('</button>'));
+    // No aria-label overriding the visible content as the button's name.
+    expect(header).not.toContain('aria-label');
+    expect(header).toContain('ERROR');
+    // The page formats the time in the viewer's zone.
+    expect(header).toContain('datetime="2026-11-01T10:15:00.000Z"');
+  });
+
+  it('says how many lines of a long edit are not shown', () => {
+    const lines = Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n');
+    const html = render({
+      name: 'Edit',
+      timestamp: new Date('2026-11-01T00:00:00Z'),
+      input: { file_path: 'a.ts', old_string: lines, new_string: 'x' },
+    });
+    expect(html).toContain('… (10 more removed lines)');
+    expect(html).not.toContain('line 25');
+  });
+
   it('keeps short text intact', () => {
     expect(truncateHeadTail('abc', 2, 2)).toBe('abc');
   });

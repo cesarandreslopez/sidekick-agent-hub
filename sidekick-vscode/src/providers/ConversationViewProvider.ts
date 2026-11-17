@@ -324,6 +324,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Reads the full JSONL file, parses all events, and renders them
  * in a chat-style webview panel.
  */
+/**
+ * A timestamp the webview formats in the viewer's own time zone (on Remote-SSH,
+ * WSL or Codespaces the extension host's zone is the remote machine's). The
+ * host's text is only a fallback until the page script runs.
+ */
+function timeTag(timestamp: string | number | Date | undefined): string {
+  if (timestamp === undefined || timestamp === '') return '';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  const fallback = date.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  return `<time datetime="${date.toISOString()}">${fallback}</time>`;
+}
+
 export class ConversationViewProvider implements vscode.Disposable {
   private panel: vscode.WebviewPanel | null = null;
   private currentPath: string | null = null;
@@ -461,11 +478,7 @@ export class ConversationViewProvider implements vscode.Disposable {
 
     const chunksHtml = chunks
       .map((chunk, i) => {
-        const time = new Date(chunk.timestamp).toLocaleTimeString([], {
-          hour: 'numeric',
-          minute: '2-digit',
-          second: '2-digit',
-        });
+        const time = timeTag(chunk.timestamp);
         const sidechain = chunk.isSidechain ? ' sidechain' : '';
 
         if (chunk.isCompaction) {
@@ -849,6 +862,17 @@ export class ConversationViewProvider implements vscode.Disposable {
     (function() {
       var vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
       var sessionKey = ${sessionKey};
+
+      // Times render in the viewer's zone, with the date when it isn't today.
+      document.querySelectorAll('time[datetime]').forEach(function(el) {
+        var d = new Date(el.getAttribute('datetime'));
+        if (isNaN(d.getTime())) return;
+        var t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+        el.textContent = d.toDateString() === new Date().toDateString()
+          ? t
+          : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + t;
+        el.title = d.toLocaleString();
+      });
       var totalLabel = ${JSON.stringify(`${chunks.length} ${chunks.length === 1 ? 'entry' : 'entries'}`)};
 
       function setOpen(header, open) {

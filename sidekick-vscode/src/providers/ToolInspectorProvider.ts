@@ -37,6 +37,26 @@ export function truncateHeadTail(
 /**
  * Opens a tool inspector panel for the current session.
  */
+/**
+ * A timestamp the webview formats in the viewer's own time zone (on Remote-SSH,
+ * WSL or Codespaces the extension host's zone is the remote machine's). The
+ * host's text is only a fallback until the page script runs.
+ */
+function timeTag(timestamp: string | number | Date | undefined): string {
+  if (timestamp === undefined || timestamp === '') return '';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  const fallback = date.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  return `<time datetime="${date.toISOString()}">${fallback}</time>`;
+}
+
+/** Lines of each side of an Edit shown before "… (N more lines)". */
+const EDIT_PREVIEW_LINES = 20;
+
 export class ToolInspectorProvider implements vscode.Disposable {
   private panel: vscode.WebviewPanel | null = null;
   private disposables: vscode.Disposable[] = [];
@@ -333,6 +353,17 @@ export class ToolInspectorProvider implements vscode.Disposable {
   </div>
   <script nonce="${nonce}">
     (function() {
+      // Times render in the viewer's zone, with the date when it isn't today.
+      document.querySelectorAll('time[datetime]').forEach(function(el) {
+        var d = new Date(el.getAttribute('datetime'));
+        if (isNaN(d.getTime())) return;
+        var t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+        el.textContent = d.toDateString() === new Date().toDateString()
+          ? t
+          : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + t;
+        el.title = d.toLocaleString();
+      });
+
       // Toggle tool call body
       document.addEventListener('click', function(e) {
         var header = e.target.closest('.tool-call-header');
@@ -375,13 +406,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
    * Renders a single tool call with specialized formatting.
    */
   private renderToolCall(call: ToolCall, index: number): string {
-    const time = call.timestamp
-      ? new Date(call.timestamp).toLocaleTimeString([], {
-          hour: 'numeric',
-          minute: '2-digit',
-          second: '2-digit',
-        })
-      : '';
+    const time = timeTag(call.timestamp);
     const durationStr = call.duration
       ? formatDurationMs(call.duration, { includeMilliseconds: true, invalid: '' })
       : '';
@@ -424,7 +449,7 @@ export class ToolInspectorProvider implements vscode.Disposable {
     }
 
     return `<div class="tool-call" data-tool="${this.escapeHtml(call.name)}" id="call-${index}">
-      <button type="button" class="tool-call-header" aria-expanded="false" aria-controls="call-body-${index}" aria-label="${this.escapeHtml(call.name)} ${this.escapeHtml(toolSummary)}">
+      <button type="button" class="tool-call-header" aria-expanded="false" aria-controls="call-body-${index}">
         <span class="toggle-arrow" aria-hidden="true">+</span>
         <span class="tool-name">${this.escapeHtml(call.name)}</span>
         <span class="tool-summary">${this.escapeHtml(toolSummary)}</span>
@@ -488,11 +513,23 @@ export class ToolInspectorProvider implements vscode.Disposable {
     const diffLines: string[] = [];
     pairs.forEach(({ oldStr, newStr }, i) => {
       if (i > 0 && (oldStr || newStr)) diffLines.push('<span class="tool-note">…</span>');
-      for (const line of oldStr ? oldStr.split('\n').slice(0, 20) : []) {
+      const oldLines = oldStr ? oldStr.split('\n') : [];
+      const newLines = newStr ? newStr.split('\n') : [];
+      for (const line of oldLines.slice(0, EDIT_PREVIEW_LINES)) {
         diffLines.push(`<span class="diff-del">- ${this.escapeHtml(line)}</span>`);
       }
-      for (const line of newStr ? newStr.split('\n').slice(0, 20) : []) {
+      if (oldLines.length > EDIT_PREVIEW_LINES) {
+        diffLines.push(
+          `<span class="tool-note">… (${oldLines.length - EDIT_PREVIEW_LINES} more removed lines)</span>`,
+        );
+      }
+      for (const line of newLines.slice(0, EDIT_PREVIEW_LINES)) {
         diffLines.push(`<span class="diff-add">+ ${this.escapeHtml(line)}</span>`);
+      }
+      if (newLines.length > EDIT_PREVIEW_LINES) {
+        diffLines.push(
+          `<span class="tool-note">… (${newLines.length - EDIT_PREVIEW_LINES} more added lines)</span>`,
+        );
       }
     });
 

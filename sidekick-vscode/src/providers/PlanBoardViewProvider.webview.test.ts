@@ -72,4 +72,25 @@ describe('Plans webview', () => {
     view.send(update(['d', 'c', 'a', 'b']));
     expect(document.activeElement!.getAttribute('data-copy-plan')).toBe('a');
   });
+
+  it('uses display names and names each copy button for its plan', () => {
+    const view = bootInlineWebview(html());
+    const document = view.document;
+    view.send(update(['a']));
+    const filters = Array.from(document.querySelectorAll('.filter-chip')).map((b) => b.textContent);
+    expect(filters).toEqual(
+      expect.arrayContaining([
+        'Claude Code',
+        'OpenCode',
+        'Codex',
+        'Completed',
+        'Failed',
+        'Abandoned',
+      ]),
+    );
+    expect(document.querySelector('.plan-meta .chip')!.textContent).toBe('Claude Code');
+    expect(document.querySelector('.copy-btn')!.getAttribute('aria-label')).toBe(
+      'Copy plan markdown: Plan a',
+    );
+  });
 });
