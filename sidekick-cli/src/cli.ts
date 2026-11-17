@@ -12,8 +12,9 @@ import {
   MAP_EXAMPLES,
   QUOTA_EXAMPLES,
   ROOT_EXAMPLES,
+  STATUSLINE_HELP,
 } from './help';
-import { firstCommandToken } from './argvScan';
+import { argsAfterCommand, firstCommandToken } from './argvScan';
 import { isOfflineRun, needsFullStartup, runStartupSideEffects } from './startup';
 import { shouldRunUpdateNotice, startUpdateNotice, type UpdateNoticeHandle } from './updateCheck';
 import {
@@ -41,6 +42,11 @@ import { formatCliError } from './cliError';
 import { installClosedPipeHandler } from './closedPipe';
 import { leaveActiveAltScreen } from './dashboard/altScreen';
 import { registerAccountsCommand } from './commands/accounts';
+import {
+  helpWhenRunAlone,
+  rejectUnknownSubcommands,
+  showGlobalOptionsEverywhere,
+} from './subcommandHelp';
 
 // chalk 5 reads --no-color and FORCE_COLOR but not NO_COLOR (no-color.org).
 // Set the level here, the main bundle's entry (the SEA build starts here
@@ -522,6 +528,7 @@ program.addCommand(statusCmd);
 
 const statuslineCmd = new Command('statusline')
   .description('Render the cache-only one-line agent status footer')
+  .addHelpText('after', STATUSLINE_HELP)
   .action(async () => {
     const { statuslineAction } = await import('./commands/statusline');
     return statuslineAction();
@@ -604,6 +611,16 @@ program.addCommand(handoffCmd);
 // value) into silent exit 0. Registering it only when there is no subcommand
 // token keeps `sidekick bogus` reporting "unknown command" instead of
 // Commander's "too many arguments", which is what a root action would cause.
+// Grouping commands: a mistyped subcommand is named as one, a bare `note` or
+// `decision` prints its help like a bare `sidekick` does, and every
+// subcommand's help lists the global options it also accepts.
+const commandArgs = argsAfterCommand(process.argv.slice(2));
+for (const parent of [tasksCmd, quotaCmd, handoffCmd]) rejectUnknownSubcommands(parent);
+for (const parent of [noteCmd, decisionCmd]) {
+  if (commandToken === parent.name()) helpWhenRunAlone(parent, commandArgs);
+}
+showGlobalOptionsEverywhere(program);
+
 if (commandToken === undefined) {
   program.action(() => {
     program.outputHelp();

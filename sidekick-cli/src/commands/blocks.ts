@@ -284,7 +284,7 @@ export function formatBlocksTable(report: BlocksReport): string {
   } else if (report.provider === 'claude-code') {
     lines.push(
       chalk.dim(
-        '  Install the status line (Sidekick: Install Statusline) to see the official five-hour window beside this estimate.',
+        '  Install the status line to see the official five-hour window beside this estimate (see: sidekick statusline --help).',
       ),
     );
   }

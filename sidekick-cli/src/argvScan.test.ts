@@ -47,4 +47,13 @@ describe('isStatuslineInvocation', () => {
     expect(isStatuslineInvocation(['dashboard'])).toBe(false);
     expect(isStatuslineInvocation(['--provider', 'statusline', 'stats'])).toBe(false);
   });
+
+  it('leaves help, unknown flags and --output-file to the full CLI', () => {
+    expect(isStatuslineInvocation(['statusline', '--help'])).toBe(false);
+    expect(isStatuslineInvocation(['statusline', '-h'])).toBe(false);
+    expect(isStatuslineInvocation(['statusline', '--bogus'])).toBe(false);
+    expect(isStatuslineInvocation(['--output-file', '/tmp/x', 'statusline'])).toBe(false);
+    expect(isStatuslineInvocation(['statusline', '--offline'])).toBe(true);
+    expect(isStatuslineInvocation(['statusline', '--json', '--no-color'])).toBe(true);
+  });
 });

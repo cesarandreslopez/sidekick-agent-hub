@@ -86,3 +86,10 @@ Examples:
   $ sidekick history --path 0198a3c2        Rollout transcript path for a session
   $ sidekick history --json                 Machine-readable prompt entries
 `;
+
+export const STATUSLINE_HELP = `
+Claude Code runs this on every prompt. To install it, add to ~/.claude/settings.json:
+  "statusLine": { "type": "command", "command": "sidekick statusline" }
+(or run "Sidekick: Install Statusline" in VS Code). It reads the JSON Claude Code
+pipes on stdin and prints one line; with that payload it also records the
+official five-hour and weekly limits.`;

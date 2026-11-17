@@ -26,6 +26,31 @@ const BOOLEAN_FLAGS = ['--json', '--no-color', '--offline'] as const;
  * `sidekick tasks add today` resolves to `tasks`.
  */
 export function firstCommandToken(args: string[]): string | undefined {
+  const index = commandTokenIndex(args);
+  return index === undefined ? undefined : args[index];
+}
+
+/**
+ * True when the invocation is a plain `sidekick statusline`, the form Claude
+ * Code runs on every prompt, which the launcher serves without loading
+ * Commander. Anything else after the command (`--help`, a typo, an option the
+ * fast path does not handle such as `--output-file`) goes through the full CLI,
+ * which prints help or rejects it.
+ */
+export function isStatuslineInvocation(args: string[]): boolean {
+  const index = commandTokenIndex(args);
+  if (index === undefined || args[index] !== 'statusline') return false;
+  if (
+    args.some((argument) => argument === '--output-file' || argument.startsWith('--output-file='))
+  ) {
+    return false;
+  }
+  return args
+    .slice(index + 1)
+    .every((argument) => (BOOLEAN_FLAGS as readonly string[]).includes(argument));
+}
+
+function commandTokenIndex(args: string[]): number | undefined {
   for (let index = 0; index < args.length; index++) {
     const argument = args[index];
     if ((BOOLEAN_FLAGS as readonly string[]).includes(argument)) continue;
@@ -34,12 +59,13 @@ export function firstCommandToken(args: string[]): string | undefined {
       continue;
     }
     if (VALUE_FLAGS.some((flag) => argument.startsWith(`${flag}=`))) continue;
-    return argument;
+    return index;
   }
   return undefined;
 }
 
-/** True when the invocation resolves to `sidekick statusline`. */
-export function isStatuslineInvocation(args: string[]): boolean {
-  return firstCommandToken(args) === 'statusline';
+/** The argv entries after the command token (`['add', 'x']` for `note add x`). */
+export function argsAfterCommand(args: string[]): string[] {
+  const index = commandTokenIndex(args);
+  return index === undefined ? [] : args.slice(index + 1);
 }
