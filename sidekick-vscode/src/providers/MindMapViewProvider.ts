@@ -454,9 +454,12 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       cursor: default;
     }
 
+    /* Outlined like the status chips: the status colour as text keeps
+       contrast in light, dark and high-contrast themes. */
     .status.active {
-      background: var(--vscode-testing-iconPassed);
-      color: var(--vscode-editor-background);
+      background: transparent;
+      color: var(--vscode-testing-iconPassed, #388a34);
+      box-shadow: inset 0 0 0 1px currentColor;
     }
 
     #graph-container {
@@ -621,7 +624,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     }
 
     .link.knowledge-note {
-      stroke: #FFB74D;
+      stroke: var(--sk-node-knowledge-note, #FFB74D);
       stroke-opacity: 0.5;
       stroke-dasharray: 2, 2;
     }
@@ -779,7 +782,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     }
 
     .link-path.knowledge-note {
-      stroke: #FFB74D;
+      stroke: var(--sk-node-knowledge-note, #FFB74D);
       stroke-opacity: 0.5;
       stroke-dasharray: 2, 2;
     }

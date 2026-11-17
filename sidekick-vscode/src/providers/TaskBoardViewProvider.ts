@@ -599,9 +599,12 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       color: var(--vscode-badge-foreground);
     }
 
+    /* Outlined like the status chips: the status colour as text keeps
+       contrast in light, dark and high-contrast themes. */
     .status.active {
-      background: var(--sk-accent-success);
-      color: var(--vscode-editor-background);
+      background: transparent;
+      color: var(--vscode-testing-iconPassed, #388a34);
+      box-shadow: inset 0 0 0 1px currentColor;
     }
 
     .header-actions {
@@ -748,8 +751,9 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     .chip.carried-over {
-      background: var(--vscode-editorWarning-foreground, #cca700);
-      color: var(--vscode-editor-background);
+      background: transparent;
+      color: var(--vscode-editorWarning-foreground, #cca700);
+      box-shadow: inset 0 0 0 1px currentColor;
       font-size: 9px;
     }
 
@@ -767,8 +771,9 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     .chip.agent-type {
-      background: var(--vscode-terminal-ansiCyan, #4ec9b0);
-      color: var(--vscode-editor-background);
+      background: transparent;
+      color: var(--vscode-terminal-ansiCyan, #4ec9b0);
+      box-shadow: inset 0 0 0 1px currentColor;
     }
 
     .card-title {
@@ -848,7 +853,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
 </head>
 <body>
   <div class="header">
-    <img src="${iconUri}" alt="Sidekick icon" />
+    <img src="${iconUri}" alt="" />
     <h1>Kanban Board</h1>
     <span id="status" class="status">No session</span>
     <div class="header-actions">
@@ -918,6 +923,12 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       clearDoneBtn.disabled = !hasCompleted;
       archiveAllBtn.disabled = !hasCarried;
 
+      // A live update rebuilds the board; keep keyboard focus on the same control.
+      const focusedStatus = document.activeElement
+        && boardEl.contains(document.activeElement)
+        && document.activeElement.classList.contains('collapse')
+        ? document.activeElement.dataset.status
+        : null;
       boardEl.innerHTML = '';
 
       const hasTasks = state.totalTasks > 0
@@ -952,9 +963,10 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
         const headerEl = document.createElement('div');
         headerEl.className = 'column-header';
         const isCollapsed = persisted['column:' + column.status] === true;
-        const collapseButton = '<button class="icon-button collapse" data-status="'
+        const collapseButton = '<button type="button" class="icon-button collapse" data-status="'
             + column.status
-            + '">'
+            + '" aria-expanded="' + (isCollapsed ? 'false' : 'true') + '"'
+            + ' aria-label="' + (isCollapsed ? 'Expand ' : 'Collapse ') + escapeHtml(column.label) + '">'
             + (isCollapsed ? 'Expand' : 'Collapse')
             + '</button>';
         headerEl.innerHTML = '<span class="title">'
@@ -994,6 +1006,10 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
         boardEl.appendChild(columnEl);
       });
       firstRender = false;
+      if (focusedStatus) {
+        const again = boardEl.querySelector('.collapse[data-status="' + focusedStatus + '"]');
+        if (again) again.focus({ preventScroll: true });
+      }
     }
 
     var firstRender = true;
@@ -1136,9 +1152,22 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       if (!status) return;
       const key = 'column:' + status;
       const current = vscode.getState() || {};
-      const next = Object.assign({}, current, { [key]: current[key] !== true });
-      vscode.setState(next);
-      vscode.postMessage({ type: 'requestBoard' });
+      const collapsed = current[key] !== true;
+      vscode.setState(Object.assign({}, current, { [key]: collapsed }));
+
+      // Toggle in place, so the focused button survives.
+      const columnEl = target.closest('.column');
+      if (!columnEl) return;
+      columnEl.classList.toggle('collapsed', collapsed);
+      const bodyEl = columnEl.querySelector('.column-body');
+      const summaryEl = columnEl.querySelector('.collapsed-summary');
+      if (bodyEl) bodyEl.hidden = collapsed;
+      if (summaryEl) summaryEl.hidden = !collapsed;
+      const label = columnEl.querySelector('.column-header .title');
+      const name = label ? label.textContent : '';
+      target.textContent = collapsed ? 'Expand' : 'Collapse';
+      target.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      target.setAttribute('aria-label', (collapsed ? 'Expand ' : 'Collapse ') + name);
     });
 
     vscode.postMessage({ type: 'webviewReady' });

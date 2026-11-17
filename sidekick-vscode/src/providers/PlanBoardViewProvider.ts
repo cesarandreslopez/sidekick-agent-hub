@@ -395,9 +395,12 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       color: var(--vscode-badge-foreground);
     }
 
+    /* Outlined like the status chips: the status colour as text keeps
+       contrast in light, dark and high-contrast themes. */
     .status.active {
-      background: var(--sk-accent-success);
-      color: var(--vscode-editor-background);
+      background: transparent;
+      color: var(--vscode-testing-iconPassed, #388a34);
+      box-shadow: inset 0 0 0 1px currentColor;
     }
 
     .header-actions {
@@ -701,7 +704,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
 </head>
 <body>
   <div class="header">
-    <img src="${iconUri}" alt="Sidekick icon" />
+    <img src="${iconUri}" alt="" />
     <h1>Plans</h1>
     <span id="status" class="status">No session</span>
     <div class="header-actions">
@@ -866,6 +869,8 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       emptyEl.hidden = true;
       emptyEl.style.display = 'none';
       contentEl.style.display = 'flex';
+      // A live update rebuilds the list; keep keyboard focus on the same control.
+      var focus = focusedControl();
       contentEl.innerHTML = '';
 
       if (state.activePlan) {
@@ -895,6 +900,28 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
         });
       }
       hasRendered = true;
+      restoreFocus(focus);
+    }
+
+    // Which control had focus, by attribute value (no selector escaping needed).
+    function focusedControl() {
+      var el = document.activeElement;
+      if (!el || !contentEl.contains(el)) return null;
+      if (el.classList.contains('copy-btn') && el.dataset.copyPlan) {
+        return { selector: '.copy-btn', attr: 'data-copy-plan', value: el.dataset.copyPlan };
+      }
+      if (el.classList.contains('collapsible-header') && el.getAttribute('aria-controls')) {
+        return { selector: '.collapsible-header', attr: 'aria-controls', value: el.getAttribute('aria-controls') };
+      }
+      return null;
+    }
+
+    function restoreFocus(focus) {
+      if (!focus) return;
+      var match = Array.prototype.find.call(contentEl.querySelectorAll(focus.selector), function(el) {
+        return el.getAttribute(focus.attr) === focus.value;
+      });
+      if (match) match.focus({ preventScroll: true });
     }
 
     function makeCopyButton(label, planId) {
