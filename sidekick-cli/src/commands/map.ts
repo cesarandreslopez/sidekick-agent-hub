@@ -26,6 +26,7 @@ import type {
   ActivityTheme,
 } from 'sidekick-shared';
 import { resolveProvider } from '../cli';
+import { formatCliError } from '../cliError';
 import { parseAtSpec, resolveAt } from '../activity/atSpec';
 import type { AtSpec } from '../activity/atSpec';
 import { buildTextReport } from '../activity/frame';
@@ -60,6 +61,12 @@ function positiveInt(value: unknown): number | undefined {
 
 function fail(message: string): void {
   process.stderr.write(`${message}\n`);
+  process.exitCode = 1;
+}
+
+/** Report a thrown error the way every other command does, and exit 1. */
+function failWith(error: unknown): void {
+  process.stderr.write(formatCliError(error));
   process.exitCode = 1;
 }
 
@@ -138,7 +145,7 @@ export async function mapAction(_opts: Record<string, unknown>, cmd: Command): P
     try {
       spec = parseAtSpec(flags.at);
     } catch (error) {
-      fail(error instanceof Error ? error.message : String(error));
+      failWith(error);
       return;
     }
   }
@@ -157,7 +164,9 @@ export async function mapAction(_opts: Record<string, unknown>, cmd: Command): P
     try {
       sessionPath = resolveSessionPath(provider, workspacePath, opts.session as string | undefined);
     } catch (error) {
-      fail(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      // Through the shared formatter, so an unknown --session gets the same
+      // hint every other command prints.
+      failWith(error);
       return;
     }
 

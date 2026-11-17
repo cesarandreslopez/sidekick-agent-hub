@@ -157,6 +157,16 @@ describe('sidekick map', () => {
     expect(process.exitCode).toBe(1);
     expect(stderr.join('')).toContain('No sessions found');
   });
+
+  it('reports an unknown --session through the shared CLI error format', async () => {
+    await mapAction({}, command({ session: 'nope' }));
+    expect(process.exitCode).toBe(1);
+    const message = stderr.join('');
+    expect(message.startsWith('Error: Session nope not found')).toBe(true);
+    // Exactly what formatCliError produces for the same error, hints included.
+    const { formatCliError } = await import('../cliError');
+    expect(message).toBe(formatCliError(new Error(message.slice('Error: '.length).split('\n')[0])));
+  });
 });
 
 describe('momentOf', () => {
