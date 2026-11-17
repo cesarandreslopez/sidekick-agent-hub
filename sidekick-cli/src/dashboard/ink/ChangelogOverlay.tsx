@@ -11,6 +11,7 @@ import { Box, Text } from 'ink';
 import type { ChangelogEntry } from 'sidekick-shared';
 import { useTerminalSize } from './useTerminalSize';
 import { displayWidth } from '../blessedText';
+import { changelogItemRows } from './changelogText';
 
 declare const __CLI_VERSION__: string;
 
@@ -27,16 +28,6 @@ interface ChangelogOverlayProps {
   reservedRows?: number;
 }
 
-function clip(text: string, max: number): string {
-  if (displayWidth(text) <= max) return text;
-  let out = '';
-  for (const ch of Array.from(text)) {
-    if (displayWidth(out + ch) > max - 1) break;
-    out += ch;
-  }
-  return out + '…';
-}
-
 export function ChangelogOverlay({
   entries,
   scrollOffset,
@@ -44,7 +35,7 @@ export function ChangelogOverlay({
   reservedRows = 1,
 }: ChangelogOverlayProps): React.ReactElement {
   const { columns, rows } = useTerminalSize();
-  const width = Math.max(24, Math.min(64, columns - 2));
+  const width = Math.max(24, Math.min(96, columns - 2));
   const inner = width - 4; // single border (2) + paddingX (2)
   const showUrl = rows >= URL_MIN_ROWS;
   const urlRows = showUrl ? Math.ceil(displayWidth(CHANGELOG_URL) / inner) : 0;
@@ -100,14 +91,23 @@ export function ChangelogOverlay({
         </Text>,
       );
       for (let j = 0; j < section.items.length; j++) {
-        // "    • " is six columns of prefix inside the inner width.
-        const text = clip(section.items[j], inner - 6);
-        lines.push(
-          <Text key={`item-${i}-${section.heading}-${j}`} wrap="truncate-end">
-            {'    '}
-            <Text dimColor>{'•'}</Text> {text}
-          </Text>,
-        );
+        // Wrapped with a hanging indent, markdown rendered: each item used
+        // to be cut to one line with its ** and backticks showing.
+        changelogItemRows(section.items[j], inner).forEach((row, r) => {
+          const indent = row.level === 0 ? '    ' : '      ';
+          const glyph = row.level === 0 ? '•' : '◦';
+          lines.push(
+            <Text key={`item-${i}-${section.heading}-${j}-${r}`} wrap="truncate-end">
+              {indent}
+              {row.first ? <Text dimColor>{glyph}</Text> : ' '}{' '}
+              {row.segments.map((segment, k) => (
+                <Text key={k} bold={segment.bold}>
+                  {segment.text}
+                </Text>
+              ))}
+            </Text>,
+          );
+        });
       }
     }
     if (i < entries.length - 1) {
