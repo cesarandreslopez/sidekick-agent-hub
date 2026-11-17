@@ -205,6 +205,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
   /** Bindings tied to the currently resolved webview instance. */
   private _viewDisposables: vscode.Disposable[] = [];
+  /** The resolved webview's script has posted `webviewReady` (it can take messages). */
+  private _webviewReady = false;
+  /** A tab requested (Doctor, Generate Session Summary) before the webview was ready. */
+  private _pendingTab?: DashboardTab;
   private _changelogEntries: ChangelogEntry[] | undefined;
 
   /** Current dashboard state */
@@ -509,6 +513,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
   ): void {
     this._disposeViewBindings();
     this._view = webviewView;
+    this._webviewReady = false;
 
     // Configure webview options
     webviewView.webview.options = {
@@ -570,6 +575,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       () => {
         if (this._view === webviewView) {
           this._view = undefined;
+          this._webviewReady = false;
           this._quotaService?.stopRefresh();
           this._providerStatusService?.stopRefresh();
           this._peakHoursService?.stopRefresh();
@@ -641,6 +647,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         // Send plan history if available
         this._sendPlanHistory();
         void this._sendQuotaHistory();
+        this._webviewReady = true;
+        // A tab a command asked for while the view was opening. Posted last,
+        // after the webview restores its own saved tab, so the command wins.
+        if (this._pendingTab) {
+          const tab = this._pendingTab;
+          this._pendingTab = undefined;
+          this._postMessage({ type: 'showTab', tab });
+        }
         break;
 
       case 'selectSession':
@@ -1261,9 +1275,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    */
   private _handleRequestSessionSummary(): void {
     // A live session changes under the summary, so rebuild it; an ended one
-    // can reuse the summary built when it ended.
-    if (this._cachedSummary && !this._sessionMonitor.isActive()) {
-      this._postMessage({ type: 'updateSessionSummary', summary: this._cachedSummary });
+    // can reuse the summary built when it ended. With no session attached and
+    // nothing cached there is nothing to summarize: the tab keeps its empty
+    // state rather than an all-zero summary with an AI narrative button.
+    if (!this._sessionMonitor.isActive()) {
+      if (this._cachedSummary) {
+        this._postMessage({ type: 'updateSessionSummary', summary: this._cachedSummary });
+      }
       return;
     }
     this._buildAndSendSummary();
@@ -1407,8 +1425,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
   }
 
-  /** Activate a dashboard tab, e.g. Health after `Sidekick: Doctor`. */
+  /**
+   * Activate a dashboard tab, e.g. Health after `Sidekick: Doctor`. Commands
+   * focus the view and call this at once; a view that is still opening has
+   * no script to receive it, so the tab is held until `webviewReady`.
+   */
   showTab(tab: DashboardTab): void {
+    if (!this._view || !this._webviewReady) {
+      this._pendingTab = tab;
+      return;
+    }
     this._postMessage({ type: 'showTab', tab });
   }
 
@@ -2793,7 +2819,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
    * Triggered by the sidekick.generateSessionSummary command.
    */
   generateSummaryOnDemand(): void {
-    this._buildAndSendSummary();
+    // Same rules as the Summary tab's own request (no zero summary when no
+    // session is attached).
+    this._handleRequestSessionSummary();
   }
 
   /**

@@ -392,10 +392,54 @@ describe('DashboardViewProvider live session panels', () => {
     expect(generate).toHaveBeenCalledTimes(3);
 
     // ...until the next session starts, which drops it.
+    monitor.isActive.mockReturnValue(true);
     internals._handleSessionStart('/sessions/b.jsonl');
     expect(internals._cachedSummary).toBeNull();
     internals._handleDashboardWebviewMessage({ type: 'requestSessionSummary' });
     expect(generate).toHaveBeenCalledTimes(4);
+    provider.dispose();
+  });
+
+  it('leaves the Summary tab empty when no session is attached and nothing is cached', () => {
+    const monitor = makeSessionMonitor();
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+      undefined,
+      undefined,
+      undefined,
+      { getCachedData: () => ({ errors: [], recoveryPatterns: [] }) } as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    (
+      provider as unknown as { _handleDashboardWebviewMessage(message: unknown): void }
+    )._handleDashboardWebviewMessage({ type: 'requestSessionSummary' });
+    provider.generateSummaryOnDemand();
+    expect(postMessage.mock.calls.map((call) => call[0].type)).not.toContain(
+      'updateSessionSummary',
+    );
+    provider.dispose();
+  });
+
+  it('holds a tab requested while the view opens and shows it once the webview is ready', () => {
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+    );
+    // `Sidekick: Doctor` on a closed container: the view is not resolved yet.
+    provider.showTab('health');
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    expect(postMessage).not.toHaveBeenCalled();
+    (
+      provider as unknown as { _handleDashboardWebviewMessage(message: unknown): void }
+    )._handleDashboardWebviewMessage({ type: 'webviewReady' });
+    const tabs = postMessage.mock.calls.filter((call) => call[0].type === 'showTab');
+    expect(tabs).toEqual([[{ type: 'showTab', tab: 'health' }]]);
+    // Once ready, a request goes straight out.
+    provider.showTab('summary');
+    expect(postMessage).toHaveBeenLastCalledWith({ type: 'showTab', tab: 'summary' });
     provider.dispose();
   });
 
