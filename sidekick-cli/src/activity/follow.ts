@@ -19,8 +19,7 @@ import {
 import type { SessionEvent, SessionProviderBase } from 'sidekick-shared';
 import {
   createDashboardSignalHandler,
-  formatFatalError,
-  installTuiFatalHandlers,
+  createTuiFatalGuard,
   writeToStderr,
 } from '../commands/dashboardLifecycle';
 import { DASHBOARD_EXIT_SIGNALS, createAltScreen } from '../dashboard/altScreen';
@@ -331,7 +330,7 @@ export async function runMapFollow(options: MapFollowOptions): Promise<void> {
   };
   // An uncaught error tears the map down and exits 1 with the message on the
   // main screen, rather than leaving the process running in raw mode.
-  const disposeFatalHandlers = installTuiFatalHandlers({ teardown, write: writeToStderr });
+  const fatalGuard = createTuiFatalGuard({ teardown, write: writeToStderr });
   scheduleTick();
   const onSignal = createDashboardSignalHandler(cleanup, () => {
     instance?.unmount();
@@ -341,14 +340,15 @@ export async function runMapFollow(options: MapFollowOptions): Promise<void> {
   try {
     await instance.waitUntilExit();
   } catch (error) {
-    disposeFatalHandlers();
     for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
-    teardown();
-    writeToStderr(formatFatalError(error), () => process.exit(1));
+    fatalGuard.fail(error);
     return;
   }
-  disposeFatalHandlers();
-  altScreen.leave();
-  for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
-  cleanup();
+  // A fatal error's teardown unmounts Ink and resolves the wait; its exit is
+  // the fatal path's, so the normal tail does not run.
+  fatalGuard.finish(() => {
+    altScreen.leave();
+    for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
+    cleanup();
+  });
 }

@@ -93,8 +93,7 @@ import type { QuotaAlertMemory } from 'sidekick-shared';
 import type { PlanInfo, PlanStep } from '../dashboard/DashboardState';
 import {
   createDashboardSignalHandler,
-  formatFatalError,
-  installTuiFatalHandlers,
+  createTuiFatalGuard,
   selectSessionProvider,
   signalExitCode,
   writeToStderr,
@@ -865,10 +864,7 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
   // An error nobody catches from here on tears the TUI down and exits 1,
   // instead of leaving raw mode and timers running with the message wiped
   // along with the alternate screen.
-  const disposeFatalHandlers = installTuiFatalHandlers({
-    teardown: teardownTui,
-    write: writeToStderr,
-  });
+  const fatalGuard = createTuiFatalGuard({ teardown: teardownTui, write: writeToStderr });
 
   // Re-render bridge: throttled rerender with new props
   let renderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1178,15 +1174,16 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
     // Tear down first so the message lands on the main screen, then exit
     // nonzero once it is flushed; the open timers would otherwise keep the
     // process alive after the error.
-    disposeFatalHandlers();
     for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
-    teardownTui();
-    writeToStderr(formatFatalError(err), () => process.exit(1));
+    fatalGuard.fail(err);
     return;
   }
-  disposeFatalHandlers();
-  altScreen.leave();
-  for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
-  cleanup();
-  process.exit(0);
+  // A fatal error's teardown unmounts Ink, which resolves the wait above; that
+  // run exits 1 from the fatal path, never 0 from here.
+  fatalGuard.finish(() => {
+    screen.leave();
+    for (const signal of DASHBOARD_EXIT_SIGNALS) process.removeListener(signal, onSignal);
+    cleanup();
+    process.exit(0);
+  });
 }

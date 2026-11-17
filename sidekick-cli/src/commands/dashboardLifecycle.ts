@@ -54,24 +54,39 @@ export interface TuiFatalHandlerOptions {
   target?: Pick<NodeJS.Process, 'on' | 'removeListener'>;
 }
 
+export interface TuiFatalGuard {
+  /** Stop listening for uncaught errors. */
+  dispose(): void;
+  /** True once a fatal error owns the exit. */
+  readonly fatal: boolean;
+  /** Take the fatal path for `error`: tear down, print, exit 1 (once). */
+  fail(error: unknown): void;
+  /**
+   * Run the normal exit (`tail`) unless a fatal error already owns the exit.
+   * The fatal teardown unmounts Ink, which resolves `waitUntilExit`; without
+   * this check the code after the wait raced the fatal path to exit 0, and
+   * which exit won depended on the order the stderr write callback queued in.
+   */
+  finish(tail: () => void): void;
+}
+
 /**
  * While a full-screen TUI is up, an error nobody catches would otherwise print
  * into the alternate screen (wiped a moment later) and leave raw mode, mouse
  * tracking and timers running, so the process hung until a second Ctrl+C,
- * which then exited 0. These handlers tear the TUI down first, print the
+ * which then exited 0. The guard's handlers tear the TUI down first, print the
  * error on the main screen, and exit 1 once it is flushed.
  *
- * Installed only after the screen is entered and removed by the returned
- * disposer: never at module scope, where they would take over a test
- * runner's own handlers.
+ * Created only after the screen is entered and disposed on the normal exit:
+ * never at module scope, where its handlers would take over a test runner's.
  */
-export function installTuiFatalHandlers(options: TuiFatalHandlerOptions): () => void {
+export function createTuiFatalGuard(options: TuiFatalHandlerOptions): TuiFatalGuard {
   const target = options.target ?? process;
   const exitProcess = options.exitProcess ?? ((code: number) => process.exit(code));
-  let fired = false;
-  const onFatal = (error: unknown): void => {
-    if (fired) return;
-    fired = true;
+  let fatal = false;
+  const fail = (error: unknown): void => {
+    if (fatal) return;
+    fatal = true;
     dispose();
     try {
       options.teardown();
@@ -81,12 +96,28 @@ export function installTuiFatalHandlers(options: TuiFatalHandlerOptions): () => 
     options.write(formatFatalError(error), () => exitProcess(1));
   };
   function dispose(): void {
-    target.removeListener('uncaughtException', onFatal);
-    target.removeListener('unhandledRejection', onFatal);
+    target.removeListener('uncaughtException', fail);
+    target.removeListener('unhandledRejection', fail);
   }
-  target.on('uncaughtException', onFatal);
-  target.on('unhandledRejection', onFatal);
-  return dispose;
+  target.on('uncaughtException', fail);
+  target.on('unhandledRejection', fail);
+  return {
+    dispose,
+    get fatal() {
+      return fatal;
+    },
+    fail,
+    finish(tail) {
+      if (fatal) return;
+      dispose();
+      tail();
+    },
+  };
+}
+
+/** {@link createTuiFatalGuard} for callers that only need to remove the handlers. */
+export function installTuiFatalHandlers(options: TuiFatalHandlerOptions): () => void {
+  return createTuiFatalGuard(options).dispose;
 }
 
 /** Write to stderr and call `done` once the text has been flushed. */

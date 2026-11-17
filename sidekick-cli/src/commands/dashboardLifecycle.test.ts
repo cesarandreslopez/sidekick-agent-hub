@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SessionProviderBase } from 'sidekick-shared';
 import {
   createDashboardSignalHandler,
+  createTuiFatalGuard,
   formatFatalError,
   installTuiFatalHandlers,
   selectSessionProvider,
@@ -83,6 +84,55 @@ describe('installTuiFatalHandlers', () => {
     dispose();
     expect(target.listenerCount('uncaughtException')).toBe(0);
     expect(target.listenerCount('unhandledRejection')).toBe(0);
+  });
+
+  it('a fatal teardown followed by Ink resolving its wait exits only with 1', () => {
+    const target = new EventEmitter();
+    const exit = vi.fn();
+    const pendingWrites: Array<() => void> = [];
+    const guard = createTuiFatalGuard({
+      teardown: () => {},
+      // The flush callback runs later, as it may on Windows.
+      write: (_text, done) => pendingWrites.push(done),
+      exitProcess: exit,
+      target: target as unknown as Pick<NodeJS.Process, 'on' | 'removeListener'>,
+    });
+    target.emit('uncaughtException', new Error('boom'));
+    // The teardown unmounted Ink, so the code after waitUntilExit now runs.
+    guard.finish(() => exit(0));
+    for (const done of pendingWrites) done();
+    expect(exit.mock.calls).toEqual([[1]]);
+    expect(guard.fatal).toBe(true);
+  });
+
+  it('runs the normal exit when nothing failed, and stops listening first', () => {
+    const target = new EventEmitter();
+    const exit = vi.fn();
+    const guard = createTuiFatalGuard({
+      teardown: () => {},
+      write: (_text, done) => done(),
+      exitProcess: exit,
+      target: target as unknown as Pick<NodeJS.Process, 'on' | 'removeListener'>,
+    });
+    guard.finish(() => exit(0));
+    expect(exit.mock.calls).toEqual([[0]]);
+    expect(target.listenerCount('uncaughtException')).toBe(0);
+  });
+
+  it('fail() and an uncaught error together take the fatal path once', () => {
+    const target = new EventEmitter();
+    const exit = vi.fn();
+    const teardown = vi.fn();
+    const guard = createTuiFatalGuard({
+      teardown,
+      write: (_text, done) => done(),
+      exitProcess: exit,
+      target: target as unknown as Pick<NodeJS.Process, 'on' | 'removeListener'>,
+    });
+    guard.fail(new Error('render failed'));
+    target.emit('uncaughtException', new Error('again'));
+    expect(teardown).toHaveBeenCalledOnce();
+    expect(exit.mock.calls).toEqual([[1]]);
   });
 
   it('prints the stack, not only the message', () => {
