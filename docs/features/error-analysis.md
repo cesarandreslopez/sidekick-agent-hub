@@ -4,11 +4,13 @@ When your code hits an error, you want to understand it quickly — not just wha
 
 Understand and fix errors with AI assistance.
 
+Works in any language that reports diagnostics (squiggles), for errors and warnings.
+
 ## Explain Error
 
-1. Click the lightbulb on any diagnostic
-2. Select **"Explain Error with AI"**
-3. Choose a complexity level from the submenu
+1. Put the cursor on an error or warning; no selection is needed
+2. Press `Ctrl+.` (`Cmd+.` on Mac) and choose **"Explain Error with AI"** (or **"Explain Warning with AI"**), or run **Sidekick: Explain Error with AI** from the Command Palette
+3. To choose a complexity level, right-click and pick **Sidekick › Explain Error with AI**, then a level
 
 ### Complexity Levels
 
@@ -22,9 +24,9 @@ Understand and fix errors with AI assistance.
 
 ## Fix Error
 
-1. Click the lightbulb on any diagnostic
-2. Select **"Fix Error with AI"**
-3. The suggested fix is applied directly to your code
+1. Put the cursor on an error or warning
+2. Press `Ctrl+.` (`Cmd+.` on Mac) and choose **"Fix Error with AI"**, or run **Sidekick: Fix Error with AI** from the Command Palette or the right-click **Sidekick** menu
+3. Review the suggested fix in the Sidekick panel, then click **Apply Fix** to change your code
 
 The **Apply Fix** button shows animated state feedback — "Applying..." while the fix runs, and a green "Applied" confirmation on success.
 

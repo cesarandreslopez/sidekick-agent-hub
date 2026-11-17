@@ -1403,7 +1403,7 @@
         },
         {
           "command": "sidekick.explainError",
-          "when": "false"
+          "when": "editorIsOpen"
         },
         {
           "command": "sidekick.explainError.eli5",
@@ -1427,7 +1427,7 @@
         },
         {
           "command": "sidekick.fixError",
-          "when": "false"
+          "when": "editorIsOpen"
         },
         {
           "command": "sidekick.setSessionProvider",
@@ -1530,12 +1530,12 @@
         {
           "submenu": "sidekick.explainErrorSubmenu",
           "group": "2_explain@2",
-          "when": "editorHasSelection"
+          "when": "editorTextFocus"
         },
         {
           "command": "sidekick.fixError",
           "group": "2_explain@3",
-          "when": "editorHasSelection"
+          "when": "editorTextFocus"
         },
         {
           "command": "sidekick.transform",

@@ -105,6 +105,25 @@ describe('command contributions', () => {
       }
     }
   });
+
+  it('offers Explain/Fix Error without a selection and from the Command Palette', () => {
+    // The commands resolve the diagnostic at the cursor, so a selection is not needed.
+    const editorMenu = manifest.contributes.menus['sidekick.menu'] as Array<{
+      command?: string;
+      submenu?: string;
+      when?: string;
+    }>;
+    const errorEntries = editorMenu.filter(
+      (e) => e.submenu === 'sidekick.explainErrorSubmenu' || e.command === 'sidekick.fixError',
+    );
+    expect(errorEntries).toHaveLength(2);
+    for (const entry of errorEntries) expect(entry.when).not.toContain('editorHasSelection');
+
+    const palette = manifest.contributes.menus.commandPalette;
+    for (const id of ['sidekick.explainError', 'sidekick.fixError']) {
+      expect(palette.find((e) => e.command === id)?.when, id).not.toBe('false');
+    }
+  });
 });
 
 describe('monitoring-disabled command fallbacks', () => {

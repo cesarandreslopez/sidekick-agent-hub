@@ -1622,8 +1622,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register error explanation code action provider
   const errorProvider = new ErrorExplanationProvider();
   context.subscriptions.push(
+    // Any language with diagnostics: the explanation doesn't depend on it.
     vscode.languages.registerCodeActionsProvider(
-      ['typescript', 'javascript', 'typescriptreact', 'javascriptreact', 'python'],
+      [{ scheme: 'file' }, { scheme: 'untitled' }],
       errorProvider,
       { providedCodeActionKinds: ErrorExplanationProvider.providedCodeActionKinds },
     ),
