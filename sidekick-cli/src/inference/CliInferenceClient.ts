@@ -10,6 +10,7 @@
  */
 
 import { spawn, execSync, type ExecSyncOptionsWithStringEncoding } from 'child_process';
+import * as os from 'os';
 import type { ProviderId, ProviderFailureDiagnosis, ProviderFailureInput } from 'sidekick-shared';
 import {
   anthropicRequestTuning,
@@ -253,7 +254,9 @@ export class CliInferenceClient {
   }
 
   private completeViaCodexCli(prompt: string): Promise<InferenceResult> {
-    return spawnWithStdin('codex', ['exec'], prompt, getCodexExecutionEnv(), {
+    // Runs outside the project (see spawnWithStdin), where `codex exec`
+    // otherwise refuses a directory that is not a git repository.
+    return spawnWithStdin('codex', ['exec', '--skip-git-repo-check'], prompt, getCodexExecutionEnv(), {
       provider: 'codex',
       credentialKind: 'unknown',
     });
@@ -272,6 +275,11 @@ export function spawnWithStdin(
     const proc = spawn(cmd, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: env ?? process.env,
+      // Outside the project: print mode saves a session of its own, and one
+      // saved under the project made the dashboard follow the summary request
+      // as if it were a new agent session. The prompt carries everything the
+      // summary needs.
+      cwd: os.tmpdir(),
     });
 
     let stdout = '';

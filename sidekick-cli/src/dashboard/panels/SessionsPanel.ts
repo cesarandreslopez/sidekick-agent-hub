@@ -100,6 +100,11 @@ const MINDMAP_FILTERS: MindMapFilter[] = [
   'knowledge-note',
 ];
 
+/** Which session a narrative belongs to: its id, or its start time before the id is known. */
+function narrativeKeyFor(metrics: DashboardMetrics): string {
+  return metrics.sessionId ?? metrics.sessionStartTime ?? '';
+}
+
 export class SessionsPanel implements SidePanel {
   readonly id = 'sessions';
   readonly title = 'Sessions';
@@ -118,6 +123,14 @@ export class SessionsPanel implements SidePanel {
    * since sending the same request again cannot succeed until something changes.
    */
   private narrativeRetryable: boolean | undefined = undefined;
+  /**
+   * The session the narrative state belongs to. A narrative is about one
+   * session, so it is shown only while that session is on screen; after a
+   * switch the tab starts over instead of describing the previous session.
+   */
+  private narrativeSessionKey: string | null = null;
+  /** Bumped per request; a reply for an older request is dropped. */
+  private narrativeRequestSeq = 0;
   /** Set externally to trigger re-render after async narrative generation. */
   onNarrativeComplete?: () => void;
 
@@ -264,21 +277,27 @@ export class SessionsPanel implements SidePanel {
 
   /** Trigger async AI narrative generation. */
   private generateNarrative(): void {
-    if (!this.inferenceClient) {
-      this.narrativeError = 'No inference client configured';
-      this.viewVersion++;
-      this.onNarrativeComplete?.();
-      return;
-    }
-    if (!this.inferenceClient.isAvailable) {
-      this.narrativeError = this.inferenceClient.getEnableHint();
-      this.viewVersion++;
-      this.onNarrativeComplete?.();
-      return;
-    }
-    if (this.narrativeLoading) return;
     if (!this._lastMetrics) return;
+    const sessionKey = narrativeKeyFor(this._lastMetrics);
+    if (!this.inferenceClient || !this.inferenceClient.isAvailable) {
+      this.narrativeRequestSeq++;
+      this.narrativeSessionKey = sessionKey;
+      this.narrativeLoading = false;
+      this.narrativeText = null;
+      this.narrativeError = this.inferenceClient
+        ? this.inferenceClient.getEnableHint()
+        : 'No inference client configured';
+      this.viewVersion++;
+      this.onNarrativeComplete?.();
+      return;
+    }
+    // One request per session at a time; a request for a session that is no
+    // longer on screen does not block one for the session that is.
+    if (this.narrativeLoading && this.narrativeSessionKey === sessionKey) return;
 
+    const requestSeq = ++this.narrativeRequestSeq;
+    this.narrativeSessionKey = sessionKey;
+    this.narrativeText = null;
     this.narrativeLoading = true;
     this.narrativeError = null;
     this.narrativeRetryable = undefined;
@@ -291,6 +310,7 @@ export class SessionsPanel implements SidePanel {
     this.inferenceClient
       .complete(prompt)
       .then((result) => {
+        if (requestSeq !== this.narrativeRequestSeq) return;
         this.narrativeLoading = false;
         if (result.error) {
           this.narrativeError =
@@ -298,6 +318,9 @@ export class SessionsPanel implements SidePanel {
               ? describeInferenceFailure(result.diagnosis)
               : result.error;
           this.narrativeRetryable = result.diagnosis?.retryable;
+        } else if (!result.text?.trim()) {
+          // Otherwise the tab silently fell back to "Press n to generate".
+          this.narrativeError = 'The provider returned an empty narrative';
         } else {
           this.narrativeText = result.text;
         }
@@ -305,6 +328,7 @@ export class SessionsPanel implements SidePanel {
         this.onNarrativeComplete?.();
       })
       .catch((err) => {
+        if (requestSeq !== this.narrativeRequestSeq) return;
         this.narrativeLoading = false;
         this.narrativeError = (err as Error).message;
         this.viewVersion++;
@@ -328,21 +352,23 @@ export class SessionsPanel implements SidePanel {
     }
 
     this._lastMetrics = metrics;
+    // State from another session's request is not this session's narrative.
+    const ownState = this.narrativeSessionKey === narrativeKeyFor(metrics);
 
-    if (this.narrativeLoading) {
+    if (ownState && this.narrativeLoading) {
       return '{yellow-fg}Generating AI narrative...{/yellow-fg}';
     }
 
-    if (this.narrativeError) {
+    if (ownState && this.narrativeError) {
       const error = `{red-fg}Error: ${this.narrativeError}{/red-fg}`;
       return this.narrativeRetryable === false
         ? error
         : `${error}\n\n{grey-fg}Press 'n' to retry{/grey-fg}`;
     }
 
-    if (this.narrativeText) {
+    const wrapWidth = ctx?.width ?? detailWidth();
+    if (ownState && this.narrativeText) {
       // Wrap to detail pane width (terminal minus side panel and borders)
-      const wrapWidth = ctx?.width ?? detailWidth();
       return '{bold}AI Session Narrative{/bold}\n\n' + wordWrap(this.narrativeText, wrapWidth);
     }
 
@@ -352,12 +378,16 @@ export class SessionsPanel implements SidePanel {
       return `{grey-fg}AI narrative not available.\n\n${hint}{/grey-fg}`;
     }
 
+    // One paragraph wrapped to the pane: hard-coded line breaks left orphan
+    // words on alternate rows wherever the pane was narrower than the text.
+    const intro =
+      'Uses your active inference provider to generate a plain-English summary of this ' +
+      'session — what was accomplished, patterns in tool and token usage, and suggestions ' +
+      'for future sessions.';
     return [
       '{bold}AI Session Narrative{/bold}',
       '',
-      '{grey-fg}Uses your active inference provider to generate a plain-English',
-      'summary of this session — what was accomplished, patterns in tool',
-      'and token usage, and suggestions for future sessions.{/grey-fg}',
+      `{grey-fg}${wordWrap(intro, wrapWidth)}{/grey-fg}`,
       '',
       'Press {bold}n{/bold} to generate.',
     ].join('\n');

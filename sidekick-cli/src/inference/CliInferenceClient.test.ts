@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import * as os from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
@@ -255,7 +256,7 @@ describe('CliInferenceClient', () => {
 
   it.each([
     ['claude-code', 'claude', ['--print']],
-    ['codex', 'codex', ['exec']],
+    ['codex', 'codex', ['exec', '--skip-git-repo-check']],
   ] as const)(
     'lets %s native CLI summaries inherit the user model configuration',
     async (provider, command, args) => {
@@ -272,6 +273,18 @@ describe('CliInferenceClient', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
+
+  it('runs native CLI summaries outside the project, so they never become a project session', async () => {
+    const proc = fakeProcess();
+    spawnMock.mockReturnValue(proc);
+    const pending = spawnWithStdin('claude', ['--print'], 'prompt');
+    proc.stdout.emit('data', Buffer.from('ok'));
+    proc.emit('close', 0);
+    await pending;
+    const options = spawnMock.mock.calls[0][2] as { cwd?: string };
+    expect(options.cwd).toBe(os.tmpdir());
+    expect(options.cwd).not.toBe(process.cwd());
+  });
 });
 
 describe('spawnWithStdin', () => {

@@ -246,3 +246,55 @@ describe('SessionsPanel narrative retry hint', () => {
     expect(await failNarrative(undefined)).toContain("Press 'n' to retry");
   });
 });
+
+describe('SessionsPanel narrative ownership', () => {
+  function setup(reply: { text: string; error?: string }) {
+    const panel = new SessionsPanel();
+    const internals = panel as unknown as {
+      inferenceClient: unknown;
+      generateNarrative(): void;
+    };
+    internals.inferenceClient = {
+      isAvailable: true,
+      getEnableHint: () => '',
+      complete: async () => reply,
+    };
+    const render = (sessionId: string) => {
+      const metrics = { ...metricsWithTasks(), sessionId };
+      const item: PanelItem = { id: 'active', label: 's', sortKey: 0, data: { type: 'active' } };
+      return panel.detailTabs[6].render(item, metrics, { width: 60 } as never);
+    };
+    return { panel, internals, render };
+  }
+
+  it('does not show one session’s narrative under another session', async () => {
+    const { panel, internals, render } = setup({ text: 'Session A refactored the parser.' });
+    render('session-a');
+    internals.generateNarrative();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(render('session-a')).toContain('Session A refactored the parser.');
+    // After a switch the tab starts over instead of describing session A.
+    const other = render('session-b');
+    expect(other).not.toContain('Session A refactored');
+    expect(other).toContain('Press {bold}n{/bold} to generate.');
+    panel.dispose?.();
+  });
+
+  it('reports an empty reply instead of silently showing the placeholder again', async () => {
+    const { panel, internals, render } = setup({ text: '   ' });
+    render('session-a');
+    internals.generateNarrative();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(render('session-a')).toContain('The provider returned an empty narrative');
+    panel.dispose?.();
+  });
+
+  it('wraps the placeholder to the pane instead of leaving orphan words', () => {
+    const { panel, render } = setup({ text: '' });
+    const visible = (line: string) => line.replace(/\{[^}]+\}/g, '');
+    for (const line of render('session-a').split('\n')) {
+      expect(visible(line).length).toBeLessThanOrEqual(60);
+    }
+    panel.dispose?.();
+  });
+});
