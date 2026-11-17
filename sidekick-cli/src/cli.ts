@@ -272,8 +272,9 @@ program.addCommand(searchCmd);
 
 // Tasks command — list persisted tasks for the current project
 const tasksCmd = new Command('tasks')
-  .description('List persisted tasks for the current project')
+  .description('List persisted tasks for the current project (open tasks first)')
   .addOption(tasksStatusOption())
+  .option('--limit <n>', 'Show at most this many tasks')
   .action(async (_opts: Record<string, unknown>, cmd: Command) => {
     const { tasksAction } = await import('./commands/tasks');
     return tasksAction(_opts, cmd);
@@ -290,8 +291,8 @@ tasksCmd
   });
 tasksCmd
   .command('done')
-  .description('Mark a task completed by ID or unique prefix')
-  .argument('<id>', 'Task ID or unique prefix')
+  .description('Mark a task completed by the reference `sidekick tasks` prints')
+  .argument('<id>', 'Task reference (e.g. a1b2c3d4 or 5f2e9c1a:3), task ID, or unique prefix')
   .action(async (id: string, _opts: Record<string, unknown>, cmd: Command) => {
     const { taskDoneAction } = await import('./commands/capture');
     return taskDoneAction(id, cmd);

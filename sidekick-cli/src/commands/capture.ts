@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { addDecision, addNote, addTask, completeTask } from 'sidekick-shared';
+import { taskReference } from './tasks';
 
 function rootCommand(cmd: Command): Command {
   let root: Command = cmd;
@@ -38,7 +39,7 @@ export async function taskAddAction(subject: string, cmd: Command): Promise<void
 
 export async function taskDoneAction(id: string, cmd: Command): Promise<void> {
   const task = await completeTask(projectFrom(cmd), id);
-  emit(cmd, `Completed task ${task.taskId}: ${task.subject}`, {
+  emit(cmd, `Completed task ${taskReference(task)}: ${task.subject}`, {
     ok: true,
     action: 'completed',
     task,

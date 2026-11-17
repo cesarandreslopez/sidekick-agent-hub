@@ -52,25 +52,59 @@ export async function addTask(
   return task;
 }
 
+/** The reference a session task is filed under when its short id collides (`<origin8>:<id>`). */
+function namespacedTaskRef(task: PersistedTask): string {
+  return `${(task.sessionOrigin ?? '').slice(0, 8)}:${task.taskId}`;
+}
+
+/**
+ * The single store entry a reference names, by precedence: an exact store key,
+ * an exact `<origin8>:<taskId>`, an exact task id, then a unique task-id
+ * prefix. Session tasks keep their agent's short ids (`5`, `plan-0`), so the
+ * same task id can appear many times; a reference that still names several
+ * entries is reported with the candidates instead of guessing.
+ */
+function resolveTaskEntry(store: TaskPersistenceStore, ref: string): [string, PersistedTask] {
+  const tasks = store.tasks ?? {};
+  if (Object.hasOwn(tasks, ref)) return [ref, tasks[ref]];
+  const entries = Object.entries(tasks);
+  const stages: Array<(task: PersistedTask) => boolean> = [
+    (task) => namespacedTaskRef(task) === ref,
+    (task) => task.taskId === ref,
+    (task) => task.taskId.startsWith(ref),
+  ];
+  for (const stage of stages) {
+    const matches = entries.filter(([, task]) => stage(task));
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      const shown = matches
+        .slice(0, 8)
+        .map(([, task]) => `  ${namespacedTaskRef(task)}  ${task.subject}`);
+      if (matches.length > shown.length) shown.push(`  … ${matches.length - shown.length} more`);
+      throw new Error(
+        [`Task ID "${ref}" matches ${matches.length} tasks. Use one of:`, ...shown].join('\n'),
+      );
+    }
+  }
+  throw new Error(`Task not found: ${ref}`);
+}
+
 export async function completeTask(cwd: string, taskIdOrPrefix: string): Promise<PersistedTask> {
   const project = resolveProjectIdentity(cwd);
   migrateLegacyProjectStores(project);
   const filePath = getProjectDataPath(project.canonicalSlug, 'tasks');
+  const ref = taskIdOrPrefix.trim();
+  if (!ref) throw new Error('A task ID is required');
   let completed: PersistedTask | undefined;
   await updateJsonStoreAtomic(filePath, emptyTaskStore, (store) => {
-    const matches = Object.values(store.tasks).filter(
-      (task) => task.taskId === taskIdOrPrefix || task.taskId.startsWith(taskIdOrPrefix),
-    );
-    if (matches.length !== 1) {
-      throw new Error(
-        matches.length === 0 ? `Task not found: ${taskIdOrPrefix}` : 'Task ID is ambiguous',
-      );
-    }
+    const [key, task] = resolveTaskEntry(store, ref);
     const now = new Date().toISOString();
-    completed = { ...matches[0], status: 'completed', updatedAt: now };
+    completed = { ...task, status: 'completed', updatedAt: now };
+    // Written back under the key it was found at: completing a namespaced
+    // entry must not overwrite the bare-id entry another session owns.
     return {
       ...store,
-      tasks: { ...store.tasks, [completed!.taskId]: completed! },
+      tasks: { ...store.tasks, [key]: completed },
       lastSaved: now,
     };
   });
