@@ -355,9 +355,14 @@ describe('SessionsPanel past sessions', () => {
       sessionStartTime: new Date(start).toISOString(),
       lastEventTime: new Date(start + 3_600_000).toISOString(),
     };
-    const out = panel.detailTabs[0].render(activeItem, metrics, { sessions: [] } as never, {
-      width: 80,
-    } as never);
+    const out = panel.detailTabs[0].render(
+      activeItem,
+      metrics,
+      { sessions: [] } as never,
+      {
+        width: 80,
+      } as never,
+    );
     expect(out).toContain('01:00:00');
     expect(out).toContain('ran');
     expect(out).toContain('ended 2d ago');
@@ -375,9 +380,14 @@ describe('SessionsPanel past sessions', () => {
       sessionStartTime: new Date(Date.now() - 60_000).toISOString(),
       lastEventTime: new Date(Date.now() - 10_000).toISOString(),
     };
-    const out = panel.detailTabs[0].render(activeItem, metrics, { sessions: [] } as never, {
-      width: 80,
-    } as never);
+    const out = panel.detailTabs[0].render(
+      activeItem,
+      metrics,
+      { sessions: [] } as never,
+      {
+        width: 80,
+      } as never,
+    );
     expect(out).toContain('elapsed');
     panel.dispose?.();
   });
@@ -397,8 +407,18 @@ describe('SessionsPanel Files tab', () => {
         },
       ],
     };
-    const activeItem: PanelItem = { id: 'active', label: 's', sortKey: 0, data: { type: 'active' } };
-    const out = panel.detailTabs[4].render(activeItem, metrics, {} as never, { width: 50 } as never);
+    const activeItem: PanelItem = {
+      id: 'active',
+      label: 's',
+      sortKey: 0,
+      data: { type: 'active' },
+    };
+    const out = panel.detailTabs[4].render(
+      activeItem,
+      metrics,
+      {} as never,
+      { width: 50 } as never,
+    );
     const row = out.split('\n').find((line) => line.includes('R:3')) ?? '';
     expect(row).toContain('W:1');
     expect(row).toContain('E:2');

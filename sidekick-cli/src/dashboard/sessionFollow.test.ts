@@ -16,9 +16,9 @@ describe('decideSessionFollow', () => {
 
   it('does not switch to the session it already follows', () => {
     const known = new Set<string>();
-    expect(
-      decideSessionFollow({ sessions: ['/a'], known, followed: '/a', pinned: false }),
-    ).toEqual({ action: 'none' });
+    expect(decideSessionFollow({ sessions: ['/a'], known, followed: '/a', pinned: false })).toEqual(
+      { action: 'none' },
+    );
     expect(
       decideSessionFollow({ sessions: ['/a'], known: new Set(), followed: '/a', pinned: true }),
     ).toEqual({ action: 'none' });

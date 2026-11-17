@@ -217,7 +217,8 @@ function addToolsSection(
 
   for (const t of metrics.toolStats) {
     const pending = t.pending > 0 ? ` (${t.pending} pending)` : '';
-    const toolLabel = tag('tool', `${t.name}`) + ` \u00B7\u00B7\u00B7 ${plural(t.calls, 'call')}${pending}`;
+    const toolLabel =
+      tag('tool', `${t.name}`) + ` \u00B7\u00B7\u00B7 ${plural(t.calls, 'call')}${pending}`;
     const toolLeaves: Record<string, TreeData> = {};
 
     // Nested files

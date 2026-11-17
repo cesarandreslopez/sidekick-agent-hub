@@ -256,10 +256,16 @@ export class CliInferenceClient {
   private completeViaCodexCli(prompt: string): Promise<InferenceResult> {
     // Runs outside the project (see spawnWithStdin), where `codex exec`
     // otherwise refuses a directory that is not a git repository.
-    return spawnWithStdin('codex', ['exec', '--skip-git-repo-check'], prompt, getCodexExecutionEnv(), {
-      provider: 'codex',
-      credentialKind: 'unknown',
-    });
+    return spawnWithStdin(
+      'codex',
+      ['exec', '--skip-git-repo-check'],
+      prompt,
+      getCodexExecutionEnv(),
+      {
+        provider: 'codex',
+        credentialKind: 'unknown',
+      },
+    );
   }
 }
 

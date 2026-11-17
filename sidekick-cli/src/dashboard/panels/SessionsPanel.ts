@@ -713,7 +713,8 @@ export class SessionsPanel implements SidePanel {
         .sort((a, b) => b.calls - a.calls)
         .slice(0, 10)
         .map(
-          (u) => `  ${u.tool.padEnd(16)} {bold}${u.calls}{/bold} ${u.calls === 1 ? 'call' : 'calls'}`,
+          (u) =>
+            `  ${u.tool.padEnd(16)} {bold}${u.calls}{/bold} ${u.calls === 1 ? 'call' : 'calls'}`,
         ),
     ].join('\n');
   }

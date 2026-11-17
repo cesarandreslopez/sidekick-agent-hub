@@ -295,10 +295,7 @@ export function SessionPickerInk({ items, onSelect }: SessionPickerInkProps): Re
               <Text wrap="truncate-end">
                 <Text dimColor>{'──'} </Text>
                 {badge ? <Text color={badge.color}>{name}</Text> : name}
-                <Text dimColor>
-                  {' '}
-                  {'──────────'}
-                </Text>
+                <Text dimColor> {'──────────'}</Text>
               </Text>
             </Box>,
           );

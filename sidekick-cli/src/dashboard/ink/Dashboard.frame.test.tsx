@@ -352,7 +352,11 @@ describe('selection when the first event arrives', () => {
     const { stdout, stdin, writes } = fakeStreams(100, 24);
     const panels = allPanels();
     const app = render(
-      <Dashboard panels={panels} metrics={new DashboardState().getMetrics()} staticData={history} />,
+      <Dashboard
+        panels={panels}
+        metrics={new DashboardState().getMetrics()}
+        staticData={history}
+      />,
       {
         stdout: stdout as unknown as NodeJS.WriteStream,
         stdin: stdin as unknown as NodeJS.ReadStream,
