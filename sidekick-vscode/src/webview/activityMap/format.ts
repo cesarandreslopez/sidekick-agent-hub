@@ -29,10 +29,3 @@ export function formatOffset(ms: number): string {
   if (!Number.isFinite(ms)) return '';
   return `+${formatDuration(Math.max(0, ms)) || '0s'}`;
 }
-
-/** `12.3k` style counts. */
-export function formatCount(value: number): string {
-  if (value < 1000) return String(value);
-  if (value < 10_000) return `${(value / 1000).toFixed(1)}k`;
-  return `${Math.round(value / 1000)}k`;
-}

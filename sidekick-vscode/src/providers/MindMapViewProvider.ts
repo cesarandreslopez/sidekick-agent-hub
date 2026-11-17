@@ -18,7 +18,13 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { SessionMonitor } from '../services/SessionMonitor';
 import { MindMapDataService } from '../services/MindMapDataService';
-import type { MindMapState, MindMapMessage, WebviewMindMapMessage } from '../types/mindMap';
+import type {
+  GraphNode,
+  MindMapState,
+  MindMapMessage,
+  WebviewMindMapMessage,
+} from '../types/mindMap';
+import { formatDurationMs, formatTokenCount } from 'sidekick-shared/browser';
 import type { KnowledgeNoteService } from '../services/KnowledgeNoteService';
 import { log } from '../services/Logger';
 import { getNonce } from '../utils/nonce';
@@ -49,6 +55,29 @@ import {
  * vscode.window.registerWebviewViewProvider('sidekick.mindMap', provider);
  * ```
  */
+/**
+ * Plan-step tooltips show tokens and duration in the shared formats (the
+ * webview script can't import them), so the host attaches the labels.
+ */
+function withDisplayLabels(graph: MindMapState['graph']): MindMapState['graph'] {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node: GraphNode) =>
+      node.planStepTokens || node.planStepDurationMs
+        ? {
+            ...node,
+            ...(node.planStepTokens
+              ? { planStepTokensLabel: formatTokenCount(node.planStepTokens) }
+              : {}),
+            ...(node.planStepDurationMs
+              ? { planStepDurationLabel: formatDurationMs(node.planStepDurationMs) }
+              : {}),
+          }
+        : node,
+    ),
+  };
+}
+
 export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   /** View type identifier for VS Code registration */
   public static readonly viewType = 'sidekick.mindMap';
@@ -313,7 +342,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     const stats = this._sessionMonitor.getStatsView();
     const subagents = this._sessionMonitor.getSubagentStats();
     const knowledgeNotes = this._knowledgeNoteService?.getActiveNotes();
-    this._state.graph = MindMapDataService.buildGraph(stats, subagents, knowledgeNotes);
+    this._state.graph = withDisplayLabels(
+      MindMapDataService.buildGraph(stats, subagents, knowledgeNotes),
+    );
     this._state.sessionActive = this._sessionMonitor.isActive();
     this._state.sessionStatus = this._livenessLabel();
     this._state.lastUpdated = new Date().toISOString();
@@ -1646,13 +1677,11 @@ ${getGraphLegendHtml()}
                 const cxColor = COMPLEXITY_COLORS[d.planStepComplexity] || COMPLEXITY_COLORS.low;
                 planTooltipHtml += '<br>Complexity: <span style="color:' + cxColor + '">' + escapeHtml(d.planStepComplexity) + '</span>';
               }
-              if (d.planStepDurationMs) {
-                const dSec = Math.round(d.planStepDurationMs / 1000);
-                const dMin = Math.floor(dSec / 60);
-                planTooltipHtml += '<br>Duration: ' + (dMin > 0 ? dMin + 'm ' + (dSec % 60) + 's' : dSec + 's');
+              if (d.planStepDurationLabel) {
+                planTooltipHtml += '<br>Duration: ' + escapeHtml(d.planStepDurationLabel);
               }
-              if (d.planStepTokens) {
-                planTooltipHtml += '<br>Tokens: ' + (d.planStepTokens >= 1000 ? (d.planStepTokens / 1000).toFixed(1) + 'k' : d.planStepTokens);
+              if (d.planStepTokensLabel) {
+                planTooltipHtml += '<br>Tokens: ' + escapeHtml(d.planStepTokensLabel);
               }
               if (d.planStepError) {
                 planTooltipHtml += '<br><span style="color:var(--vscode-charts-red, #f14c4c)">Error: ' + escapeHtml(d.planStepError.substring(0, 80)) + '</span>';

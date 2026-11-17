@@ -133,6 +133,31 @@ describe('MindMapViewProvider liveness', () => {
   });
 });
 
+describe('MindMapViewProvider plan-step labels', () => {
+  it('formats plan-step tokens and duration with the shared formatters', () => {
+    buildGraph.mockReturnValueOnce({
+      nodes: [
+        {
+          id: 'step',
+          label: 's',
+          type: 'plan-step',
+          planStepTokens: 1_500_000,
+          planStepDurationMs: 125_000,
+        },
+      ],
+      links: [],
+    } as never);
+    const monitor = { ...makeMonitor(), isActive: vi.fn(() => true) };
+    const provider = new MindMapViewProvider({ fsPath: '/extension' } as never, monitor as never);
+    const state = (
+      provider as unknown as { _state: { graph: { nodes: Array<Record<string, unknown>> } } }
+    )._state;
+    expect(state.graph.nodes[0].planStepTokensLabel).toBe('1.5M');
+    expect(state.graph.nodes[0].planStepDurationLabel).toBe('2m 5s');
+    provider.dispose();
+  });
+});
+
 describe('resolveNodeFilePath', () => {
   it('keeps absolute paths and resolves relative ones against the workspace', () => {
     expect(resolveNodeFilePath('/repo/src/a.ts', '/repo')).toBe('/repo/src/a.ts');

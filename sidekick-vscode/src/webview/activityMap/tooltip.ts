@@ -10,7 +10,8 @@ import type {
   ActivitySnapshot,
   ActivityStationId,
 } from 'sidekick-shared/activity';
-import { formatCount, formatDuration } from './format';
+import { formatTokenCount } from 'sidekick-shared/browser';
+import { formatDuration } from './format';
 
 export function describeStation(
   station: ActivityStationId,
@@ -34,7 +35,7 @@ export function describeStation(
   if (now?.pushed) lines.push(`${now.pushed} arrived unasked`);
   if (now && now.running > 0) lines.push(`${now.running} running now`);
   if (stats && stats.resultChars > 0) {
-    lines.push(`~${formatCount(stats.estTokens)} tokens of output into context`);
+    lines.push(`~${formatTokenCount(stats.estTokens)} tokens of output into context`);
   }
   if (stats && stats.topLabels.length > 0) {
     lines.push(

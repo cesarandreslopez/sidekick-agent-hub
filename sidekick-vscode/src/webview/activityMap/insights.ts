@@ -16,7 +16,8 @@ import type {
   ActivityPattern,
   ActivityStationId,
 } from 'sidekick-shared/activity';
-import { formatCount, formatDuration } from './format';
+import { formatTokenCount } from 'sidekick-shared/browser';
+import { formatDuration } from './format';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -96,7 +97,7 @@ export function renderInsights(
       const faults = station.errors + station.denials;
       button.setAttribute(
         'aria-label',
-        `${strings.stations[station.id]}: ${station.calls} calls, busy ${formatDuration(station.busyMs) || '0s'}, ${faults} faults, about ${formatCount(station.estTokens)} tokens into context`,
+        `${strings.stations[station.id]}: ${station.calls} calls, busy ${formatDuration(station.busyMs) || '0s'}, ${faults} faults, about ${formatTokenCount(station.estTokens)} tokens into context`,
       );
       button.dataset.focusKey = `station:${station.id}`;
       button.appendChild(swatch(doc, station.id));
@@ -105,7 +106,11 @@ export function renderInsights(
       button.appendChild(cell(doc, 'am-num', formatDuration(station.busyMs) || '—'));
       button.appendChild(cell(doc, `am-num${faults > 0 ? ' am-faults' : ''}`, String(faults)));
       button.appendChild(
-        cell(doc, 'am-num', station.estTokens > 0 ? `~${formatCount(station.estTokens)}` : '—'),
+        cell(
+          doc,
+          'am-num',
+          station.estTokens > 0 ? `~${formatTokenCount(station.estTokens)}` : '—',
+        ),
       );
       button.addEventListener('click', () => handlers.onSelectStation(station.id));
       nodes.push(button);
