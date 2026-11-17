@@ -63,7 +63,17 @@ export function selectStatuslineAccount(input: StatuslineInput): StatuslineSelec
  * a snapshot from yesterday can no longer read like a live figure.
  */
 export function formatStatusline(input: StatuslineInput): string {
-  const selected = selectStatuslineAccount(input);
+  // With no readable account identity, Claude Code's own rate limits (from
+  // the piped payload) are still worth showing rather than "quota unavailable".
+  const selected =
+    selectStatuslineAccount(input) ??
+    (input.claudeQuota?.available
+      ? {
+          providerId: 'claude-code' as const,
+          accountLabel: 'claude',
+          quota: input.claudeQuota,
+        }
+      : null);
   const now = input.now ?? new Date();
   const liveSegments = formatLiveSegments(input.live);
   if (!selected) return joinSegments(['acct:none', 'quota unavailable', ...liveSegments]);

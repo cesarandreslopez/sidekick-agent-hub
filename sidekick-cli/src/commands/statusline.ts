@@ -168,6 +168,9 @@ export async function statuslineAction(): Promise<void> {
     const official = quotaFromStatuslinePayload(live, { fallback: cachedClaudeQuota });
     if (official) {
       claudeQuota = official;
+      // Snapshots and history are keyed by account id: with no readable Claude
+      // identity there is nothing to file these under, so they are shown but
+      // not persisted (a made-up key would mix accounts for every reader).
       if (claudeAccountId) {
         persist = persistOfficialQuota(claudeAccountId, official, cachedClaudeQuota, live);
       }

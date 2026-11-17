@@ -154,4 +154,20 @@ describe('formatStatusline live segments', () => {
     });
     expect(result).toBe('acct:none · quota unavailable · ctx 12%');
   });
+
+  it('shows Claude Code rate limits even without a readable account identity', () => {
+    const now = new Date('2026-07-18T13:00:00.000Z');
+    const result = formatStatusline({
+      accounts: { ok: false, claude: { present: false }, codex: { present: false } },
+      now,
+      claudeQuota: {
+        fiveHour: { utilization: 42, resetsAt: '2026-07-18T14:00:00.000Z' },
+        sevenDay: { utilization: 61, resetsAt: '2026-07-22T00:00:00.000Z' },
+        available: true,
+      },
+    });
+    expect(result).toMatch(/^acct:claude · 5h 42% /);
+    expect(result).toContain('7d 61%');
+    expect(result).not.toContain('quota unavailable');
+  });
 });
