@@ -43,8 +43,8 @@ import { handleDashboardInput } from './inputDispatch';
 import { itemTimestampMs, parseDateExpression } from '../dateFilterExpression';
 import { newTimelineEntries } from './timelineAlerts';
 import { getPanelItemsOnce } from './panelItems';
-import { visibleToasts } from './toastStack';
-import { describeDataStatus, type DataStatus } from './dataStatus';
+import { TOAST_DURATIONS_MS, toastOffsets, visibleToasts } from './toastStack';
+import { describeDataStatus, lastDataError, type DataStatus } from './dataStatus';
 import type { DashboardNotice } from './notice';
 import { stripTagged, truncateTagged, wrapTaggedLines } from '../blessedText';
 import { layoutDetailTabs, layoutTopTabs } from './tabLayout';
@@ -163,17 +163,20 @@ export function Dashboard({
   }, [metrics.timelineAppendCount, metrics.timeline]);
 
   // ── Toast management ──
-  const addToast = useCallback((message: string, severity: 'error' | 'warning' | 'info') => {
-    const durations = { error: 4000, warning: 3000, info: 2000 };
-    const id = ++toastIdRef.current;
-    dispatch({
-      type: 'ADD_TOAST',
-      toast: { id, message, severity, expiresAt: Date.now() + durations[severity] },
-    });
-    setTimeout(() => {
-      dispatch({ type: 'REMOVE_TOAST', id });
-    }, durations[severity]);
-  }, []);
+  const addToast = useCallback(
+    (message: string, severity: 'error' | 'warning' | 'info', durationMs?: number) => {
+      const duration = durationMs ?? TOAST_DURATIONS_MS[severity];
+      const id = ++toastIdRef.current;
+      dispatch({
+        type: 'ADD_TOAST',
+        toast: { id, message, severity, expiresAt: Date.now() + duration },
+      });
+      setTimeout(() => {
+        dispatch({ type: 'REMOVE_TOAST', id });
+      }, duration);
+    },
+    [],
+  );
 
   // ── Host notices ──
   // Keyed on the monotonic id, not the message: the host rebuilds props on
@@ -182,7 +185,7 @@ export function Dashboard({
   useEffect(() => {
     if (notice && notice.id !== lastNoticeIdRef.current) {
       lastNoticeIdRef.current = notice.id;
-      addToast(notice.message, notice.severity);
+      addToast(notice.message, notice.severity, notice.durationMs);
     }
   }, [notice, addToast]);
 
@@ -694,6 +697,19 @@ export function Dashboard({
 
   // ── Render ──
 
+  /** Visible toasts, each placed below the previous one's actual height. */
+  function renderToasts(): React.ReactNode {
+    if (state.toasts.length === 0) return null;
+    const shown = visibleToasts(state.toasts);
+    const tops = toastOffsets(
+      shown.map((toast) => toast.message),
+      columns,
+    );
+    return shown.map((toast, i) => (
+      <ToastNotification key={toast.id} toast={toast} top={tops[i]} />
+    ));
+  }
+
   if (tooSmall) {
     return <TooSmallOverlay columns={columns} rows={rows} />;
   }
@@ -709,6 +725,7 @@ export function Dashboard({
               activePanelIndex={state.activePanelIndex}
               scrollOffset={state.overlayScrollOffset}
               onClampScroll={(maxOffset) => dispatch({ type: 'CLAMP_OVERLAY_SCROLL', maxOffset })}
+              lastError={dataStatus ? lastDataError(dataStatus) : null}
             />
           ) : (
             <Box flexGrow={1} justifyContent="center" alignItems="center">
@@ -732,10 +749,7 @@ export function Dashboard({
           {state.overlay === 'accounts' && (
             <AccountsOverlay views={accountViews ?? []} selectedIndex={state.contextMenuIndex} />
           )}
-          {state.toasts.length > 0 &&
-            visibleToasts(state.toasts).map((toast, row) => (
-              <ToastNotification key={toast.id} toast={toast} row={row} />
-            ))}
+          {renderToasts()}
         </Box>
       </MouseProvider>
     );
@@ -791,6 +805,7 @@ export function Dashboard({
             activePanelIndex={state.activePanelIndex}
             scrollOffset={state.overlayScrollOffset}
             onClampScroll={(maxOffset) => dispatch({ type: 'CLAMP_OVERLAY_SCROLL', maxOffset })}
+            lastError={dataStatus ? lastDataError(dataStatus) : null}
           />
         )}
 
@@ -842,10 +857,7 @@ export function Dashboard({
         )}
 
         {/* Toasts */}
-        {state.toasts.length > 0 &&
-          visibleToasts(state.toasts).map((toast, row) => (
-            <ToastNotification key={toast.id} toast={toast} row={row} />
-          ))}
+        {renderToasts()}
       </Box>
     </MouseProvider>
   );

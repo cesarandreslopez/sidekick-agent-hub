@@ -7,6 +7,8 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { useTerminalSize } from './useTerminalSize';
 import { displayWidth } from '../blessedText';
+import { OVERLAY_FILL } from './overlayFill';
+import { toastLines } from './toastStack';
 
 const SEVERITY_COLOR: Record<string, string> = {
   error: 'red',
@@ -15,9 +17,9 @@ const SEVERITY_COLOR: Record<string, string> = {
 };
 
 const SEVERITY_ICON: Record<string, string> = {
-  error: '\u2718', // ✘
-  warning: '\u26A0', // ⚠
-  info: '\u25CF', // ●
+  error: '✘', // ✘
+  warning: '⚠', // ⚠
+  info: '●', // ●
 };
 
 interface ToastEntry {
@@ -28,37 +30,36 @@ interface ToastEntry {
 
 interface ToastNotificationProps {
   toast: ToastEntry;
-  /** Stack position from the top; each toast occupies three rows. */
-  row?: number;
+  /** Row the toast's top border sits on (see `toastOffsets`). */
+  top?: number;
 }
 
-export function ToastNotification({ toast, row = 0 }: ToastNotificationProps): React.ReactElement {
+export function ToastNotification({ toast, top = 0 }: ToastNotificationProps): React.ReactElement {
   const { columns } = useTerminalSize();
   const color = SEVERITY_COLOR[toast.severity] || 'cyan';
-  const icon = SEVERITY_ICON[toast.severity] || '\u25CF';
-  const maxMsg = Math.max(16, Math.min(56, columns - 10));
-  let truncMsg = toast.message;
-  if (displayWidth(truncMsg) > maxMsg) {
-    let cut = '';
-    for (const ch of Array.from(truncMsg)) {
-      if (displayWidth(cut + ch) > maxMsg - 3) break;
-      cut += ch;
-    }
-    truncMsg = cut + '...';
-  }
+  const icon = SEVERITY_ICON[toast.severity] || '●';
+  // Wrapped to up to three rows rather than cut to one: a report path or an
+  // error message is no use with its end missing.
+  const lines = toastLines(toast.message, columns);
+  const textWidth = Math.max(...lines.map((line) => displayWidth(line)));
 
   return (
     <Box
       position="absolute"
-      marginLeft={Math.max(0, columns - displayWidth(truncMsg) - 8)}
-      marginTop={row * 3}
+      flexDirection="column"
+      marginLeft={Math.max(0, columns - textWidth - 8)}
+      marginTop={top}
       borderStyle="single"
       borderColor={color}
       paddingX={1}
+      backgroundColor={OVERLAY_FILL}
     >
-      <Text color={color}>
-        {icon} {truncMsg}
-      </Text>
+      {lines.map((line, i) => (
+        <Text key={i} color={color}>
+          {i === 0 ? `${icon} ` : '  '}
+          {line}
+        </Text>
+      ))}
     </Box>
   );
 }

@@ -65,3 +65,12 @@ export function describeDataStatus(status: DataStatus, now: number): StatusBadge
   }
   return null;
 }
+
+/**
+ * The most recent failure's message, for the help overlay: the status-bar
+ * badge only says that something failed, and the toast that said what was
+ * gone after a few seconds.
+ */
+export function lastDataError(status: DataStatus): string | null {
+  return status.error ?? status.watcherError ?? null;
+}

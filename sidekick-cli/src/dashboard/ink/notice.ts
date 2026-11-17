@@ -9,4 +9,6 @@ export interface DashboardNotice {
   id: number;
   message: string;
   severity: 'error' | 'warning' | 'info';
+  /** How long the toast stays up; defaults by severity (2–4 s). */
+  durationMs?: number;
 }

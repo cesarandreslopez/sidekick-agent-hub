@@ -42,8 +42,9 @@ export function FilterOverlay({
           <React.Fragment key={mode}>
             {i > 0 ? <Text dimColor> · </Text> : null}
             {mode === filterMode ? (
+              // Brackets as well as colour: NO_COLOR leaves only the text.
               <Text bold color="magenta" underline>
-                {MODE_LABELS[mode]}
+                [{MODE_LABELS[mode]}]
               </Text>
             ) : (
               <Text dimColor>{MODE_LABELS[mode]}</Text>

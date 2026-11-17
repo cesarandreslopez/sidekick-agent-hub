@@ -8,6 +8,7 @@ import { Box, Text } from 'ink';
 import type { AccountView } from 'sidekick-shared';
 import { PROVIDER_NAMES, accountRowParts, columnWidths } from '../../commands/accounts/format';
 import { useTerminalSize } from './useTerminalSize';
+import { OVERLAY_FILL } from './overlayFill';
 
 interface AccountsOverlayProps {
   views: AccountView[];
@@ -22,13 +23,14 @@ export function AccountsOverlay({
   const widths = columnWidths(views);
   const now = Date.now();
   const contentWidth =
-    6 +
+    8 +
     widths.name +
     (widths.email ? widths.email + 2 : 0) +
     (widths.plan ? widths.plan + 2 : 0) +
     24;
-  const width = Math.min(Math.max(44, contentWidth), columns - 2);
-  const height = views.length + 6;
+  // Wide enough for the empty-state and footer rows below, so nothing wraps.
+  const width = Math.min(Math.max(48, contentWidth), columns - 2);
+  const height = views.length + 7;
   let provider: string | null = null;
   let itemIndex = -1;
 
@@ -42,9 +44,19 @@ export function AccountsOverlay({
       marginLeft={Math.max(0, Math.floor((columns - width) / 2))}
       marginTop={Math.max(0, Math.floor((rows - height) / 2))}
       paddingX={1}
+      backgroundColor={OVERLAY_FILL}
     >
       <Text color="magenta"> Accounts </Text>
-      {views.length === 0 && <Text dimColor>No saved accounts. Run: sidekick accounts add</Text>}
+      {views.length === 0 && (
+        <>
+          <Text dimColor wrap="truncate-end">
+            No saved accounts.
+          </Text>
+          <Text dimColor wrap="truncate-end">
+            Run: sidekick accounts add
+          </Text>
+        </>
+      )}
       {views.map((view) => {
         itemIndex++;
         const header = view.providerId !== provider ? PROVIDER_NAMES[view.providerId] : null;
@@ -54,8 +66,9 @@ export function AccountsOverlay({
         return (
           <Box key={`${view.providerId}:${view.id}`} flexDirection="column">
             {header && <Text bold>{header}</Text>}
-            <Text inverse={selected}>
-              {' '}
+            <Text inverse={selected} wrap="truncate-end">
+              {/* A pointer as well as inverse video, which NO_COLOR removes. */}
+              {selected ? '\u25B8 ' : '  '}
               <Text color="green">{view.isActive ? '* ' : '  '}</Text>
               {p.name.padEnd(widths.name)}
               {widths.email ? <Text dimColor> {p.email.padEnd(widths.email)}</Text> : ''}
@@ -67,9 +80,11 @@ export function AccountsOverlay({
           </Box>
         );
       })}
-      <Text dimColor>
-        <Text bold>Enter</Text> switch <Text bold>u</Text> undo <Text bold>a/l/s</Text> via CLI{' '}
-        <Text bold>Esc</Text> close
+      <Text dimColor wrap="truncate-end">
+        <Text bold>Enter</Text> switch <Text bold>u</Text> undo <Text bold>Esc</Text> close
+      </Text>
+      <Text dimColor wrap="truncate-end">
+        <Text bold>a/l/s</Text> CLI: add · login · shell
       </Text>
     </Box>
   );

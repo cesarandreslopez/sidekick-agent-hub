@@ -338,8 +338,12 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
 
   let noticeSeq = 0;
   let notice: DashboardNotice | null = null;
-  function pushNotice(message: string, severity: 'error' | 'warning' | 'info'): void {
-    notice = { id: ++noticeSeq, message, severity };
+  function pushNotice(
+    message: string,
+    severity: 'error' | 'warning' | 'info',
+    durationMs?: number,
+  ): void {
+    notice = { id: ++noticeSeq, message, severity, ...(durationMs ? { durationMs } : {}) };
     scheduleRender();
   }
 
@@ -685,7 +689,9 @@ export async function dashboardAction(_opts: Record<string, unknown>, cmd: Comma
         const outFile = path.join(os.tmpdir(), `sidekick-report-${Date.now()}.html`);
         fs.writeFileSync(outFile, html, 'utf-8');
         openInBrowser(outFile);
-        pushNotice(`Report: ${outFile}`, 'info');
+        // Long enough to read (or copy) the whole path; over SSH no browser
+        // opens and this is the only way to find the file.
+        pushNotice(`Report: ${outFile}`, 'info', 8_000);
       } catch (err) {
         pushNotice(`Report failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       } finally {

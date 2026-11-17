@@ -14,6 +14,7 @@ import type { SidePanel } from '../panels/types';
 import { LOGO_ART } from '../branding';
 import { parseBlessedTags } from './parseBlessedTags';
 import { useTerminalSize } from './useTerminalSize';
+import { wrapPlainText } from '../plainWrap';
 import { displayWidth } from '../blessedText';
 
 interface HelpOverlayProps {
@@ -24,11 +25,14 @@ interface HelpOverlayProps {
   onClampScroll?: (maxOffset: number) => void;
   /** Terminal rows taken by chrome outside the overlay (the status bar). */
   reservedRows?: number;
+  /** The latest data or session-read failure, shown at the top when set. */
+  lastError?: string | null;
 }
 
 type HelpEntry =
   | { kind: 'heading'; text: string }
   | { kind: 'blank' }
+  | { kind: 'text'; text: string }
   | { kind: 'row'; key: string; desc: string };
 
 const KEY_WIDTH = 14;
@@ -36,7 +40,12 @@ const KEY_WIDTH = 14;
 const LOGO_MIN_ROWS = 30;
 
 /** Build the help entries for the active panel. */
-export function buildHelpEntries(panels: SidePanel[], activePanelIndex: number): HelpEntry[] {
+export function buildHelpEntries(
+  panels: SidePanel[],
+  activePanelIndex: number,
+  lastError?: string | null,
+  textWidth = 56,
+): HelpEntry[] {
   const panel = panels[activePanelIndex];
   const actions = panel.getActions();
   const bindings = panel.getKeybindings?.() || [];
@@ -44,6 +53,15 @@ export function buildHelpEntries(panels: SidePanel[], activePanelIndex: number):
   const row = (key: string, desc: string) => entries.push({ kind: 'row', key, desc });
   const heading = (text: string) => entries.push({ kind: 'heading', text });
   const blank = () => entries.push({ kind: 'blank' });
+
+  // What the "⚠" badge in the status bar refers to.
+  if (lastError) {
+    heading('Last error');
+    for (const text of wrapPlainText(lastError, Math.max(10, textWidth - 2))) {
+      entries.push({ kind: 'text', text });
+    }
+    blank();
+  }
 
   heading('Panels');
   for (const p of panels) row(String(p.shortcutKey), p.title);
@@ -112,12 +130,12 @@ export function HelpOverlay({
   scrollOffset,
   onClampScroll,
   reservedRows = 1,
+  lastError = null,
 }: HelpOverlayProps): React.ReactElement {
   const { columns, rows: termRows } = useTerminalSize();
-  const entries = buildHelpEntries(panels, activePanelIndex);
-
   const boxWidth = Math.max(20, Math.min(60, columns - 2));
   const innerWidth = boxWidth - 4; // single border (2) + paddingX (2)
+  const entries = buildHelpEntries(panels, activePanelIndex, lastError, innerWidth);
   const showLogo = termRows >= LOGO_MIN_ROWS;
 
   // Chrome inside the box: border (2) + paddingY (2) + scroll indicators (2),
@@ -159,6 +177,14 @@ export function HelpOverlay({
         {visible.map((entry, i) => {
           const key = `row-${offset + i}`;
           if (entry.kind === 'blank') return <Text key={key}> </Text>;
+          if (entry.kind === 'text') {
+            return (
+              <Text key={key} color="yellow" wrap="truncate-end">
+                {'  '}
+                {entry.text}
+              </Text>
+            );
+          }
           if (entry.kind === 'heading') {
             return (
               <Text key={key} bold wrap="truncate-end">

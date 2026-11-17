@@ -6,6 +6,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import type { PanelAction } from '../panels/types';
 import { useTerminalSize } from './useTerminalSize';
+import { OVERLAY_FILL } from './overlayFill';
 
 interface ContextMenuOverlayProps {
   actions: PanelAction[];
@@ -23,7 +24,7 @@ export function ContextMenuOverlay({
     return <Box />;
   }
 
-  const maxLen = Math.max(...actions.map((a) => a.key.length + a.label.length + 4), 20);
+  const maxLen = Math.max(...actions.map((a) => a.key.length + a.label.length + 6), 20);
   const width = Math.min(maxLen + 6, 50, columns - 2);
 
   return (
@@ -35,21 +36,16 @@ export function ContextMenuOverlay({
       position="absolute"
       marginLeft={Math.max(0, Math.floor((columns - width) / 2))}
       marginTop={Math.max(0, Math.floor((rows - actions.length - 2) / 2))}
+      backgroundColor={OVERLAY_FILL}
     >
       <Text color="magenta"> Actions </Text>
       {actions.map((a, i) => (
         <Box key={a.key}>
-          {i === selectedIndex ? (
-            <Text inverse>
-              {' '}
-              <Text bold>{a.key}</Text> {a.label}
-            </Text>
-          ) : (
-            <Text>
-              {' '}
-              <Text bold>{a.key}</Text> {a.label}
-            </Text>
-          )}
+          {/* A pointer as well as inverse video, which NO_COLOR removes. */}
+          <Text inverse={i === selectedIndex} wrap="truncate-end">
+            {i === selectedIndex ? ' \u25B8 ' : '   '}
+            <Text bold>{a.key}</Text> {a.label}
+          </Text>
         </Box>
       ))}
     </Box>
