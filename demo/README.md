@@ -13,6 +13,7 @@ node record.mjs        # the three clips → out/<clip>/final/{<clip>.gif,<clip>
 node shots.mjs         # extra stills for the docs → out/screenshots/final/stills/
 node review.mjs        # out/review.html: every clip, still and the GIF it replaces, for a human look
 node sync.mjs          # approved files → assets/demo/v1/ and docs/images/demo/v1/
+node social.mjs        # out/social-preview.png for GitHub → Settings → Social preview (upload by hand)
 ```
 
 `node record.mjs cli-dashboard` records one clip (`cli-dashboard`, `map-follow`, `vscode-tour`). `node lib/generate.mjs` builds the sandbox without recording, which is handy for looking around with `HOME=/tmp/acme` and the environment from `lib/sandbox.mjs`.
