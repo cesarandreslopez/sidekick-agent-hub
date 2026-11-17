@@ -124,6 +124,46 @@ describe('MonitorStatusBar', () => {
     statusBar.dispose();
   });
 
+  it('turns Live into Viewing once a session has been quiet for the live window', () => {
+    vi.useFakeTimers();
+    const lastWrite = new Date(Date.now() - 60_000);
+    const stats = {
+      totalInputTokens: 10,
+      totalOutputTokens: 0,
+      totalCacheWriteTokens: 0,
+      totalCacheReadTokens: 0,
+      currentContextSize: 1,
+      lastModelId: 'model',
+    };
+    const disposable = { dispose: vi.fn() };
+    const monitor = {
+      isReplaying: false,
+      isActive: () => true,
+      getSessionPath: () => '/sessions/now.jsonl',
+      onSessionStart: () => disposable,
+      onSessionEnd: () => disposable,
+      onReplayStateChange: () => disposable,
+      onTokenUsage: () => disposable,
+      getStats: () => stats,
+      getStatsView: () => stats,
+      getProvider: () => ({
+        id: 'claude-code',
+        displayName: 'Claude Code',
+        getContextWindowLimit: () => 1_000,
+        // No further writes: the session simply goes quiet.
+        getSessionMetadata: () => ({ mtime: lastWrite }),
+      }),
+      getAggregatedMetrics: () => ({ permissionMode: null }),
+    };
+    const statusBar = new MonitorStatusBar(monitor as never);
+    expect(mocks.statusBarItem.text).toContain('$(pulse)');
+
+    // No event fires; only the ticker can notice the 2-minute window pass.
+    vi.advanceTimersByTime(90_000);
+    expect(mocks.statusBarItem.text).toContain('$(eye)');
+    statusBar.dispose();
+  });
+
   it('keeps the screen-reader label in step with the session, and marks a past one as Viewing', () => {
     let onTokenUsage: (() => void) | undefined;
     let onSessionEnd: (() => void) | undefined;

@@ -24,7 +24,12 @@ import type { TokenUsage } from '../types/claudeSession';
 import type { PermissionMode } from 'sidekick-shared';
 import type { PeakHoursService, PeakHoursState } from './PeakHoursService';
 import { DEFAULT_CONTEXT_WINDOW } from '../constants';
-import { SESSION_LIVENESS_LABELS, getSessionLiveness } from '../utils/sessionLiveness';
+import {
+  LivenessTicker,
+  SESSION_LIVENESS_LABELS,
+  getSessionLiveness,
+  type SessionLiveness,
+} from '../utils/sessionLiveness';
 
 /**
  * Status bar service for Claude Code session monitoring.
@@ -36,7 +41,7 @@ import { SESSION_LIVENESS_LABELS, getSessionLiveness } from '../utils/sessionLiv
  * ```typescript
  * const monitor = new SessionMonitor();
  * const statusBar = new MonitorStatusBar(monitor);
- * // Status bar now shows: "$(pulse) 12.5K | $0.02 | 15% | 4h32m"
+ * // Status bar now shows: "$(pulse) 12.5k | 15%"
  * // Click opens dashboard
  * ```
  */
@@ -64,6 +69,15 @@ export class MonitorStatusBar implements vscode.Disposable {
 
   /** Disposables for cleanup */
   private readonly disposables: vscode.Disposable[] = [];
+
+  /** The liveness last drawn, so the ticker redraws only when it changes. */
+  private renderedLiveness: SessionLiveness | null = null;
+
+  /**
+   * A session that simply goes quiet fires no event, so without this the icon
+   * and "(Live)" label would outlast the 2-minute window indefinitely.
+   */
+  private readonly livenessTicker = new LivenessTicker(() => this.recheckLiveness());
 
   /**
    * Creates a new MonitorStatusBar.
@@ -113,6 +127,13 @@ export class MonitorStatusBar implements vscode.Disposable {
     }
 
     this.statusBarItem.show();
+    this.livenessTicker.start();
+  }
+
+  /** Redraws when an attached session crosses from Live to Viewing (or back). */
+  private recheckLiveness(): void {
+    if (!this.monitor.isActive() || this.monitor.isReplaying) return;
+    if (getSessionLiveness(this.monitor) !== this.renderedLiveness) this.updateDisplay();
   }
 
   /**
@@ -226,7 +247,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    * Updates status bar display with current metrics.
    */
   private updateDisplay(): void {
-    // Format: "$(pulse) 12.5K | 15%"
+    // Format: "$(pulse) 12.5k | 15%"
     const tokensFormatted = formatTokenCount(this.totalTokens);
 
     // Context trend indicator
@@ -253,6 +274,7 @@ export class MonitorStatusBar implements vscode.Disposable {
     // A past session the user is viewing gets an eye, so it can't pass for a
     // live one; the skull still wins when context is critically high (>= 80%).
     const liveness = getSessionLiveness(this.monitor);
+    this.renderedLiveness = liveness;
     const icon = this.contextPercent >= 80 ? '💀' : liveness === 'viewing' ? '$(eye)' : '$(pulse)';
     const showPeakHours =
       this.monitor.getProvider().id === 'claude-code' &&
@@ -379,6 +401,7 @@ export class MonitorStatusBar implements vscode.Disposable {
    */
   dispose(): void {
     this.clearPendingRender();
+    this.livenessTicker.stop();
     this.statusBarItem.dispose();
     this.disposables.forEach((d) => d.dispose());
   }
