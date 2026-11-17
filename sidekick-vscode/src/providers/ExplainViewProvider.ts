@@ -14,13 +14,19 @@ import { ExplanationService } from '../services/ExplanationService';
 import type { ExplainExtensionMessage, ExplainWebviewMessage, FileContext } from '../types/explain';
 import type { ComplexityLevel } from '../types/explain';
 import { getNonce } from '../utils/nonce';
+import { isCancellationError, toErrorMessage } from '../utils/errors';
 
 export class ExplainViewProvider implements vscode.Disposable {
   public static readonly viewType = 'sidekick.explainCode';
 
   private _panel?: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
-  private pendingRequests = new Map<string, { timestamp: number }>();
+  /**
+   * The one request in flight. A new request (another level, Retry) aborts it,
+   * so superseded requests stop paying for completions and their progress
+   * toasts close; closing the panel aborts it too.
+   */
+  private _current?: { requestId: string; abort: AbortController };
 
   // Pending data to send when webview is ready
   private _pendingCode?: string;
@@ -113,6 +119,8 @@ export class ExplainViewProvider implements vscode.Disposable {
     // Handle panel disposal
     this._panel.onDidDispose(
       () => {
+        this._current?.abort.abort();
+        this._current = undefined;
         this._panel = undefined;
         this._pendingCode = undefined;
         this._pendingComplexity = undefined;
@@ -157,7 +165,11 @@ export class ExplainViewProvider implements vscode.Disposable {
     complexity: ComplexityLevel,
     fileContext?: FileContext,
   ): Promise<void> {
-    this.pendingRequests.set(requestId, { timestamp: Date.now() });
+    this._current?.abort.abort();
+    const abort = new AbortController();
+    const current = { requestId, abort };
+    this._current = current;
+    const isCurrent = () => this._current === current;
 
     try {
       const explanation = await this.explanationService.explain(
@@ -165,9 +177,11 @@ export class ExplainViewProvider implements vscode.Disposable {
         'code',
         complexity,
         fileContext,
+        undefined,
+        abort.signal,
       );
 
-      if (this.pendingRequests.has(requestId)) {
+      if (isCurrent() && !abort.signal.aborted) {
         this._panel?.webview.postMessage({
           type: 'explanationResult',
           requestId,
@@ -175,16 +189,26 @@ export class ExplainViewProvider implements vscode.Disposable {
         } as ExplainExtensionMessage);
       }
     } catch (error) {
-      if (this.pendingRequests.has(requestId)) {
-        this._panel?.webview.postMessage({
-          type: 'explanationError',
-          requestId,
-          error: error instanceof Error ? error.message : 'Explanation failed',
-        } as ExplainExtensionMessage);
+      if (abort.signal.aborted || isCancellationError(error)) {
+        // Cancelled, not failed: a superseded request says nothing at all.
+        if (isCurrent()) {
+          this._panel?.webview.postMessage({
+            type: 'explanationCancelled',
+            requestId,
+          } as ExplainExtensionMessage);
+        }
+      } else {
+        if (isCurrent()) {
+          this._panel?.webview.postMessage({
+            type: 'explanationError',
+            requestId,
+            error: toErrorMessage(error, 'Explanation failed'),
+          } as ExplainExtensionMessage);
+        }
+        console.error('Explanation error:', error);
       }
-      console.error('Explanation error:', error);
     } finally {
-      this.pendingRequests.delete(requestId);
+      if (isCurrent()) this._current = undefined;
     }
   }
 
@@ -237,7 +261,8 @@ export class ExplainViewProvider implements vscode.Disposable {
     this._panel?.dispose();
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
-    this.pendingRequests.clear();
+    this._current?.abort.abort();
+    this._current = undefined;
   }
 }
 

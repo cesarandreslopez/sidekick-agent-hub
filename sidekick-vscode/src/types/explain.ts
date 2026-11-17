@@ -48,6 +48,7 @@ export interface ExplainState {
   complexity: ComplexityLevel; // Current explanation depth
   isLoading: boolean; // AI request in progress
   error?: string; // Error message if request failed
+  cancelled?: boolean; // The last request was cancelled (not a failure)
 }
 
 /**
@@ -57,6 +58,8 @@ export type ExplainExtensionMessage =
   | { type: 'loadCode'; code: string; fileContext?: FileContext; complexity?: ComplexityLevel }
   | { type: 'explanationResult'; requestId: string; explanation: string }
   | { type: 'explanationError'; requestId: string; error: string }
+  /** The request was cancelled (toast Cancel, a declined retry, or superseded). */
+  | { type: 'explanationCancelled'; requestId: string }
   | { type: 'complexityChanged'; complexity: ComplexityLevel };
 
 /**

@@ -330,6 +330,21 @@ body {
   background: var(--vscode-button-hoverBackground);
 }
 
+.cancelled-state {
+  display: none;
+  color: var(--vscode-descriptionForeground);
+  padding: 16px;
+  margin: 20px 0;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+}
+
+.cancelled-state.visible {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 #explanation-content {
   animation: contentReveal 0.3s ease-out;
 }
@@ -417,7 +432,11 @@ function initializeDOM() {
         <div class="error-details" id="error-details"></div>
         <button class="retry-btn" id="retry-btn" aria-label="Retry explanation">Try Again</button>
       </div>
-      <div id="explanation-content" role="region" aria-label="Explanation output" aria-live="polite"></div>
+      <div class="cancelled-state" id="cancelled-state" role="status">
+        <div>Cancelled.</div>
+        <button class="retry-btn" id="run-again-btn">Run Again</button>
+      </div>
+      <div id="explanation-content" role="tabpanel" aria-label="Explanation output" aria-live="polite"></div>
       <div class="empty-state" id="empty-state">
         <div class="empty-state-icon">&lt;/&gt;</div>
         <div class="empty-state-title">Ready to explain</div>
@@ -431,31 +450,39 @@ function initializeDOM() {
 }
 
 /**
- * Render complexity selector buttons
+ * Render complexity selector buttons. The buttons are built once and then
+ * updated in place, so a level change never destroys the focused button.
  */
 function renderComplexityBar() {
   const complexityBar = document.getElementById('complexity-bar');
   if (!complexityBar) return;
 
-  // Create button for each complexity level
-  const levels: ComplexityLevel[] = [
-    'eli5',
-    'curious-amateur',
-    'imposter-syndrome',
-    'senior',
-    'phd',
-  ];
+  if (!complexityBar.querySelector('.complexity-btn')) {
+    const levels: ComplexityLevel[] = [
+      'eli5',
+      'curious-amateur',
+      'imposter-syndrome',
+      'senior',
+      'phd',
+    ];
 
-  complexityBar.setAttribute('role', 'tablist');
-  complexityBar.setAttribute('aria-label', 'Explanation complexity level');
+    complexityBar.setAttribute('role', 'tablist');
+    complexityBar.setAttribute('aria-label', 'Explanation complexity level');
 
-  complexityBar.innerHTML = levels
-    .map((level, i) => {
-      const isActive = level === state.complexity;
-      const label = COMPLEXITY_LABELS[level];
-      return `<button class="complexity-btn ${isActive ? 'active' : ''}" data-complexity="${level}" role="tab" aria-selected="${isActive}" tabindex="${isActive ? '0' : '-1'}" id="complexity-tab-${i}">${label}</button>`;
-    })
-    .join('');
+    complexityBar.innerHTML = levels
+      .map(
+        (level, i) =>
+          `<button class="complexity-btn" data-complexity="${level}" role="tab" aria-controls="explanation-content" id="complexity-tab-${i}">${COMPLEXITY_LABELS[level]}</button>`,
+      )
+      .join('');
+  }
+
+  for (const button of Array.from(complexityBar.querySelectorAll<HTMLElement>('.complexity-btn'))) {
+    const isActive = button.dataset.complexity === state.complexity;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-selected', String(isActive));
+    button.setAttribute('tabindex', isActive ? '0' : '-1');
+  }
 }
 
 /**
@@ -477,7 +504,9 @@ function setupEventListeners() {
     }
   });
 
-  // Keyboard arrow navigation for complexity bar (roving tabindex)
+  // Keyboard arrow navigation for complexity bar (roving tabindex). Arrows
+  // only move focus; Enter or Space picks the level, because every pick
+  // costs a completion.
   complexityBar?.addEventListener('keydown', (e) => {
     const buttons = Array.from(complexityBar.querySelectorAll('.complexity-btn')) as HTMLElement[];
     const current = document.activeElement as HTMLElement;
@@ -500,17 +529,17 @@ function setupEventListeners() {
       buttons[idx].setAttribute('tabindex', '-1');
       buttons[next].setAttribute('tabindex', '0');
       buttons[next].focus();
-      buttons[next].click();
     }
   });
 
-  // Retry button
-  const retryBtn = document.getElementById('retry-btn');
-  retryBtn?.addEventListener('click', () => {
+  // Retry and Run Again buttons
+  const rerun = () => {
     if (state.code) {
       requestExplanation(state.code, state.complexity, state.fileContext);
     }
-  });
+  };
+  document.getElementById('retry-btn')?.addEventListener('click', rerun);
+  document.getElementById('run-again-btn')?.addEventListener('click', rerun);
 }
 
 /**
@@ -531,6 +560,7 @@ function handleExtensionMessage(event: MessageEvent) {
       }
       state.isLoading = true;
       state.error = undefined;
+      state.cancelled = false;
       saveState();
       updateUI();
       requestExplanation(message.code, state.complexity, message.fileContext);
@@ -559,6 +589,17 @@ function handleExtensionMessage(event: MessageEvent) {
       }
       break;
 
+    case 'explanationCancelled':
+      if (message.requestId === currentRequestId) {
+        state.cancelled = true;
+        state.error = undefined;
+        state.isLoading = false;
+        currentRequestId = undefined;
+        saveState();
+        updateUI();
+      }
+      break;
+
     case 'complexityChanged':
       state.complexity = message.complexity;
       saveState();
@@ -575,6 +616,7 @@ function requestExplanation(code: string, complexity: ComplexityLevel, fileConte
 
   state.isLoading = true;
   state.error = undefined;
+  state.cancelled = false;
   saveState();
   updateUI();
 
@@ -700,16 +742,20 @@ function hideError() {
 function updateUI() {
   const contentEl = document.getElementById('explanation-content');
   const emptyState = document.getElementById('empty-state');
+  const cancelledState = document.getElementById('cancelled-state');
 
   // Hide everything first
   hideLoading();
   hideError();
   if (contentEl) contentEl.innerHTML = '';
   if (emptyState) emptyState.classList.remove('visible');
+  cancelledState?.classList.remove('visible');
 
   // Show appropriate content based on state
   if (state.isLoading) {
     showLoading();
+  } else if (state.cancelled) {
+    cancelledState?.classList.add('visible');
   } else if (state.error) {
     showError(state.error);
   } else if (state.currentExplanation) {
