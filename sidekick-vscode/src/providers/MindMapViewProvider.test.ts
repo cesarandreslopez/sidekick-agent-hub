@@ -74,6 +74,60 @@ describe('MindMapViewProvider graph scheduling', () => {
   });
 });
 
+describe('MindMapViewProvider liveness', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('re-posts Viewing once the session goes quiet, and stops ticking when disposed', () => {
+    vi.useFakeTimers();
+    let mtime = Date.now();
+    const monitor = {
+      ...makeMonitor(),
+      isActive: vi.fn(() => true),
+      getSessionPath: vi.fn((): string | null => '/sessions/a.jsonl'),
+      getProvider: vi.fn(() => ({ getSessionMetadata: () => ({ mtime: new Date(mtime) }) })),
+    };
+    const provider = new MindMapViewProvider({ fsPath: '/extension' } as never, monitor as never);
+    const hooks: { dispose?: () => void } = {};
+    const postMessage = vi.fn();
+    const view = {
+      visible: true,
+      webview: {
+        options: {},
+        html: '',
+        cspSource: 'test',
+        asWebviewUri: (uri: unknown) => uri,
+        onDidReceiveMessage: () => ({ dispose: vi.fn() }),
+        postMessage,
+      },
+      onDidChangeVisibility: () => ({ dispose: vi.fn() }),
+      onDidDispose: (handler: () => void) => {
+        hooks.dispose = handler;
+        return { dispose: vi.fn() };
+      },
+    };
+    provider.resolveWebviewView(view as never, {} as never, {} as never);
+    const graphPosts = () =>
+      postMessage.mock.calls
+        .map(([m]) => m as { type: string; state?: { sessionStatus?: string } })
+        .filter((m) => m.type === 'updateGraph');
+
+    // Still live: the map already shows Live, so the tick posts nothing.
+    vi.advanceTimersByTime(60_000);
+    expect(graphPosts()).toHaveLength(0);
+
+    mtime = Date.now() - 3 * 60_000;
+    vi.advanceTimersByTime(30_000);
+    expect(graphPosts().pop()?.state?.sessionStatus).toBe('Viewing');
+
+    hooks.dispose!();
+    const after = postMessage.mock.calls.length;
+    mtime = Date.now();
+    vi.advanceTimersByTime(120_000);
+    expect(postMessage).toHaveBeenCalledTimes(after);
+    provider.dispose();
+  });
+});
+
 describe('resolveNodeFilePath', () => {
   it('keeps absolute paths and resolves relative ones against the workspace', () => {
     expect(resolveNodeFilePath('/repo/src/a.ts', '/repo')).toBe('/repo/src/a.ts');

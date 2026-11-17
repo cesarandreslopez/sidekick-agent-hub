@@ -31,7 +31,11 @@ import {
 } from '../utils/themePalette';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
-import { getSessionLiveness, SESSION_LIVENESS_LABELS } from '../utils/sessionLiveness';
+import {
+  getSessionLiveness,
+  LivenessTicker,
+  SESSION_LIVENESS_LABELS,
+} from '../utils/sessionLiveness';
 
 /**
  * WebviewViewProvider for the session mind map visualization.
@@ -66,6 +70,9 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
 
   /** Coalesces bursty token/tool activity into one graph rebuild. */
   private _graphUpdateTimer?: ReturnType<typeof setTimeout>;
+
+  /** Lets Live decay to Viewing when the session goes quiet (no event fires). */
+  private readonly _livenessTicker = new LivenessTicker(() => this._checkLiveness());
 
   /**
    * Creates a new MindMapViewProvider.
@@ -157,8 +164,38 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
       this._disposables,
     );
 
+    // The view is destroyed when its container closes; stop its timers.
+    webviewView.onDidDispose(
+      () => {
+        if (this._view !== webviewView) return;
+        this._view = undefined;
+        if (this._graphUpdateTimer) {
+          clearTimeout(this._graphUpdateTimer);
+          this._graphUpdateTimer = undefined;
+        }
+        this._phrases.stop();
+        this._livenessTicker.stop();
+      },
+      undefined,
+      this._disposables,
+    );
+
     this._phrases.start(() => this._state.sessionActive);
+    this._livenessTicker.start();
     log('Mind map webview resolved');
+  }
+
+  private _livenessLabel(): string {
+    return SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)];
+  }
+
+  /** Tick: re-post only when the status the map shows is out of date. */
+  private _checkLiveness(): void {
+    if (!this._view?.visible) return;
+    const label = this._livenessLabel();
+    if (label === this._state.sessionStatus) return;
+    this._state.sessionStatus = label;
+    this._sendStateToWebview();
   }
 
   /**
@@ -265,7 +302,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
   private _handleSessionEnd(): void {
     log('Mind map: session ended');
     this._state.sessionActive = false;
-    this._state.sessionStatus = SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)];
+    this._state.sessionStatus = this._livenessLabel();
     this._postMessage({ type: 'sessionEnd' });
     this._sendStateToWebview();
   }
@@ -279,7 +316,7 @@ export class MindMapViewProvider implements vscode.WebviewViewProvider, vscode.D
     const knowledgeNotes = this._knowledgeNoteService?.getActiveNotes();
     this._state.graph = MindMapDataService.buildGraph(stats, subagents, knowledgeNotes);
     this._state.sessionActive = this._sessionMonitor.isActive();
-    this._state.sessionStatus = SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)];
+    this._state.sessionStatus = this._livenessLabel();
     this._state.lastUpdated = new Date().toISOString();
   }
 
@@ -2005,6 +2042,7 @@ ${getGraphLegendHtml()}
   dispose(): void {
     if (this._graphUpdateTimer) clearTimeout(this._graphUpdateTimer);
     this._phrases.stop();
+    this._livenessTicker.stop();
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
     log('MindMapViewProvider disposed');

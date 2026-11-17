@@ -104,6 +104,47 @@ describe('TaskBoardViewProvider lifecycle', () => {
     provider.dispose();
   });
 
+  it('decays Live to Viewing on its own tick when the session goes quiet', () => {
+    let mtime = Date.now();
+    const sessionMonitor = {
+      ...monitor({ tasks: new Map(), activeTaskId: null }),
+      getSessionPath: () => '/sessions/a.jsonl',
+      getProvider: () => ({
+        getSessionId: () => 'a',
+        getSessionMetadata: () => ({ mtime: new Date(mtime) }),
+      }),
+    };
+    const provider = new TaskBoardViewProvider({} as never, sessionMonitor as never, undefined);
+    const { view, hooks, postMessage } = fakeView(true);
+    provider.resolveWebviewView(view as never, {} as never, {} as never);
+    const statuses = () =>
+      postMessage.mock.calls
+        .map(([m]) => m as { type: string; state?: { sessionStatus?: string } })
+        .filter((m) => m.type === 'updateBoard')
+        .map((m) => m.state?.sessionStatus);
+
+    hooks.visibility!();
+    expect(statuses().pop()).toBe('Live');
+
+    // Still live after one tick: nothing new is posted.
+    const before = statuses().length;
+    vi.advanceTimersByTime(30_000);
+    expect(statuses()).toHaveLength(before);
+
+    // No event fires when a session goes quiet; the tick notices.
+    mtime = Date.now() - 3 * 60_000;
+    vi.advanceTimersByTime(30_000);
+    expect(statuses().pop()).toBe('Viewing');
+
+    // A hidden or disposed view does no work.
+    const after = postMessage.mock.calls.length;
+    hooks.dispose!();
+    mtime = Date.now();
+    vi.advanceTimersByTime(60_000);
+    expect(postMessage).toHaveBeenCalledTimes(after);
+    provider.dispose();
+  });
+
   it('labels agent cards that stopped in all but name, and refreshes on subagent changes', () => {
     const now = new Date('2026-10-12T20:00:00.000Z');
     const agentTask = (toolUseId: string, status: string) => ({

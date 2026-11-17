@@ -23,7 +23,11 @@ import type { PersistedPlan } from '../types/plan';
 import { readClaudeCodePlanFiles } from 'sidekick-shared';
 import { formatCost, formatDurationMs, formatTokenCount } from 'sidekick-shared/browser';
 import { log } from '../services/Logger';
-import { getSessionLiveness, SESSION_LIVENESS_LABELS } from '../utils/sessionLiveness';
+import {
+  getSessionLiveness,
+  LivenessTicker,
+  SESSION_LIVENESS_LABELS,
+} from '../utils/sessionLiveness';
 import { getNonce } from '../utils/nonce';
 import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 
@@ -48,6 +52,8 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
   private _lastPosted = '';
   private _claudeCodePlansLoaded = false;
   private _planLoadGeneration = 0;
+  /** Lets Live decay to Viewing when the session goes quiet (no event fires). */
+  private readonly _livenessTicker = new LivenessTicker(() => this._checkLiveness());
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -116,6 +122,8 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
           if (this._dirty) {
             this._dirty = false;
             this._syncFromSessionMonitor();
+          } else {
+            this._state = { ...this._state, sessionStatus: this._livenessLabel() };
           }
           this._sendStateToWebview(true);
         }
@@ -129,19 +137,35 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
         if (this._view === webviewView) {
           this._view = undefined;
           this._lastPosted = '';
+          this._livenessTicker.stop();
         }
       },
       undefined,
       this._disposables,
     );
 
+    this._livenessTicker.start();
     log('Plan board webview resolved');
   }
 
   dispose(): void {
     if (this._boardTimer) clearTimeout(this._boardTimer);
+    this._livenessTicker.stop();
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
+  }
+
+  private _livenessLabel(): string {
+    return SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)];
+  }
+
+  /** Tick: re-post only when the status the board shows is out of date. */
+  private _checkLiveness(): void {
+    if (!this._view?.visible) return;
+    const label = this._livenessLabel();
+    if (label === this._state.sessionStatus) return;
+    this._state = { ...this._state, sessionStatus: label };
+    this._sendStateToWebview();
   }
 
   private _handleWebviewMessage(message: WebviewPlanBoardMessage): void {
@@ -231,7 +255,7 @@ export class PlanBoardViewProvider implements vscode.WebviewViewProvider, vscode
       activePlan,
       historicalPlans,
       sessionActive: this._sessionMonitor.isActive(),
-      sessionStatus: SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)],
+      sessionStatus: this._livenessLabel(),
     };
   }
 

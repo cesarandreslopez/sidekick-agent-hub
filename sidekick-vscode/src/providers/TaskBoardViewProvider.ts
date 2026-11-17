@@ -25,7 +25,11 @@ import { getDesignTokenCSS, getSharedStyles } from '../utils/designTokens';
 import { getRandomPhrase } from 'sidekick-shared/phrases';
 import { subagentDisplayLabel } from 'sidekick-shared';
 import { PhraseRotationManager } from '../utils/PhraseRotationManager';
-import { getSessionLiveness, SESSION_LIVENESS_LABELS } from '../utils/sessionLiveness';
+import {
+  getSessionLiveness,
+  LivenessTicker,
+  SESSION_LIVENESS_LABELS,
+} from '../utils/sessionLiveness';
 import { PERSIST_INTERVAL_MS } from '../constants';
 
 /**
@@ -66,6 +70,8 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
   /** Pending board rebuild, see _updateBoard(). */
   private _boardTimer?: ReturnType<typeof setTimeout>;
   private static readonly BOARD_UPDATE_MS = 250;
+  /** Lets Live decay to Viewing when the session goes quiet (no event fires). */
+  private readonly _livenessTicker = new LivenessTicker(() => this._checkLiveness());
 
   /**
    * Creates a new TaskBoardViewProvider.
@@ -149,6 +155,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     webviewView.onDidChangeVisibility(
       () => {
         if (webviewView.visible) {
+          this._state = { ...this._state, sessionStatus: this._livenessLabel() };
           this._sendStateToWebview();
         }
       },
@@ -161,12 +168,14 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
         if (this._view !== webviewView) return;
         this._view = undefined;
         this._phrases.stop();
+        this._livenessTicker.stop();
       },
       undefined,
       this._disposables,
     );
 
     this._phrases.start(() => this._state.sessionActive);
+    this._livenessTicker.start();
     log('Task board webview resolved');
   }
 
@@ -183,8 +192,22 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
       this._saveCurrentTasksToPersistence();
     }
     this._phrases.stop();
+    this._livenessTicker.stop();
     this._disposables.forEach((d) => d.dispose());
     this._disposables = [];
+  }
+
+  private _livenessLabel(): string {
+    return SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)];
+  }
+
+  /** Tick: re-post only when the status the board shows is out of date. */
+  private _checkLiveness(): void {
+    if (!this._view?.visible) return;
+    const label = this._livenessLabel();
+    if (label === this._state.sessionStatus) return;
+    this._state = { ...this._state, sessionStatus: label };
+    this._sendStateToWebview();
   }
 
   /**
@@ -383,7 +406,7 @@ export class TaskBoardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state = {
       columns,
       sessionActive: this._sessionMonitor.isActive(),
-      sessionStatus: SESSION_LIVENESS_LABELS[getSessionLiveness(this._sessionMonitor)],
+      sessionStatus: this._livenessLabel(),
       lastUpdated: new Date().toISOString(),
       totalTasks,
       activeTaskId,

@@ -203,6 +203,60 @@ describe('PlanBoardViewProvider', () => {
   });
 });
 
+describe('PlanBoardViewProvider liveness', () => {
+  it('decays Live to Viewing on its own tick when the session goes quiet', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.readPlans.mockResolvedValue([]);
+      let mtime = Date.now();
+      const sessionMonitor = {
+        ...monitor(),
+        isActive: () => true,
+        getSessionPath: () => '/sessions/a.jsonl',
+        getProvider: () => ({
+          getSessionId: () => 'a',
+          getSessionMetadata: () => ({ mtime: new Date(mtime) }),
+        }),
+      };
+      const provider = new PlanBoardViewProvider({} as never, sessionMonitor as never, undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      const postMessage = vi.fn();
+      let onVisibility: (() => void) | undefined;
+      const view = {
+        visible: true,
+        webview: {
+          options: {},
+          html: '',
+          cspSource: 'test',
+          asWebviewUri: (uri: unknown) => uri,
+          onDidReceiveMessage: () => disposable,
+          postMessage,
+        },
+        onDidChangeVisibility: (handler: () => void) => {
+          onVisibility = handler;
+          return disposable;
+        },
+        onDidDispose: () => disposable,
+      };
+      provider.resolveWebviewView(view as never, {} as never, {} as never);
+      onVisibility!();
+      const statuses = () =>
+        postMessage.mock.calls
+          .map(([m]) => m as { type: string; state?: { sessionStatus?: string } })
+          .filter((m) => m.type === 'updatePlanBoard')
+          .map((m) => m.state?.sessionStatus);
+      expect(statuses().pop()).toBe('Live');
+
+      mtime = Date.now() - 3 * 60_000;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(statuses().pop()).toBe('Viewing');
+      provider.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('PlanBoardViewProvider active-session history', () => {
   it("keeps the attached session's plan file in History when there is no Active Plan card", async () => {
     const raw = {
