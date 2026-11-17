@@ -88,6 +88,7 @@ vi.mock('../services/Logger', () => ({
 import { formatLocalDateKey, normalizeProviderUsage } from 'sidekick-shared';
 import { commands, window, workspace } from 'vscode';
 import { DashboardViewProvider, displayConfigPath } from './DashboardViewProvider';
+import { TimeoutError } from '../types';
 import { addUsageToPricing, type ModelUsageEntry } from '../services/ModelPricingService';
 
 // The behaviour lives in the bundled legacy module now; the document only
@@ -1690,6 +1691,48 @@ describe('DashboardViewProvider History after a session ends', () => {
     expect(
       postMessage.mock.calls.filter((c) => c[0].type === 'updateHistoricalData').pop()![0],
     ).toMatchObject({ data: { range: 'today' } });
+    provider.dispose();
+  });
+});
+
+describe('DashboardViewProvider timeout retry', () => {
+  it('keeps the analysis loading state while the retry runs', async () => {
+    let finishRetry!: () => void;
+    const advisor = {
+      analyze: vi
+        .fn()
+        .mockRejectedValueOnce(new TimeoutError('timed out', 60_000))
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishRetry = () => resolve({ success: true, suggestions: [] });
+            }),
+        ),
+    };
+    vi.mocked(window.showWarningMessage).mockResolvedValueOnce('Retry (3 min)' as never);
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      makeSessionMonitor() as never,
+      undefined,
+      undefined,
+      advisor as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    const loading = () =>
+      postMessage.mock.calls
+        .filter((call) => call[0].type === 'suggestionsLoading')
+        .map((call) => call[0].loading);
+
+    const run = (
+      provider as unknown as { _handleAnalyzeSession(): Promise<void> }
+    )._handleAnalyzeSession();
+    await vi.waitFor(() => expect(advisor.analyze).toHaveBeenCalledTimes(2));
+    // The retry is running: the last word is still "loading".
+    expect(loading().at(-1)).toBe(true);
+    finishRetry();
+    await run;
+    expect(loading().at(-1)).toBe(false);
     provider.dispose();
   });
 });

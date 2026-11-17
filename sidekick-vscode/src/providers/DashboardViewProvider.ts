@@ -1030,7 +1030,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         );
         if (retry?.startsWith('Retry')) {
           const newTimeout = retry.includes('3') ? 180000 : 300000;
-          return this._handleAnalyzeSession(newTimeout);
+          // Awaited, so the loading state below clears when the retry ends,
+          // not the moment it starts.
+          return await this._handleAnalyzeSession(newTimeout);
         }
       }
 
@@ -1254,7 +1256,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         );
         if (retry?.startsWith('Retry')) {
           const newTimeout = retry.includes('3') ? 180000 : 300000;
-          return this._handleGenerateNarrative(newTimeout);
+          // Awaited, so the loading state below clears when the retry ends.
+          return await this._handleGenerateNarrative(newTimeout);
         }
       }
 

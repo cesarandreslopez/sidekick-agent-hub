@@ -537,22 +537,20 @@ export class SessionSummaryService {
       .sort((a, b) => b.estimatedCost - a.estimatedCost);
   }
 
+  /**
+   * Error categories with their counts. A recovery pattern (a command
+   * fallback, a retried tool) records no error category, so no category is
+   * claimed as recovered: one retry used to mark every category
+   * "(recovered)". The session-level recovery rate still says how many
+   * failures were worked around.
+   */
   private _buildErrorSummary(
     analysisData: SessionAnalysisData,
   ): { category: string; count: number; recovered: boolean }[] {
-    const recoveredCategories = new Set<string>();
-
-    // Mark categories as recovered if we have recovery patterns for tools that match
-    for (const pattern of analysisData.recoveryPatterns) {
-      if (pattern.occurrences > 0) {
-        recoveredCategories.add(pattern.type);
-      }
-    }
-
     return analysisData.errors.map((e) => ({
       category: e.category,
       count: e.count,
-      recovered: recoveredCategories.size > 0, // Simplified: if any recovery, consider partially recovered
+      recovered: false,
     }));
   }
 

@@ -129,3 +129,24 @@ describe('SessionSummaryService duration, peak, and calls', () => {
     expect(summary.filesChanged[0].path).toBe('.../src/deep/file.ts');
   });
 });
+
+describe('SessionSummaryService errors', () => {
+  it('does not mark every error category recovered because one retry worked', () => {
+    const summary = new SessionSummaryService().generateSummary(stats(), {
+      errors: [
+        { category: 'not_found', count: 5, examples: [] },
+        { category: 'permission', count: 1, examples: [] },
+      ],
+      recoveryPatterns: [
+        {
+          type: 'tool_retry',
+          description: 'Retried Bash',
+          failedApproach: 'a',
+          successfulApproach: 'b',
+          occurrences: 1,
+        },
+      ],
+    } as never);
+    expect(summary.errors.map((e) => e.recovered)).toEqual([false, false]);
+  });
+});
