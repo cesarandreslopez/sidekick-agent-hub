@@ -5,6 +5,196 @@ All notable changes to Sidekick Agent Hub (VS Code extension and CLI) will be do
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.3] - 2026-11-17
+
+A second UI and UX pass over the VS Code extension, the terminal dashboard and the CLI, made against 0.33.2. The audit drove the terminal for real in tmux and ran every CLI command, as well as reading the code. Fable checked each finding against the code before it was fixed, and reviewed the fixes before release.
+
+### Changed
+
+- **CLI: `sidekick doctor` exits with code 1 when the report is unhealthy.** It used to exit 0 for every report. "Attention" still exits 0. Scripts that run `doctor` will now see the failure.
+- **CLI: `sidekick dashboard --session <id>` starts pinned.** It follows the session you named and does not jump to a newer one. This matches `sidekick map --follow --session`. Without `--session`, the dashboard still switches to a session that starts, and now tells you when it does.
+- **CLI: the dashboard and `sidekick map --follow` exit with `128 +` the signal number when a signal stops them** (143 for SIGTERM, 129 for SIGHUP). They used to exit 0.
+- **CLI: Codex usage reports keep each session's project.** Per-project totals for Codex sessions will change: sessions whose first line runs past 16 KB used to be counted under no project.
+- **CLI: option values are checked where you type them.** Unknown values for these options are now errors, where before they were silently accepted or ignored:
+  - `context --fidelity`
+  - `note add --type` / `--importance`
+  - `notes --type` / `--status`
+  - `dump --format` / `--width`
+  - `quota history --window` / `--weeks`
+
+  The window aliases `quota history` already accepted still work. `blocks --active` and `--recent` can no longer be combined with `--since`, which they used to silently ignore.
+
+- **CLI: impossible dates and backwards windows are errors.** `--since 2026-13-45`, `--since 2026-02-30` and a `--since` later than `--until` used to roll over silently, or return an empty report.
+- **VS Code: command titles.**
+  - **Refresh/Find Session** is now **Find Session**.
+  - **Open Terminal as Account…** and **Remove Account…** gained the ellipsis their pickers call for.
+- **VS Code: dashboard labels say what they measure.**
+  - History's week range is **Last 7 Days**, a rolling week.
+  - The cache card shows **Cache Reads** and **Est. Cost Saved**.
+
+### Fixed
+
+- **Activity classification no longer crashes.** A shell command, MCP server, tool, model or agent named `constructor` or `__proto__` broke `sidekick report` and `sidekick map` with `…?.has is not a function`. It also dropped the rest of that read from the VS Code dashboard, and lost tool calls in the terminal dashboard. The shared classifier now handles every name, and each host keeps going if the activity recorder ever fails on an event. A model id of `__proto__` can no longer pollute `Object.prototype`.
+- **VS Code: Session Analytics dashboard**
+  - **Switching or reloading:**
+    - The Activity Timeline and Tool Analytics fill in on a cold open, after a reload, and after you pick another session. Before, they showed "No activity yet" next to "84 tool calls", or kept the previous session's events.
+    - Response Times, the context-window model, the AI narrative and the guidance suggestions no longer carry over to the next session.
+  - **Provider switches:**
+    - After a runtime switch, the quota card and the billing block follow the session provider. Claude's quota no longer appears under Codex as "Primary/Secondary".
+    - Switching to Claude Code shows its quota without a reload.
+    - Codex-only and OpenCode-only users never poll Claude.
+    - The Provider select sends one switch at a time, even when you arrow through it. A failed switch settles back on the current provider.
+  - **Opening a tab from a command:** Doctor and Generate Session Summary open the Health and Summary tabs on a closed dashboard.
+  - **Event Log checkbox:** it follows Settings edits and writes to the scope that holds the value.
+  - **History:**
+    - Deltas compare the same part of the previous period ("vs same time yesterday").
+    - A note explains that the running session is added when it ends.
+    - History and Plan History refresh when a session ends.
+  - **Summary:**
+    - It no longer marks every error category "(recovered)".
+    - It refreshes while it is open during a live session.
+    - It shows its empty state when no session is attached.
+    - A timeout retry stays busy until it finishes.
+  - **Keyboard and screen readers:**
+    - Focus stays put when tool rows, the timeline, notifications and error groups update.
+    - History drill-down works from the keyboard through a points list.
+    - Charts have text labels.
+    - Animations honour VS Code's reduce-motion setting.
+  - **Formats and layout:**
+    - Token counts, durations and relative times use one format throughout, for example compaction rows, plan steps and the cache card.
+    - Duration stops counting at the same 2-minute mark as the Live pill.
+    - The heatmap follows theme changes.
+    - The timeline no longer re-animates every row on each update, and says when filters hide its events.
+    - Notifications, Windows paths and Health diagnostics stay readable in a narrow sidebar.
+- **VS Code: other views**
+  - **Project Timeline:**
+    - Message, token, task and error counts cover whole Claude Code sessions. They used to come from the first and last 16 KB, so an 18 MB session read "2 msgs".
+    - Sessions are read in the background, a few at a time, and older ones are skipped by date. The live session is re-read at most once a minute.
+    - The timeline follows a live provider switch.
+    - Expanded cards and keyboard focus survive refreshes.
+  - **Live and Viewing:**
+    - The Mind Map, Kanban, Plans, Timeline and the session status bar item turn **Viewing** once a session has been quiet for two minutes, as the dashboard already did.
+    - The Activity Map no longer shows LIVE for a past session, and uses the same words.
+  - **Explain:**
+    - A new request cancels the one it replaces.
+    - Closing the panel cancels its request.
+    - Cancel shows a neutral Cancelled state.
+    - The level tabs move focus with the arrow keys and select with Enter, so browsing them no longer starts a paid request.
+  - **Error panel:**
+    - Cancel, from the progress notification or from the panel's own new button, reaches the Cancelled state and Run Again.
+    - The first answer is no longer lost when the panel loads slowly.
+    - Fix mode says "Generating fix…".
+  - **Mind Map:**
+    - The circular layout keeps your zoom unless Follow is on.
+    - The header no longer changes on every update.
+  - **Kanban and Plans:**
+    - Collapsing a column keeps focus.
+    - Chips and Live pills are readable in light themes.
+    - Plans reads "Completed" and names providers.
+  - **Conversation and Tool Inspector:**
+    - Refresh keeps your place.
+    - A failed open says so.
+    - Times show in your own time zone, with the date when it isn't today.
+    - Tool rows announce errors.
+    - Long edits say how many lines were cut.
+- **VS Code: commands, editor actions and notifications**
+  - **Cancelling an AI request reads as cancelled on every provider**, including Claude Max and the API key, whose abort errors weren't recognised. It no longer shows a "…failed" error or turns the status bar red. Quick Ask, Explain and Explain/Fix Error no longer report a declined retry as a second timeout.
+  - **Timeout retries:**
+    - Automatic timeout retries stop after two.
+    - The retry button shows the timeout it will actually use.
+    - The deprecated `inlineTimeout` no longer overrides `sidekick.timeouts.inlineCompletion`.
+  - **Generate PR Description:** it compares a pushed branch with its base branch, not with its own upstream copy. A base that doesn't exist is reported as such.
+  - **Review My Changes:** it puts its findings in the repository it reviewed.
+  - **Generate Documentation:**
+    - Python docstrings go inside the function or class body.
+    - The docs, like Transform's result, land where the code is now, even if you edited the file while waiting. If the code can't be found, you're offered Copy.
+  - **Explain Error and Fix Error with AI:** they appear in the lightbulb and the editor's Sidekick menu for every language, with or without a selection.
+  - **Notices and failure buttons:**
+    - "Nothing to do" cases, such as no changes or docs already present, are notices, not errors.
+    - Provider failures offer the fix their message asks for: **Sign In Again**, **Set API Key**, **Open Settings**, **Run Doctor** or **View Logs**.
+  - **Trigger Completion:** it says when inline completions are off, or when there was no suggestion.
+  - **Completion shortcut reminder:** it no longer flashes the status bar in a warning colour, and stops once you have used the shortcut.
+  - **Accounts:**
+    - Escape in an account picker no longer says "No accounts saved yet".
+    - The Accounts view has Switch and Sign In Again in its context menu.
+    - Account states use one set of words.
+  - **Knowledge notes:** Edit Knowledge Note keeps the note's type and importance unless you change them.
+  - **Status bar:**
+    - Status bar items say Live or Viewing.
+    - Their screen-reader labels stay current.
+    - Host-side token counts use the shared format.
+  - **Search and session folders:**
+    - Cross-session search says when it failed.
+    - Browse Session Folders names sessions by their first prompt.
+  - **Event Stream:** rows keep their identity as events arrive.
+  - **Handoff notice:** it appears once per session.
+  - **Decisions:** decisions taken from AskUserQuestion keep their option labels instead of `[nested value omitted]`.
+- **Terminal dashboard (`sidekick dashboard`)**
+  - **It keeps the session you chose.** A session you pick is no longer silently replaced by whichever other session writes next. The dashboard switches only to a session that starts after it opened, and says so ("Following new session … — p pins").
+  - **Codex sessions load.** Picking a Codex session in the picker used to leave the splash waiting forever.
+  - **Agents tab:** subagent tasks wrap into readable rows. Before, they broke into hundreds of one-character rows.
+  - **Session picker:**
+    - It fits any terminal size and follows resizes.
+    - It pages with PgUp/PgDn, Home/End and `g`/`G`.
+    - Its LIVE badge uses the same 2-minute rule as everywhere else.
+    - Codex session ids can be told apart.
+  - **Without colour (`NO_COLOR`):** the selected row in the picker, the actions menu and the accounts overlay is marked with `▸`, and the active filter mode is shown in brackets.
+  - **Overlays and toasts:**
+    - Overlays are opaque.
+    - Toasts wrap instead of cutting off, and stack by height.
+    - The report toast shows its full path for 8 seconds.
+    - The help overlay shows the last error.
+  - **Keys and selection:**
+    - Holding `j`/`k` moves by the number of presses.
+    - Pasted tabs and control characters no longer break the filter.
+    - The selection starts on the session you opened.
+    - The Timeline keeps following new events after you leave the tab and come back.
+  - **AI Summary (`n`):**
+    - The narrative belongs to its session.
+    - An empty reply is reported as an error.
+    - The provider CLI runs outside the project, so the summary no longer creates a new session there for the dashboard to jump to.
+  - **Past sessions** show how long they ran and when they ended, instead of a clock that keeps counting.
+  - **Readable on small screens:**
+    - What's New shows whole entries.
+    - The splash fits short terminals.
+    - Plans rows can be told apart.
+    - Files, Mind Map and AI Summary rows keep their layout when wrapped.
+    - Times are local, and plurals are right.
+  - **Errors and exits:**
+    - A fatal error after the dashboard starts restores the terminal and exits 1 with the error.
+    - A signal now exits with `128 +` its number (143 for SIGTERM).
+- **CLI commands**
+  - **Pipes and help:**
+    - Piping into `head` or `less` ends quietly, instead of with an EPIPE stack trace.
+    - Every subcommand's help lists the global options.
+    - Subcommand typos get a suggestion.
+    - `sidekick statusline --help` shows help.
+  - **Tasks:**
+    - `sidekick tasks` shows a reference that `sidekick tasks done` accepts, and lists open work first.
+    - `tasks done` can complete tasks recorded from sessions.
+    - An ambiguous reference lists its candidates.
+  - **`sidekick today`:** it lists In Progress tasks, and its JSON carries exact counts.
+  - **`sidekick stats`:**
+    - "Last 7 days" means the last seven days.
+    - Columns line up.
+    - Long tool lists are cut to the top 15.
+  - **Session labels:** they show what you typed, not `<local-command-caveat>`, `<pasted_content …>` or "Untitled session".
+  - **`sidekick search`:** it reports the real project path.
+  - **`decisions`, `context` and `notes`:**
+    - No more `[nested value omitted]` placeholders, raw status names, or "for .".
+    - `context` labels its usage block as covering all projects.
+  - **Status line:** it shows Claude Code's rate limits even without a saved account.
+  - **Messages:** error and empty-state messages say what to do next. For example, an unknown session points to `sidekick dump --list`, and `history` points Claude Code users to `dump --prompts`.
+
+**Deferred** (larger redesigns, not in this release):
+
+- grouping thousands in costs
+- one date format across every command
+- a single JSON output contract
+- a shared view header across the webviews
+- an Ink fix for toasts over wide (CJK) characters
+- reading Claude Code's `ai-title` for session names
+
 ## [0.33.2] - 2026-11-15
 
 A UI and UX pass over the VS Code extension and the terminal dashboard. An audit found about 130 defects across the dashboard, the other views, the extension's commands and settings, and the terminal UI. Each finding was checked against the code before it was fixed.

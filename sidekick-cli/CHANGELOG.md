@@ -5,6 +5,87 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.3] - 2026-11-17
+
+A second UI and UX pass over the terminal dashboard and the one-shot commands, made against 0.33.2. The audit drove the dashboard for real in tmux and ran every command. Fable checked each finding against the code before it was fixed, and reviewed the fixes before release.
+
+### Changed
+
+- **`sidekick doctor` exits with code 1 when the report is unhealthy.** It used to exit 0 for every report. "Attention" still exits 0. Scripts that run `doctor` will now see the failure.
+- **`sidekick dashboard --session <id>` starts pinned.** It follows the session you named and does not jump to a newer one. This matches `sidekick map --follow --session`. Without `--session`, the dashboard still switches to a session that starts, and now tells you when it does.
+- **The dashboard and `sidekick map --follow` exit with `128 +` the signal number when a signal stops them** (143 for SIGTERM, 129 for SIGHUP). They used to exit 0.
+- **Codex usage reports keep each session's project.** Per-project totals for Codex sessions will change: sessions whose first line runs past 16 KB used to be counted under no project.
+- **Option values are checked where you type them.** Unknown values for these options are now errors, where before they were silently accepted or ignored:
+  - `context --fidelity`
+  - `note add --type` / `--importance`
+  - `notes --type` / `--status`
+  - `dump --format` / `--width`
+  - `quota history --window` / `--weeks`
+
+  The window aliases `quota history` already accepted still work. `blocks --active` and `--recent` can no longer be combined with `--since`, which they used to silently ignore.
+
+- **Impossible dates and backwards windows are errors.** `--since 2026-13-45`, `--since 2026-02-30` and a `--since` later than `--until` used to roll over silently, or return an empty report.
+
+### Fixed
+
+- **`sidekick report` and `sidekick map` no longer crash** with `…?.has is not a function` on a session whose shell commands, MCP servers, tools or models are named `constructor` or `__proto__`. The terminal dashboard no longer loses those lines' tool calls.
+- **Terminal dashboard (`sidekick dashboard`)**
+  - **It keeps the session you chose.** A session you pick is no longer silently replaced by whichever other session writes next. The dashboard switches only to a session that starts after it opened, and says so ("Following new session … — p pins").
+  - **Codex sessions load.** Picking a Codex session in the picker used to leave the splash waiting forever.
+  - **Agents tab:** subagent tasks wrap into readable rows. Before, they broke into hundreds of one-character rows.
+  - **Session picker:**
+    - It fits any terminal size and follows resizes.
+    - It pages with PgUp/PgDn, Home/End and `g`/`G`.
+    - Its LIVE badge uses the same 2-minute rule as everywhere else.
+    - Codex session ids can be told apart.
+  - **Without colour (`NO_COLOR`):** the selected row in the picker, the actions menu and the accounts overlay is marked with `▸`, and the active filter mode is shown in brackets.
+  - **Overlays and toasts:**
+    - Overlays are opaque.
+    - Toasts wrap instead of cutting off, and stack by height.
+    - The report toast shows its full path for 8 seconds.
+    - The help overlay shows the last error.
+  - **Keys and selection:**
+    - Holding `j`/`k` moves by the number of presses.
+    - Pasted tabs and control characters no longer break the filter.
+    - The selection starts on the session you opened.
+    - The Timeline keeps following new events after you leave the tab and come back.
+  - **AI Summary (`n`):**
+    - The narrative belongs to its session.
+    - An empty reply is reported as an error.
+    - The provider CLI runs outside the project, so the summary no longer creates a new session there for the dashboard to jump to.
+  - **Past sessions** show how long they ran and when they ended, instead of a clock that keeps counting.
+  - **Readable on small screens:**
+    - What's New shows whole entries.
+    - The splash fits short terminals.
+    - Plans rows can be told apart.
+    - Files, Mind Map and AI Summary rows keep their layout when wrapped.
+    - Times are local, and plurals are right.
+  - **Errors and exits:**
+    - A fatal error after the dashboard starts restores the terminal and exits 1 with the error.
+    - A signal now exits with `128 +` its number (143 for SIGTERM).
+- **CLI commands**
+  - **Pipes and help:**
+    - Piping into `head` or `less` ends quietly, instead of with an EPIPE stack trace.
+    - Every subcommand's help lists the global options.
+    - Subcommand typos get a suggestion.
+    - `sidekick statusline --help` shows help.
+  - **Tasks:**
+    - `sidekick tasks` shows a reference that `sidekick tasks done` accepts, and lists open work first.
+    - `tasks done` can complete tasks recorded from sessions.
+    - An ambiguous reference lists its candidates.
+  - **`sidekick today`:** it lists In Progress tasks, and its JSON carries exact counts.
+  - **`sidekick stats`:**
+    - "Last 7 days" means the last seven days.
+    - Columns line up.
+    - Long tool lists are cut to the top 15.
+  - **Session labels:** they show what you typed, not `<local-command-caveat>`, `<pasted_content …>` or "Untitled session".
+  - **`sidekick search`:** it reports the real project path.
+  - **`decisions`, `context` and `notes`:**
+    - No more `[nested value omitted]` placeholders, raw status names, or "for .".
+    - `context` labels its usage block as covering all projects.
+  - **Status line:** it shows Claude Code's rate limits even without a saved account.
+  - **Messages:** error and empty-state messages say what to do next. For example, an unknown session points to `sidekick dump --list`, and `history` points Claude Code users to `dump --prompts`.
+
 ## [0.33.2] - 2026-11-15
 
 A UI and UX pass over the terminal dashboard. Each audit finding was checked against the code before it was fixed.

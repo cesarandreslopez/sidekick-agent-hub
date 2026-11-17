@@ -15,6 +15,7 @@ AI coding agents are powerful, but they run autonomously — tokens burn silentl
 
 ## What's New
 
+- **0.33.3: error help in every language, and a second UI pass** — **Explain Error with AI** and **Fix Error with AI** now appear in the lightbulb for every language and in the Command Palette, Python docstrings go inside the function or class body, and **Trigger Completion** says when completions are off or nothing came back. Cancelling a request reads as cancelled on every provider, and provider failures offer the fix they ask for, such as **Sign In Again** or **Set API Key**. The Mind Map, Kanban, Plans, Project Timeline and status bar turn **Viewing** after two quiet minutes, Project Timeline counts cover whole sessions, and the dashboard reads **Last 7 Days**, **Cache Reads** and **Est. Cost Saved**. **Refresh/Find Session** is now **Find Session**, and the Accounts view's context menu gains **Switch** and **Sign In Again**.
 - **0.33.2: new shortcuts for two commands (breaking), and a UI pass** — **Trigger Completion** is now `Ctrl+K Ctrl+Shift+Space` and **Transform Selected Code** `Ctrl+K Ctrl+Shift+M` (`Cmd+K Cmd+Shift+…` on macOS), so they no longer shadow Trigger Parameter Hints and View: Toggle Problems; to keep the old keys, rebind them in Keyboard Shortcuts (search "sidekick"). Completions are on demand and now start at once (`sidekick.debounceMs` defaults to `0`), and Transform and Generate Documentation skip read-only editors. Dashboard panels stay live while a session runs, the status pill reads **Live**, **Viewing** or **No session**, the Kanban board's **Clear Carried Over** asks first, the Mind Map gains a **Follow** toggle, and commands that need session monitoring offer to turn it on instead of failing.
 - **0.33.1: attaching to a long session no longer freezes the extension host** — Sidekick replays the session in steps so VS Code and other extensions keep running, and does the same when it rebuilds after a session file is replaced or catches up on a large burst of output. The dashboard's billing block, session search and the history backfill read sessions in steps too. Usage collection takes about 40% less time with the same totals.
 - **0.33.0: model-unavailable guidance, honest cache-write prices** — a request for a model that doesn't exist or isn't enabled for the account says so and points you to Sidekick's model settings, with no retry offered. The dashboard bills Codex cache writes at their own rate (GPT-6.x: 1.25× input), and OpenAI-family cache writes with no listed write rate at the input rate instead of $0.
@@ -117,7 +118,7 @@ Let AI handle the mechanical work — boilerplate, commit messages, docs, PR des
 - **[AI Commit Messages](https://cesarandreslopez.github.io/sidekick-agent-hub/features/commit-messages/)** — generate meaningful messages from staged changes (sparkle icon in SCM toolbar)
 - **[Pre-commit Review](https://cesarandreslopez.github.io/sidekick-agent-hub/features/code-review/)** — catch bugs, security concerns, and code smells before they reach your team (eye icon in SCM toolbar)
 - **[PR Descriptions](https://cesarandreslopez.github.io/sidekick-agent-hub/features/pr-descriptions/)** — auto-generate structured summaries from branch diff (PR icon in SCM toolbar)
-- **[Error Analysis](https://cesarandreslopez.github.io/sidekick-agent-hub/features/error-analysis/)** — AI-powered error explanations and one-click fixes
+- **[Error Analysis](https://cesarandreslopez.github.io/sidekick-agent-hub/features/error-analysis/)** — AI explanations and fixes for any error or warning, in any language, from the lightbulb (`Ctrl+.`), the editor's Sidekick menu, or the Command Palette
 
 ### Agent Monitoring
 
@@ -151,7 +152,7 @@ When your AI agent runs autonomously, you need to know what it's doing. Real-tim
 
 ![Analytics](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/analytics_vscode_extension.png)
 
-- **Accounts** — sidebar view of every saved Claude Code and Codex account grouped by provider with credential health, plus an always-visible status bar badge; switch, sign in again, open a terminal as an account, or undo from there. See [Account Switcher](https://cesarandreslopez.github.io/sidekick-agent-hub/features/account-switcher/)
+- **Accounts** — sidebar view of every saved Claude Code and Codex account grouped by provider with credential health, plus a status bar badge once an account is saved; switch, sign in again, open a terminal as an account, or undo from there. See [Account Switcher](https://cesarandreslopez.github.io/sidekick-agent-hub/features/account-switcher/)
 - **Event Stream** — live sidebar tree view of session events with color-coded type icons and timestamps
 
 ![Event Stream](https://raw.githubusercontent.com/cesarandreslopez/sidekick-agent-hub/main/assets/event_stream_vscode_extension.png)
@@ -235,6 +236,8 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Quick Ask (Inline Chat)       | `Ctrl+K Ctrl+A`           | Inline chat                                                                                                                                |
 | Generate Documentation        | `Ctrl+K Ctrl+G`           | Generate documentation                                                                                                                     |
 | Explain Selected Code         | `Ctrl+K Ctrl+E`           | Explain selected code (five detail levels in the editor context menu)                                                                      |
+| Explain Error with AI         | Lightbulb (`Ctrl+.`)      | Explain the error or warning at the cursor (five detail levels in the editor context menu)                                                 |
+| Fix Error with AI             | Lightbulb (`Ctrl+.`)      | Generate a fix for the error or warning at the cursor and apply it from the panel                                                          |
 | Generate Commit Message       | SCM sparkle icon          | AI commit message                                                                                                                          |
 | Review My Changes             | SCM eye icon              | Pre-commit review                                                                                                                          |
 | Generate PR Description       | SCM PR icon               | Auto-generate PR description                                                                                                               |
@@ -248,7 +251,7 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Open Terminal as Account…     | Accounts view             | Start a terminal whose `claude` / `codex` use a saved account without switching the live login (the live account opens in the normal home) |
 | Undo Last Account Switch      | —                         | Revert the most recent switch                                                                                                              |
 | Register Current Login        | —                         | Save the account you are signed in to right now                                                                                            |
-| Remove Account                | —                         | Remove a saved account and its credentials                                                                                                 |
+| Remove Account…               | Accounts view             | Remove a saved account and its credentials                                                                                                 |
 | Open Session Dashboard        | —                         | Open session analytics                                                                                                                     |
 | Open Activity Map             | Activity Map view         | Open the activity map large in an editor tab, with insights and a replay bar                                                               |
 | Export Activity Map…          | Activity Map view         | Save the map as SVG or the session's activity as JSON                                                                                      |
@@ -264,11 +267,11 @@ Model settings accept `auto` (recommended), a tier (`fast`/`balanced`/`powerful`
 | Browse Session Folders…       | —                         | Select session folder to monitor                                                                                                           |
 | Check for Updates             | —                         | Check for a newer version of the extension now (Update, Release Notes, or Skip This Version)                                               |
 
-Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS (`Cmd+K Cmd+Shift+Space`, `Cmd+K Cmd+Shift+M`). Transform and Explain require a selection, and Transform and Generate Documentation don't run in read-only editors. Requires VS Code 1.85 or later.
+Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS (`Cmd+K Cmd+Shift+Space`, `Cmd+K Cmd+Shift+M`). Transform and Explain Selected Code require a selection; Explain Error and Fix Error use the error or warning at the cursor. Transform and Generate Documentation don't run in read-only editors. Requires VS Code 1.85 or later.
 
 ## Troubleshooting
 
-**No completions?** Completions appear only when you ask for one: press `Ctrl+K Ctrl+Shift+Space` (`Cmd+K Cmd+Shift+Space` on macOS). If the **Sidekick** status bar item shows a crossed-out circle, completions are off; run **Toggle Inline Completions**. Otherwise click it and pick **Test Connection** (or run `Sidekick: Test Connection`) to verify provider connectivity.
+**No completions?** Completions appear only when you ask for one: press `Ctrl+K Ctrl+Shift+Space` (`Cmd+K Cmd+Shift+Space` on macOS). If completions are off, the shortcut says so and offers **Turn On**, and the **Sidekick** status bar item shows a crossed-out circle. If the model had nothing to add, the status bar briefly reads "no suggestion here". Otherwise click the **Sidekick** status bar item and pick **Test Connection** (or run `Sidekick: Test Connection`) to verify provider connectivity.
 
 **CLI not found?** Set `sidekick.claudePath` to the full path (find with `which claude`).
 
@@ -276,7 +279,7 @@ Keybindings are shown for Windows/Linux; use `Cmd` in place of `Ctrl` on macOS (
 
 **Codex issues?** Verify `codex login status` shows you are logged in, or that `OPENAI_API_KEY` / `CODEX_API_KEY` is set.
 
-**Request failed?** Inference failures name the problem — missing or rejected credentials, an expired OAuth sign-in, an invalid provider conversation, a service or connection failure, a timeout, rate limiting, an execution-policy denial, a missing runtime, or a context limit — with a recovery hint. Sidekick never signs in, changes credentials, switches providers, or replays a turn for you. When Transform Selected Code, Generate Commit Message, Review My Changes, Generate PR Description, Generate Documentation, or Quick Ask (Inline Chat) fails with a retryable error (such as a rate limit), the notification offers **Retry**, with the wait the provider asked for. "Test Connection" distinguishes local CLI readiness (Claude Max, Codex) from a successful authenticated request (Claude API), and a network or service error is not reported as a rejected key.
+**Request failed?** Inference failures name the problem — missing or rejected credentials, an expired OAuth sign-in, an invalid provider conversation, a service or connection failure, a timeout, rate limiting, an execution-policy denial, a missing runtime, or a context limit — with a recovery hint and a button for it, such as **Sign In Again**, **Set API Key**, or **Run Doctor**. Sidekick never signs in, changes credentials, switches providers, or replays a turn for you. When Transform Selected Code, Generate Commit Message, Review My Changes, Generate PR Description, Generate Documentation, or Quick Ask (Inline Chat) fails with a retryable error (such as a rate limit), the notification offers **Retry**, with the wait the provider asked for. "Test Connection" distinguishes local CLI readiness (Claude Max, Codex) from a successful authenticated request (Claude API), and a network or service error is not reported as a rejected key.
 
 **Status card says unavailable?** The dashboard's public status card shows **Status unavailable** when the vendor status page could not be fetched, and **Incident information unavailable** when the feed omitted incidents. Details list every unresolved incident with its component associations and separate check and provider-update timestamps. A public incident does not establish the cause of a failed request, and an operational status page does not prove your connection works.
 

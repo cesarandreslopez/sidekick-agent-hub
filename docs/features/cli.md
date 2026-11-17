@@ -760,7 +760,7 @@ Manage Claude Code and Codex accounts: list, add, switch, and run parallel sessi
 | `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold                                                                                                                                                                                    |
 | `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                                                                                                            |
 
-All subcommands accept `--provider claude-code|codex|all` and the global `--json`. A switch prints `✓ verified` once the live store reads back the new credential, one `!` line per running app that still holds the previous login, and the undo command.
+`accounts list` and `accounts config` accept `--provider claude-code|codex|all`; the other subcommands accept `claude-code` or `codex`. All accept the global `--json`. A switch prints `✓ verified` once the live store reads back the new credential, one `!` line per running app that still holds the previous login, and the undo command.
 
 #### Examples
 

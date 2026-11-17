@@ -5,6 +5,35 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.3] - 2026-11-17
+
+No exported signature or type changed. The changes below alter values or behaviour that consumers can see.
+
+### Fixed
+
+- **Activity classification is total.** A shell program, MCP server, tool, model id, agent id or tool-use id named after an `Object.prototype` member used to break things:
+  - `constructor` or `__proto__` made `classifyActivityShell()` throw (`…?.has is not a function`).
+  - Station overrides could return a function.
+  - Activity state dropped those agents and calls.
+  - A model id of `__proto__` polluted `Object.prototype`.
+
+  The classifier's tables are now `Map`s, override and state lookups check own properties, and the recorder falls back to the `shell` station if classification ever throws, keeping its sequence gap-free. `jsonlWatcher` and the provider reader watcher report an `onSessionEvent` failure to `onError` and still emit the line's events.
+
+- **Claude Code session labels read what the user typed.** `extractSessionLabel()`, `extractSessionLabelsAsync()` and `firstUserPrompt` now:
+  - skip harness text (`<local-command-caveat>`, `<system-reminder>`, meta, sidechain and compact-summary records)
+  - render slash commands as typed (`/clear`)
+  - unwrap `<pasted_content>`
+  - retry once with a 64 KB prefix when the first 8 KB holds no prompt
+
+  The 60-character cut is unchanged. A failed file close can no longer make `extractSessionLabel()` throw.
+
+- **Session search** reports the real project path, walking up from the event's `cwd`, instead of decoding the folder name (every `-` became `/`). It skips `api-request-blob` lines.
+- **`completeTask()`** resolves a reference in this order: exact store key, `<origin8>:<taskId>`, exact `taskId`, then a unique prefix. It writes back under the matched key, so session-derived tasks with short ids can be completed. An ambiguous reference lists its candidates.
+- **`formatStatusline()`** renders Claude Code's official rate limits when no account is selected but a quota is available. It no longer says `quota unavailable` then.
+- **Session previews** read a Codex rollout's `session_meta` when that line runs past the 16 KB prefix, so `workspacePath` is no longer null. Usage events for those sessions now carry their project.
+- **The watcher factory's "not found" error** lists session IDs instead of file names.
+- **`sessionDump` tool averages** use `formatDurationMs()` (`1m 22s`) instead of raw milliseconds.
+
 ## [0.33.2] - 2026-11-15
 
 ### Changed

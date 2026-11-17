@@ -8,6 +8,7 @@ Sidekick CLI reads from `~/.config/sidekick/` (`%APPDATA%\sidekick\` on Windows)
 
 ## What's New
 
+- **0.33.3: the dashboard keeps the session you chose** — `dashboard --session` starts pinned, and without it the dashboard switches only to a session that starts after it opened, saying so (`Following new session … — p pins`). Codex sessions open from the picker, which fits any terminal, pages with PgUp/PgDn, Home/End and `g`/`G`, and marks LIVE by the same 2-minute rule. `doctor` exits 1 when unhealthy, a signal ends the dashboard and `map --follow` with `128 +` its number, unknown option values and impossible dates are errors, `sidekick tasks` prints the reference `tasks done` accepts, and `sidekick statusline --help` shows the `settings.json` snippet.
 - **0.33.2: a dashboard that fits and keeps your scrollback** — the dashboard and `map --follow` run in the terminal's alternate screen, so your scrollback comes back when you quit. The panel tab bar shortens to abbreviations, then digits (80×24 fits), PgUp/PgDn/Home/End scroll, the filter row shows that `Tab` cycles its modes, the detail tab stays put between items, Plans' `S` source filter works even on an empty list, and `NO_COLOR` is honoured. Token counts read `12.3k`, `4.5M` and `1.2B`, Kanban and task statuses read "In Progress", and `sidekick tasks --status in_progress` works.
 - **0.33.1: no freezes on large sessions** — the dashboard, `daily`/`weekly`/`monthly`/`sessions`, `blocks`, `dump --prompts`, `import`, `search` and `map --follow` read sessions in 1 MiB steps and let the event loop run between them, so the dashboard keeps redrawing and taking keys while a long session is read. Totals and search hits are unchanged, and usage collection takes about 40% less time.
 - **0.33.0: model-unavailable guidance, honest cache-write prices** — inference failures for a model that doesn't exist or isn't enabled for the account say so and ask you to choose another model. `daily`, `weekly`, `monthly`, `sessions`, `blocks` and the dashboard bill Codex cache writes at their own rate (GPT-6.x: 1.25× input), and OpenAI-family cache writes with no listed write rate at the input rate instead of $0.
@@ -109,7 +110,7 @@ sidekick dump|history|report|map|peak|today|doctor|statusline|mcp [options]
 sidekick tasks add|tasks done|note add|decision add [args]
 ```
 
-Most commands run one-shot queries and print to stdout; `dashboard` and `map --follow` open full-screen TUIs, `accounts` and `extract -i` open interactive pickers, and `mcp` serves stdio until closed. Every command except `statusline` accepts the global flags below.
+Most commands run one-shot queries and print to stdout; `dashboard` and `map --follow` open full-screen TUIs, `accounts` and `extract -i` open interactive pickers, and `mcp` serves stdio until closed. Every command lists the global flags below in its `--help`; `statusline` ignores `--json`, `--project` and `--provider`.
 
 | Flag                   | Description                                                                                                  |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -120,7 +121,7 @@ Most commands run one-shot queries and print to stdout; `dashboard` and `map --f
 | `--offline`            | Price from the cached catalog only (also `SIDEKICK_OFFLINE=1`)                                               |
 | `--output-file <path>` | Write a command's stdout to a file, without colour codes (ignored by `dashboard`, `mcp`, and `map --follow`) |
 
-Per-command: `--session <id>` follows a specific session by ID (`dashboard`, `dump`, `report`, `map`, `handoff open`), and `--replay` replays existing events from the beginning before streaming live (`dashboard` only).
+Per-command: `--session <id>` targets a specific session by ID (`dashboard`, `dump`, `report`, `map`, `handoff open`); `dashboard` and `map --follow` start pinned to it. `--replay` replays existing events from the beginning before streaming live (`dashboard` only).
 
 ## Daily Brief & Statusline
 
@@ -129,7 +130,7 @@ sidekick today
 sidekick statusline
 ```
 
-`sidekick today` prints a cache-only daily brief: yesterday's sessions/tokens/cost, open tasks, the newest decision, the latest handoff, a quota summary, and the scheduled peak-hours window. `sidekick statusline` renders the same account/quota/burn summary as a single line with no account bootstrap, pricing hydration, or quota network access, so it is fast enough to run on every agent prompt (the VS Code extension can wire it into Claude Code's `statusLine` setting). When Claude Code runs it as the status line it pipes a JSON document on stdin: Sidekick appends context usage, session cost, and prompt-cache hit rate, and persists the official limits (seven-day, plus five-hour on plans that have one) so every other command sees authoritative quota without a network call. Cached quota older than five minutes shows its age. Global flags `--project`, `--provider`, and `--json` apply to `today`; `statusline` takes no flags (`SIDEKICK_STATUSLINE_STDIN=0` ignores stdin).
+`sidekick today` prints a cache-only daily brief: yesterday's sessions/tokens/cost, open tasks, the newest decision, the latest handoff, a quota summary, and the scheduled peak-hours window. `sidekick statusline` renders the same account/quota/burn summary as a single line with no account bootstrap, pricing hydration, or quota network access, so it is fast enough to run on every agent prompt (add `"statusLine": { "type": "command", "command": "sidekick statusline" }` to `~/.claude/settings.json`, or run **Sidekick: Install Statusline** in VS Code; `sidekick statusline --help` prints the snippet). When Claude Code runs it as the status line it pipes a JSON document on stdin: Sidekick appends context usage, session cost, and prompt-cache hit rate, and persists the official limits (seven-day, plus five-hour on plans that have one) so every other command sees authoritative quota without a network call. Cached quota older than five minutes shows its age. Global flags `--project`, `--provider`, and `--json` apply to `today`; `statusline` has no options of its own (`SIDEKICK_STATUSLINE_STDIN=0` ignores stdin).
 
 ## Doctor
 
@@ -137,7 +138,7 @@ sidekick statusline
 sidekick doctor
 ```
 
-Diagnose project identity, sessions, accounts, providers, dependencies, and the pricing catalog in one typed health report — the same diagnostics behind the VS Code `Sidekick: Run Doctor` command. It warns when only the built-in price table or a stale catalog cache is active, or when `cli-config.json` pricing has invalid entries; `--json` adds `pricingCatalog`. Global flags `--project`, `--provider`, and `--json` also apply.
+Diagnose project identity, sessions, accounts, providers, dependencies, and the pricing catalog in one typed health report — the same diagnostics behind the VS Code `Sidekick: Run Doctor` command. It warns when only the built-in price table or a stale catalog cache is active, or when `cli-config.json` pricing has invalid entries; `--json` adds `pricingCatalog`. Global flags `--project`, `--provider`, and `--json` also apply. `doctor` exits 1 when the report is unhealthy (an "attention" report still exits 0), so scripts can gate on it.
 
 ## Billing Blocks
 
@@ -197,7 +198,7 @@ Rates are USD per million tokens. A key matches the model's dated, `[1m]`, Bedro
 
 ```bash
 sidekick tasks add "Wire retry backoff into the sync job" --tags backend
-sidekick tasks done a1b2
+sidekick tasks done a1b2c3d4
 sidekick note add "SQL substitution is index-based" --type gotcha --file src/db.ts
 sidekick decision add "Store history as JSONL" --rationale "Append-only, crash-safe"
 ```
@@ -207,11 +208,11 @@ Capture tasks, knowledge notes, and decisions from the terminal without opening 
 | Command                      | Flags                                                                                                                                                                                                                            |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tasks add <subject>`        | `--description <text>`, `--tags <csv>`                                                                                                                                                                                           |
-| `tasks done <id>`            | Accepts a task ID or unique prefix                                                                                                                                                                                               |
+| `tasks done <id>`            | The reference `sidekick tasks` prints (`a1b2c3d4`, or `<session>:<id>` for a task an agent created), a task ID, or a unique prefix; an ambiguous one lists its matches                                                           |
 | `note add <content>`         | `--file <path>`, `--title <title>`, `--type <type>` (`gotcha`/`pattern`/`guideline`/`tip`, default `tip`), `--importance <level>` (`critical`/`high`/`medium`/`low`, default `medium`), `--tags <csv>`; `--file` defaults to `.` |
 | `decision add <description>` | `--rationale <text>`, `--chosen <text>`, `--alternatives <csv>`, `--tags <csv>`                                                                                                                                                  |
 
-The global flag `--project` also applies. List tasks with `sidekick tasks --status pending`, `in_progress`, `completed` or `all` (the default).
+The global flag `--project` also applies. List tasks with `sidekick tasks`: open work first, each row led by the reference `tasks done` accepts. `--status pending`, `in_progress`, `completed` or `all` (the default) filters, and `--limit <n>` caps the list.
 
 ## Activity Map
 
@@ -443,7 +444,7 @@ Mon ··▒▒▓█▒░· ·░░·· ·▒▓
 Peak 92%  ·  Avg 38%  ·  Samples 612
 ```
 
-Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex|zai` (`claude-code` and `z.ai` are accepted aliases; default all available, stacked), `--workspace <path>` (default `cwd`), `--window 5h|7d|max` (default `5h`, or `7d` when the latest Claude sample has no 5-hour window; the header says so), `--csv`. `--json` emits a `{ workspaceId, weeks, window, providers, generatedAt }` payload — the same shape consumed by the VS Code dashboard's Quota History panel. Cells are local calendar days.
+Flags: `--weeks <n>` (1-26, default 13), `--provider claude|codex|zai` (`claude-code` and `z.ai` are accepted aliases; default all available, stacked), `--workspace <path>` (default: the global `--project`, else `cwd`), `--window 5h|7d|max` (default `5h`, or `7d` when the latest Claude sample has no 5-hour window; the header says so), `--csv`. `--json` emits a `{ workspaceId, weeks, window, providers, generatedAt }` payload — the same shape consumed by the VS Code dashboard's Quota History panel. Cells are local calendar days.
 
 History is stored at `~/.config/sidekick/quota-history/<workspaceId>/<provider>.jsonl` (mode `0600`, 60-second debounce, 91-day retention). The workspace id is `sha256(realpath)[0..16]`, so the same folder yields the same store whether sampled from the CLI or VS Code.
 
@@ -542,13 +543,13 @@ The detail tab stays put when you move to another item, so you can compare the s
 
 ### Session Management
 
-| Key | Action                                         |
-| --- | ---------------------------------------------- |
-| `p` | Pin session (prevent auto-switching to newest) |
-| `s` | Switch to the newly detected session           |
-| `f` | Toggle session filter                          |
+| Key | Action                                                          |
+| --- | --------------------------------------------------------------- |
+| `p` | Pin session (prevent auto-switching to a newly started session) |
+| `s` | Switch to the newly detected session                            |
+| `f` | Toggle session filter                                           |
 
-While pinned, the status bar shows `PINNED`; when a newer session starts, a toast and an `s new session` badge say so. The session filter (on by default) shows tasks, notes, decisions and plans from the live session plus records that are not tied to a session, and it follows the dashboard when it switches sessions.
+Without `--session`, the dashboard switches only to a session that starts after it opened, and says so (`Following new session … — p pins`); a session that already existed never takes over just because it was written to. `--session <id>` starts pinned. While pinned, the status bar shows `PINNED`; when a newer session starts, a toast and an `s new session` badge say so. The session filter (on by default) shows tasks, notes, decisions and plans from the live session plus records that are not tied to a session, and it follows the dashboard when it switches sessions.
 
 ### Session Panel — Mind Map Tab
 
@@ -579,7 +580,7 @@ While pinned, the status bar shows `PINNED`; when a newer session starts, a toas
 | `x`            | Open the actions menu for the selected item (only Plans has actions; other panels say so)                                                                       |
 | `M`            | Toggle mouse capture (turn off to restore terminal text selection/copy)                                                                                         |
 | `A`            | Open the accounts overlay (`Enter` switches, `u` undoes the last switch; `a`, `l` and `s` show the `sidekick accounts add` / `login` / `shell` commands to run) |
-| `?`            | Show help                                                                                                                                                       |
+| `?`            | Show help (and the last error, if there was one)                                                                                                                |
 | `R`            | Refresh persisted project data (tasks, notes, decisions, plans) from disk                                                                                       |
 | `r`            | Generate an HTML report for the current session; a toast names the file (or the error)                                                                          |
 | `V`            | Show version / changelog                                                                                                                                        |
@@ -591,6 +592,8 @@ In the filter overlay every printable key is part of the query; `Tab` cycles the
 ## Terminal Behaviour
 
 - The dashboard and `map --follow` run in the terminal's alternate screen, so your scrollback is left untouched and comes back when you quit.
+- Stopped by a signal, the dashboard and `map --follow` exit with `128 +` the signal number (143 for SIGTERM, 129 for SIGHUP); a fatal error restores the terminal first and exits 1 with the error.
+- The session picker fits the terminal and follows resizes, pages with `PgUp`/`PgDn`, `Home`/`End` and `g`/`G`, and marks a session written in the last two minutes as `LIVE`. With colour off, selected rows are marked `▸`.
 - The panel tab bar shortens itself on narrow terminals (full titles, then abbreviations, then digits, with the active panel marked `▸`), and the status bar drops lower-priority hints first; `? help` and `q quit` always stay visible. The minimum size is 60×15.
 - `NO_COLOR` (or `--no-color`) turns colour off in the dashboard and in every command; `FORCE_COLOR` overrides it.
 
