@@ -102,17 +102,27 @@ describe('waitForPendingAtomicWrites', () => {
   it('gives up after the budget, and never rejects for a failed write', async () => {
     const dir = directory('config');
     let release: () => void = () => undefined;
+    // The updater only runs once the store lock is taken, which can outlast the
+    // 30 ms wait on a loaded machine; release it only after it has started, or
+    // `release` is still the placeholder and `slow` never settles.
+    let markStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
     const slow = updateJsonStoreAtomic(
       path.join(dir, 'slow.json'),
       () => ({}),
       async () => {
-        await new Promise<void>((resolve) => {
+        const gate = new Promise<void>((resolve) => {
           release = resolve;
         });
+        markStarted();
+        await gate;
         return { done: true };
       },
     );
     await expect(waitForPendingAtomicWrites(30)).resolves.toBe(false);
+    await started;
     release();
     await slow;
 
