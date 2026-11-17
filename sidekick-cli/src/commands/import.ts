@@ -88,7 +88,7 @@ export async function importAction(_opts: Record<string, unknown>, cmd: Command)
       since = parseTimeOption(String(localOpts.since), now);
     } catch (error) {
       process.stderr.write(
-        chalk.red(error instanceof Error ? error.message : String(error)) + '\n',
+        chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`) + '\n',
       );
       process.exitCode = 1;
       return;

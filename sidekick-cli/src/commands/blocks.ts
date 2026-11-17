@@ -308,7 +308,7 @@ export async function blocksAction(_opts: Record<string, unknown>, cmd: Command)
       windowStart = parseTimeOption(String(localOpts.since), now);
     } catch (error) {
       process.stderr.write(
-        chalk.red(error instanceof Error ? error.message : String(error)) + '\n',
+        chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`) + '\n',
       );
       process.exitCode = 1;
       return;

@@ -5,7 +5,7 @@
  * (`YYYY-MM-DD`, midnight local time), or anything `Date.parse` understands.
  */
 
-import { parseLocalDateKey } from 'sidekick-shared';
+import { formatLocalDateKey, parseLocalDateKey } from 'sidekick-shared';
 
 const RELATIVE_WINDOW = /^(\d+(?:\.\d+)?)\s*(m|min|mins|h|hr|hrs|d|day|days|w|wk|wks)$/i;
 
@@ -33,8 +33,13 @@ export function parseTimeOption(value: string, now: Date = new Date()): Date {
     const unit = UNIT_MS[relative[2].toLowerCase()];
     return new Date(now.getTime() - amount * unit);
   }
-  const day = parseLocalDateKey(trimmed);
-  if (day) return day;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    // `new Date(2026, 12, 45)` rolls over to 2027-02-14 and V8 accepts
+    // `2026-02-30`, so a calendar day must read back as itself.
+    const day = parseLocalDateKey(trimmed);
+    if (day && formatLocalDateKey(day) === trimmed) return day;
+    throw new RangeError(`Invalid date "${value}": ${trimmed} is not a calendar day`);
+  }
   const ms = Date.parse(trimmed);
   if (Number.isFinite(ms)) return new Date(ms);
   throw new RangeError(

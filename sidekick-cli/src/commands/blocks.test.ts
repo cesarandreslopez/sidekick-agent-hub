@@ -322,4 +322,10 @@ describe('parseTimeOption', () => {
     );
     expect(() => parseTimeOption('soon', NOW)).toThrow(RangeError);
   });
+
+  it('rejects calendar days that do not exist instead of rolling them over', () => {
+    expect(() => parseTimeOption('2026-13-45', NOW)).toThrow('not a calendar day');
+    expect(() => parseTimeOption('2026-02-30', NOW)).toThrow('not a calendar day');
+    expect(parseTimeOption('2026-02-28', NOW).getDate()).toBe(28);
+  });
 });

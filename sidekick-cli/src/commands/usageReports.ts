@@ -474,8 +474,13 @@ export async function usageReportAction(
       ? parseTimeOption(String(localOpts.since), now)
       : defaultWindowStart(granularity, now);
     if (localOpts.until) until = parseTimeOption(String(localOpts.until), now);
+    if (since.getTime() > until.getTime()) {
+      throw new RangeError('--since is after --until; swap them or drop --until.');
+    }
   } catch (error) {
-    process.stderr.write(chalk.red(error instanceof Error ? error.message : String(error)) + '\n');
+    process.stderr.write(
+      chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`) + '\n',
+    );
     process.exitCode = 1;
     return;
   }

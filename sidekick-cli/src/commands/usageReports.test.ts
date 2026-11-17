@@ -446,4 +446,15 @@ describe('usageReportAction', () => {
     expect(process.exitCode).toBe(1);
     expect(mockCollect).not.toHaveBeenCalled();
   });
+
+  it('rejects a window whose start is after its end', async () => {
+    await usageReportAction(
+      'day',
+      {},
+      makeCmd(false, { since: '2026-06-01', until: '2026-01-01' }),
+    );
+    expect(stderrData).toContain('--since is after --until');
+    expect(process.exitCode).toBe(1);
+    expect(mockCollect).not.toHaveBeenCalled();
+  });
 });
