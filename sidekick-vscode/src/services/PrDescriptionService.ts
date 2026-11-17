@@ -38,6 +38,12 @@ export interface PrDescriptionResult {
   baseBranch?: string;
   /** Set when the user cancelled, including declining a timeout retry; report nothing. */
   cancelled?: boolean;
+  /**
+   * Set when the comparison itself found nothing to describe (no commits, no
+   * diff, or a base that doesn't exist). `error` explains why; it is not a
+   * provider failure, so callers offer to choose another base instead.
+   */
+  noCommits?: boolean;
   /** GitHub "open a pull request" page for this branch, when the remote is on GitHub */
   compareUrl?: string;
 }
@@ -75,7 +81,7 @@ export function githubCompareUrl(
  * Service for AI-powered PR description generation.
  *
  * This service:
- * - Detects base branch (upstream tracking or user prompt)
+ * - Detects base branch (a different-branch upstream, the default branch, or a prompt)
  * - Gets all commits on current branch vs base
  * - Gets diff between branch and base
  * - Calls Claude Sonnet for description generation
@@ -136,9 +142,16 @@ export class PrDescriptionService implements vscode.Disposable {
       // Get commits on this branch
       const commits = await this.gitService.getBranchCommits(repository, baseBranch);
       if (commits.length === 0) {
+        // getBranchCommits swallows git errors, so a mistyped base looks
+        // exactly like "no commits"; tell the two apart.
+        const exists = await this.refExists(repository.rootUri.fsPath, baseBranch);
         return {
           description: null,
-          error: `No commits found on current branch vs ${baseBranch}. Are you on a feature branch?`,
+          noCommits: true,
+          baseBranch,
+          error: exists
+            ? `No commits on this branch that aren't already on ${baseBranch}.`
+            : `Base branch '${baseBranch}' not found.`,
         };
       }
 
@@ -149,7 +162,9 @@ export class PrDescriptionService implements vscode.Disposable {
       if (diff.trim().length === 0) {
         return {
           description: null,
-          error: `No diff found vs ${baseBranch}. Branch may already be merged.`,
+          noCommits: true,
+          baseBranch,
+          error: `No changes found vs ${baseBranch}. The branch may already be merged.`,
         };
       }
 
@@ -240,35 +255,85 @@ export class PrDescriptionService implements vscode.Disposable {
 
   /**
    * Detects the base branch for the current branch.
-   * Tries upstream tracking first, falls back to user prompt.
+   *
+   * An upstream that tracks a *different* branch (`git switch --track
+   * origin/main -c fix`) is the base. An upstream of the same branch (the
+   * usual `git push -u origin feat/x`) is not: comparing a branch with its own
+   * remote copy finds nothing, or only the unpushed commits. Then the remote's
+   * default branch is used, and only when none can be found is the user asked.
    *
    * @param repoPath - The repository root path
-   * @returns Promise resolving to base branch name
+   * @returns Promise resolving to the base branch, or undefined if the user
+   *   dismissed the prompt
    */
   private async detectBaseBranch(repoPath: string): Promise<string | undefined> {
-    try {
-      // Try to get upstream tracking branch
-      // execGit accepts repoPath string directly (no type casting needed)
-      const result = await this.gitService.execGit(repoPath, ['rev-parse', '--abbrev-ref', '@{u}']);
+    const upstream = await this.gitOutput(repoPath, ['rev-parse', '--abbrev-ref', '@{u}']);
+    if (upstream) {
+      const head = await this.gitOutput(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+      // Drop the remote name only (the first path segment): origin/feature/foo
+      // tracks feature/foo. Never match on a suffix, or a local `foo` tracking
+      // origin/feature/foo would count as the same branch.
+      const upstreamBranch = upstream.slice(upstream.indexOf('/') + 1);
+      if (upstreamBranch !== head) {
+        log(`PrDescriptionService: Using upstream '${upstream}' as the base`);
+        return upstream;
+      }
+    }
 
-      // Keep the complete upstream ref. Besides preserving slashed branch names
-      // (origin/feature/foo), the remote-tracking ref is the authoritative base
-      // when the corresponding local branch is stale or absent.
-      const upstream = result.trim();
-      const branchName = upstream || 'main';
-      log(`PrDescriptionService: Detected upstream branch '${branchName}'`);
-      return branchName;
+    const defaultBase = await this.findDefaultBranch(repoPath);
+    if (defaultBase) {
+      log(`PrDescriptionService: Using default branch '${defaultBase}' as the base`);
+      return defaultBase;
+    }
+
+    log('PrDescriptionService: No base branch found, prompting user');
+    return this.chooseBaseBranch();
+  }
+
+  /**
+   * Asks the user which branch to compare with.
+   *
+   * @param suggested - Prefilled answer (default `main`)
+   * @returns The branch, or undefined when the prompt was dismissed
+   */
+  async chooseBaseBranch(suggested = 'main'): Promise<string | undefined> {
+    const branch = await vscode.window.showInputBox({
+      title: 'Generate PR Description',
+      prompt: 'Compare with which base branch?',
+      value: suggested,
+      placeHolder: 'main, master, develop, origin/main...',
+      ignoreFocusOut: true,
+    });
+    // Escape cancels; an empty answer keeps the suggested default.
+    if (branch === undefined) return undefined;
+    return branch.trim() || suggested;
+  }
+
+  /** The remote's default branch (origin/HEAD), else the first common default that exists. */
+  private async findDefaultBranch(repoPath: string): Promise<string | undefined> {
+    const originHead = await this.gitOutput(repoPath, [
+      'symbolic-ref',
+      '--short',
+      'refs/remotes/origin/HEAD',
+    ]);
+    if (originHead) return originHead;
+    for (const candidate of ['origin/main', 'origin/master', 'main', 'master']) {
+      if (await this.refExists(repoPath, candidate)) return candidate;
+    }
+    return undefined;
+  }
+
+  /** Whether `ref` names a commit in this repository. */
+  private async refExists(repoPath: string, ref: string): Promise<boolean> {
+    return (await this.gitOutput(repoPath, ['rev-parse', '--verify', '--quiet', ref])) !== '';
+  }
+
+  /** Trimmed output of a repository command, or '' when it fails. */
+  private async gitOutput(repoPath: string, args: string[]): Promise<string> {
+    try {
+      return (await this.gitService.execGit(repoPath, args)).trim();
     } catch {
-      // No upstream - prompt user
-      log('PrDescriptionService: No upstream, prompting user');
-      const branch = await vscode.window.showInputBox({
-        prompt: 'Compare with which base branch?',
-        value: 'main',
-        placeHolder: 'main, master, develop...',
-      });
-      // Escape cancels; an empty answer keeps the 'main' default.
-      if (branch === undefined) return undefined;
-      return branch.trim() || 'main';
+      return '';
     }
   }
 

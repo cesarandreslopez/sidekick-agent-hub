@@ -2417,6 +2417,18 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
+      if (result.noCommits) {
+        // Nothing to describe against this base: offer another one rather
+        // than reporting a failure.
+        const choose = 'Choose Base Branch…';
+        const action = await vscode.window.showWarningMessage(result.error ?? '', choose);
+        if (action === choose) {
+          const next = await prDescriptionService!.chooseBaseBranch(result.baseBranch);
+          if (next) await generatePrDescriptionWithProgress(next);
+        }
+        return;
+      }
+
       if (result.error) {
         void showProviderFailure(`PR description failed: ${result.error}`, result.cause, () =>
           generatePrDescriptionWithProgress(result.baseBranch ?? baseBranch),

@@ -19,6 +19,27 @@ import * as vscode from 'vscode';
 import { PrDescriptionService, githubCompareUrl } from './PrDescriptionService';
 import { ProviderRequestError } from '../utils/providerFailure';
 
+type GitAnswers = Record<string, string | Error>;
+
+/**
+ * An execGit mock that answers per command (keyed by the args joined with
+ * spaces), and fails like git does for anything not listed.
+ */
+function gitMock(answers: GitAnswers) {
+  return vi.fn(async (_repo: string, args: string[]) => {
+    const answer = answers[args.join(' ')];
+    if (answer === undefined || answer instanceof Error) {
+      throw answer ?? new Error(`fatal: ${args.join(' ')}`);
+    }
+    return answer;
+  });
+}
+
+const UPSTREAM = 'rev-parse --abbrev-ref @{u}';
+const HEAD = 'rev-parse --abbrev-ref HEAD';
+const ORIGIN_HEAD = 'symbolic-ref --short refs/remotes/origin/HEAD';
+const verify = (ref: string) => `rev-parse --verify --quiet ${ref}`;
+
 /** Runs the task the way TimeoutManager does: a rejection comes back as `error`. */
 async function runTask({ task }: { task: (signal: AbortSignal) => Promise<string> }) {
   try {
@@ -32,7 +53,8 @@ function makeFailingService(error: unknown) {
   const repository = { rootUri: { fsPath: '/tmp/repo' } };
   const gitService = {
     getActiveRepository: vi.fn(() => repository),
-    execGit: vi.fn(async () => 'origin/main\n'),
+    // A local branch tracking origin/main: the upstream names another branch.
+    execGit: gitMock({ [UPSTREAM]: 'origin/main\n', [HEAD]: 'fix-login\n' }),
     getBranchCommits: vi.fn(async () => ['feat: add a']),
     getBranchDiff: vi.fn(async () => 'diff --git a/src/a.ts b/src/a.ts\n+const a = 2;'),
   };
@@ -45,19 +67,71 @@ function makeFailingService(error: unknown) {
   return { service, gitService, repository };
 }
 
-describe('PrDescriptionService', () => {
-  it('preserves a slashed upstream branch as the comparison ref', async () => {
-    const repository = { rootUri: { fsPath: '/tmp/repo' } };
+describe('PrDescriptionService base branch', () => {
+  const repository = { rootUri: { fsPath: '/tmp/repo' } };
+
+  function serviceWith(answers: GitAnswers) {
     const gitService = {
       getActiveRepository: vi.fn(() => repository),
-      execGit: vi.fn(async () => 'origin/feature/foo\n'),
+      execGit: gitMock(answers),
       getBranchCommits: vi.fn(async () => []),
     };
-    const service = new PrDescriptionService(gitService as never, {} as never);
+    return { service: new PrDescriptionService(gitService as never, {} as never), gitService };
+  }
+
+  it('does not compare a pushed branch with its own upstream', async () => {
+    const { service, gitService } = serviceWith({
+      [UPSTREAM]: 'origin/feat/x\n',
+      [HEAD]: 'feat/x\n',
+      [ORIGIN_HEAD]: 'origin/main\n',
+      [verify('origin/main')]: 'abc123\n',
+    });
 
     await service.generatePrDescription();
 
+    expect(gitService.getBranchCommits).toHaveBeenCalledWith(repository, 'origin/main');
+  });
+
+  it('keeps an upstream that tracks a different branch, slashes and all', async () => {
+    const { service, gitService } = serviceWith({
+      [UPSTREAM]: 'origin/feature/foo\n',
+      [HEAD]: 'foo\n',
+    });
+
+    await service.generatePrDescription();
+
+    // A local `foo` tracking origin/feature/foo is not the same branch.
     expect(gitService.getBranchCommits).toHaveBeenCalledWith(repository, 'origin/feature/foo');
+  });
+
+  it('falls back to the first common default branch that exists', async () => {
+    const { service, gitService } = serviceWith({
+      [HEAD]: 'feat/x\n',
+      [verify('origin/master')]: 'abc123\n',
+    });
+
+    await service.generatePrDescription();
+
+    expect(vscode.window.showInputBox).not.toHaveBeenCalled();
+    expect(gitService.getBranchCommits).toHaveBeenCalledWith(repository, 'origin/master');
+  });
+
+  it('reports no commits against an existing base as nothing to describe', async () => {
+    const { service } = serviceWith({ [verify('origin/main')]: 'abc123\n' });
+
+    const result = await service.generatePrDescription('origin/main');
+
+    expect(result).toMatchObject({ description: null, noCommits: true, baseBranch: 'origin/main' });
+    expect(result.error).toMatch(/aren't already on origin\/main/);
+    expect(result).not.toHaveProperty('cause');
+  });
+
+  it('says when the base branch does not exist instead of "no commits"', async () => {
+    const { service } = serviceWith({});
+
+    const result = await service.generatePrDescription('mian');
+
+    expect(result).toMatchObject({ noCommits: true, error: "Base branch 'mian' not found." });
   });
 });
 
@@ -118,10 +192,8 @@ describe('PrDescriptionService base-branch prompt', () => {
     const repository = { rootUri: { fsPath: '/tmp/repo' } };
     const gitService = {
       getActiveRepository: vi.fn(() => repository),
-      // No upstream, so the user is asked for a base branch.
-      execGit: vi.fn(async () => {
-        throw new Error('no upstream');
-      }),
+      // No upstream and no default branch, so the user is asked.
+      execGit: gitMock({}),
       getBranchCommits: vi.fn(async () => ['feat: a']),
     };
     vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce(undefined);
@@ -135,9 +207,7 @@ describe('PrDescriptionService base-branch prompt', () => {
     const repository = { rootUri: { fsPath: '/tmp/repo' } };
     const gitService = {
       getActiveRepository: vi.fn(() => repository),
-      execGit: vi.fn(async () => {
-        throw new Error('no upstream');
-      }),
+      execGit: gitMock({}),
       getBranchCommits: vi.fn(async () => []),
     };
     vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce('');
