@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toErrorMessage } from './errors';
+import { cancellationError, isCancellationError, toErrorMessage } from './errors';
 
 describe('toErrorMessage', () => {
   it('uses the message from an Error', () => {
@@ -36,5 +36,24 @@ describe('toErrorMessage', () => {
 
   it('honors a caller-supplied fallback', () => {
     expect(toErrorMessage(null, 'Could not open the session')).toBe('Could not open the session');
+  });
+});
+
+describe('cancellation errors', () => {
+  it('names the error AbortError so existing name checks keep working', () => {
+    const err = cancellationError();
+    expect(err.name).toBe('AbortError');
+    expect(err.message).toBe('Request was cancelled');
+    expect(isCancellationError(err)).toBe(true);
+  });
+
+  it('recognises any AbortError-named error, and nothing else', () => {
+    const abort = new Error('aborted');
+    abort.name = 'AbortError';
+    expect(isCancellationError(abort)).toBe(true);
+    // The Anthropic SDKs' abort errors keep the default name.
+    expect(isCancellationError(new Error('Claude Code process aborted by user'))).toBe(false);
+    expect(isCancellationError('AbortError')).toBe(false);
+    expect(isCancellationError(undefined)).toBe(false);
   });
 });

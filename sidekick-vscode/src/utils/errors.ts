@@ -25,3 +25,23 @@ export function toErrorMessage(err: unknown, fallback = 'Unknown error'): string
   }
   return fallback;
 }
+
+/**
+ * The error every cancelled AI request rejects with: toast Cancel, an aborted
+ * external signal, or a declined timeout retry.
+ *
+ * Cancellation is identified by `name === 'AbortError'` (the convention the
+ * services already use), never by class: the Anthropic SDKs' own abort errors
+ * leave `name` as `'Error'`, and `vscode.CancellationError` is absent from the
+ * hand-written vscode mocks the tests use.
+ */
+export function cancellationError(message = 'Request was cancelled'): Error {
+  const err = new Error(message);
+  err.name = 'AbortError';
+  return err;
+}
+
+/** True for an error produced by {@link cancellationError} or any `AbortError`-named error. */
+export function isCancellationError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
+}
