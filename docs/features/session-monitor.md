@@ -6,13 +6,13 @@ Monitor your coding agent sessions in real-time with a comprehensive analytics d
 
 ## Accessing the Dashboard
 
-Click the **Agent Hub** icon in the activity bar (left sidebar) to access all monitoring views. Session Analytics is expanded on first run; Accounts, Mind Map, Activity Map, Kanban Board, Plans, Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream start collapsed — click a section header to expand one, and VS Code remembers your layout from then on. With `sidekick.enableSessionMonitoring` set to `false`, the nine monitoring views from Mind Map to Event Stream are hidden entirely, Accounts stays available, and Session Analytics shows a placeholder that can turn monitoring back on.
+Click the **Agent Hub** icon in the activity bar (left sidebar) to access all monitoring views. Session Analytics is expanded on first run; Accounts, Mind Map, Activity Map, Kanban Board, [Plans](plans.md), Project Timeline, Latest Files Touched, Knowledge Notes, Subagents, and Event Stream start collapsed — click a section header to expand one, and VS Code remembers your layout from then on. With `sidekick.enableSessionMonitoring` set to `false`, the nine monitoring views from Mind Map to Event Stream are hidden entirely, Accounts stays available, and Session Analytics shows a placeholder that can turn monitoring back on.
 
 ## Session Analytics Dashboard
 
-![Session Analytics Dashboard](../images/session-analytics-dashboard.png)
+![Session tab: context window and 5-Hour / 7-Day quota gauges](../images/demo/v1/vscode-session.png)
 
-The main dashboard panel provides:
+The dashboard has four tabs: **Session** (the live session), **Summary**, **History**, and **Health**. The Session tab provides:
 
 - **Token Usage** — real-time "Total (incl. cache)" with an input, cache read, cache write, and output breakdown and model-specific pricing; when subagents ran, the Tokens metric shows the **Session total (incl. subagents)** with the main thread and **Subagents (n)** beneath it
 - **Cost Tracking** — per-model cost breakdown with accurate pricing; unknown models render as `—` with a dashboard footer warning (hydrated on startup from LiteLLM, cached to `~/.config/sidekick/pricing-catalog.json`)
@@ -28,7 +28,8 @@ The main dashboard panel provides:
 - **Session Navigator** — collapsible panel to switch between active and recent sessions
 - **Tool Analytics** — categorized tool usage with drill-down to individual calls
 - **Toast Notifications** — dismissable feedback toasts (e.g. "Copied to clipboard") with `aria-live` for screen readers
-- **Session Summary** — AI narrative generation with progress notification
+- **Plan Progress** — the plan the agent is working through, step by step (see [Plan Progress and Plan History](#plan-progress-and-plan-history))
+- **Session Summary** — metrics, tasks, files, cost, and errors on the [Summary tab](#summary-tab), with an optional AI narrative
 - **Session Dump** — export the current session as text, markdown, JSON, or HTML via `Sidekick: Dump Session Report` (Command Palette, status bar menu, or Session Analytics toolbar)
 - **HTML Session Report** — self-contained HTML report with full transcript, token/cost stats, model breakdown, and tool-use summary via `Sidekick: Generate HTML Report` (Command Palette or Session Analytics toolbar). Also available in the [CLI](cli.md#html-report) as `sidekick report` or by pressing `r` in the TUI dashboard
 
@@ -38,8 +39,8 @@ The dashboard organizes information into five collapsible groups:
 
 ![Session Activity — Context Attribution, Compactions, and Activity Timeline](../images/session-activity-timeline.png)
 
-- **Session Activity** — Activity Timeline, File Changes, Errors with categorized per-tool error forensics, and a compaction ledger summarizing tokens evicted and the estimated cost of re-establishing context (reported vs. heuristic source)
-- **Performance & Cost** — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness, Advanced Burn Rate, code impact (cost per changed line, overall and per model), and a Session Quality score (beta) with trend and factor breakdown
+- **Session Activity** — Context Attribution, Per-Turn Token Breakdown, Context Size Over Time, Notification History, Activity Timeline, File Changes (with the cost per changed line), Errors with categorized per-tool error forensics, and a compaction ledger summarizing tokens evicted and the estimated cost of re-establishing context (reported vs. heuristic source)
+- **Performance & Cost** — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness (Cache Hit Rate, Cache Reads, and Est. Cost Saved), and Advanced Burn Rate
 
 ![Performance & Cost — Model Breakdown, Tool Analytics, Tool Efficiency, Cache Effectiveness](../images/performance-and-cost.png)
 
@@ -52,7 +53,21 @@ The dashboard organizes information into five collapsible groups:
 
 ![Tasks & Recovery — Task Performance and Completion Tracking](../images/tasks-and-recovery.png)
 
+### Plan Progress and Plan History
+
+When the agent is working through a plan (Claude Code plan mode, an OpenCode proposed plan, or Codex plan updates), the Session tab shows a **Plan Progress** card: the plan's title, a progress bar, completed and total steps with the plan's duration and tokens, and each step with its status and, once known, its duration, tokens, tool calls, and complexity. When the plan has markdown, **Show Details** switches to it and **Show Steps** switches back.
+
+**Plan History** summarizes the plans saved for this project (how many, how many completed, average completion, average duration and tokens) and lists the ten most recent with their completion, step count, and date. A plan is saved when its session ends. The [Plans](plans.md) view shows the same plans with search and filters.
+
+### Summary Tab
+
+The Summary tab rolls the session up: **Duration**, **Tokens**, **Cost**, **API Calls**, **Context Peak**, and **Tasks Done**, followed by the session's Tasks, Files Changed, Cost Breakdown (per model, with the cost per changed line), and Errors & Recovery. **Generate AI Narrative** asks your inference provider for a written account of the session; it usually takes 15–30 seconds.
+
+A summary is built when you open the tab during a session, when you run **Sidekick: Generate Session Summary** (which also opens the tab), and when a session ends.
+
 ### History Tab
+
+![History tab](../images/demo/v1/vscode-history.png)
 
 The History tab charts the persisted usage store (`historical-data.json`) over **Today** (hourly buckets), **Last 7 Days** (a rolling week) and **This Month** (daily), and **All Time** (monthly), with drill-down from months to days and days to hours. Sessions recorded before 0.27.3 keep their old, inflated Claude Code and Codex totals; the store is not rewritten. Three controls shape the chart:
 
@@ -60,7 +75,7 @@ The History tab charts the persisted usage store (`historical-data.json`) over *
 - **Series** — _Total_, _By model_ (stacked bars per model from the daily and monthly records), or _By tool_ (stacked tool calls; the metric select is disabled because tools carry no token attribution). Hourly buckets record no breakdown, so _Today_ shows totals.
 - **Project** — filter to one workspace. Filtered views aggregate the durable per-session records, which are capped at the last 500 sessions.
 
-A dashed line overlays the previous period (yesterday, the seven days before, or the previous calendar month), and the summary tiles show the change versus it.
+A dashed line overlays the previous period (yesterday, the seven days before, or the previous calendar month), and the summary tiles (Total Tokens, Total Cost, Sessions, Messages) show the change versus it. Below them, a **Session Quality** score (beta) shows its trend and factor breakdown.
 
 ### Health Tab
 
@@ -69,13 +84,14 @@ The Health tab runs the same checks as **Sidekick: Run Doctor** (which now also 
 - a status banner (healthy, attention, unhealthy) with the number of items needing attention;
 - the check list — project slug, session discovery, OpenCode sqlite, accounts, public provider service status, deprecated settings — each with a repair hint when there is one. The service-status check reports degraded, unavailable, and partial (incidents omitted) evidence separately and notes that public status does not establish request connectivity or authentication;
 - **Session Providers** — diagnostics the Claude Code, Codex, and OpenCode providers emit when probed for the current workspace (missing directories, an unavailable `sqlite3`, enumeration failures);
-- **Failing Tools** — the tools with the most failures over the last 7 and 30 days, with a trend arrow comparing the week to the 30-day weekly average (the same rule `sidekick stats` prints).
+- **Failing Tools** — the tools with the most failures over the last 7 and 30 days, with a trend arrow comparing the week to the 30-day weekly average (the same rule `sidekick stats` prints);
+- **Pricing** — the basis for cost estimates: the price catalog's source, any custom prices and ignored entries, and the catalog digest.
 
 Press **Refresh** to run the checks again.
 
 ## HTML Session Report
 
-![HTML Session Report](../images/session_html_report.png)
+![HTML Session Report](../images/demo/v1/html-report.png)
 
 Generate a self-contained HTML report for any session — full transcript with collapsible thinking blocks and tool detail, token/cost stats, model breakdown, and tool-use summary. The output file has zero external dependencies and can be shared or archived as a single `.html` file.
 
@@ -155,23 +171,27 @@ On first activation with an empty history store, the extension imports every fin
 
 The dashboard shows quota or rate-limit data depending on the active provider:
 
-- **Claude Max** ("Subscription Quota"): 5-hour and 7-day utilization from the Anthropic OAuth usage API, with color-coded gauges, elapsed-time projections (e.g., `40% → 100%`), countdown timers, and auto-refresh every 5 minutes.
-- **Codex** ("Rate Limits"): Primary and secondary rate-limit windows extracted from token_count events in the Codex event stream. Data arrives automatically during active sessions — no separate polling needed. When the tile refreshes from Codex's API, it also lists available **reset credits** (rate-limit reset grants) and their expirations.
-- **OpenCode**: No quota display — OpenCode does not provide rate-limit data.
+- **Claude Code** ("Subscription Quota"): 5-hour and 7-day utilization from the Anthropic OAuth usage API, with color-coded gauges, elapsed-time projections (e.g., `40% → 100%`), countdown timers, and auto-refresh every 5 minutes. Hover the section for the plan it describes, e.g. "Claude Ultra subscription usage limits".
+- **Codex** ("Rate Limits"): Primary and secondary rate-limit windows extracted from token_count events in the Codex event stream. Data arrives automatically during active sessions — no separate polling needed. A plan that reports only one window gets one gauge. When the tile refreshes from Codex's API, it also lists available **reset credits** (rate-limit reset grants) and their expirations.
+- **OpenCode** ("z.ai Quota"): the 5-Hour and Weekly windows of a z.ai Coding Plan when OpenCode is routed through z.ai; otherwise no quota display, since OpenCode itself reports no rate-limit data.
+
+The gauges follow the plan (Pro, Max, or Ultra for Claude). Claude Ultra has no five-hour window, so its 5-Hour gauge is hidden and a "No 5-hour limit on Ultra" note takes its place, rather than a gauge stuck at 0%. Limits beyond the two headline windows appear as extra meters beneath the gauges, each with its own bar, percentage, and reset time, such as a weekly Fable cap labelled `7-Day (Fable)`. When the plan reports it, hovering a meter scoped to one model shows how much of the weekly limit that model may use. When your Claude account has usage credits, notes show the prepaid balance and the monthly spend limit on it.
+
+![Cost view: the Billing block card above the Peak Hours pill](../images/demo/v1/vscode-cost.png)
 
 Beneath the quota gauges, a **Billing block** card shows the five-hour block that is open right now, computed from session logs the way `sidekick blocks` does: the block window, elapsed and remaining time, cache-inclusive tokens, cost, burn rate, and the projected end-of-block tokens and cost. It is labelled a local estimate; when `sidekick statusline` has persisted an official Claude Code rate-limit sample, the card shows it beneath the estimate for comparison. The card recomputes at most once a minute while the view is visible.
+
+Below it, a **Quota History** heatmap covers the last 13 weeks for the current workspace: one row per provider with recorded history (Claude, Codex, z.ai), one cell per day, shaded by that day's peak utilization across the five-hour and weekly windows. Hover a cell for the date, the peak, and the number of samples; days when quota could not be read are marked unavailable. The card stays hidden until there is history. In the terminal, `sidekick quota history` draws the same history.
 
 When quota cannot be fetched, the dashboard keeps the section visible and shows a structured unavailable state for missing credentials, expired sign-in, rate limits, network/server failures, or unexpected API responses. Quota failure transitions appear as lightweight dashboard toasts and are recorded in notification history, without triggering native VS Code popup notifications.
 
 ## Project Timeline
 
-![Project Timeline](../images/project-timeline.png)
+![Project Timeline](../images/demo/v1/vscode-timeline.png)
 
 See every session your agent has run in the current project at a glance. Each session appears as a card showing its label, duration, token usage, task and error counts, and which model was used. Filter by time range (24h, 7d, 30d, or all) and click any card to expand tool breakdowns, task lists, and error summaries. See the [Project Timeline](project-timeline.md) page for full details.
 
 ## Knowledge Notes
-
-![Knowledge Notes](../images/knowledge-notes.gif)
 
 Capture reusable knowledge — gotchas, patterns, guidelines, and tips — attached to specific files in your codebase. Notes appear as gutter icons in the editor and in a dedicated tree view. Right-click notes to edit, confirm, or delete them. Use "Inject Knowledge Notes" to append them to your instruction file so your agent benefits from what you've learned. See the [Knowledge Notes](knowledge-notes.md) page for full details.
 
@@ -182,6 +202,7 @@ The monitor automatically discovers sessions based on your configured provider. 
 - Use **"Sidekick: Browse Session Folders…"** to manually select a session folder
 - Selection persists across VS Code restarts
 - **"Sidekick: Reset to Auto-Detect Session"** clears manual selection
+- **"Sidekick: Find Session"** looks for the active session again and attaches to it
 - Codex sessions that Codex compressed (`.jsonl.zst`) are listed and read whole when VS Code's Node runtime has built-in Zstandard (Node 22.15 or later), and skipped otherwise
 
 ## When no session is visible

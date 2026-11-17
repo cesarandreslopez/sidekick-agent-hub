@@ -1,5 +1,5 @@
 site_name: Sidekick Agent Hub
-site_description: AI coding assistant with real-time agent monitoring — VS Code extension and terminal dashboard
+site_description: 'See what your AI coding agents are doing and what they cost: live monitoring for Claude Code, Codex and OpenCode in VS Code and the terminal.'
 site_url: https://cesarandreslopez.github.io/sidekick-agent-hub/
 repo_url: https://github.com/cesarandreslopez/sidekick-agent-hub
 repo_name: cesarandreslopez/sidekick-agent-hub
@@ -86,6 +86,7 @@ nav:
       - Mind Map: features/mind-map.md
       - Activity Map: features/activity-map.md
       - Kanban Board: features/kanban-board.md
+      - Plans: features/plans.md
       - Project Timeline: features/project-timeline.md
       - Knowledge Notes: features/knowledge-notes.md
       - Tool Inspector: features/tool-inspector.md
@@ -106,6 +107,7 @@ nav:
       - Codex CLI: providers/codex.md
   - Configuration:
       - Settings Reference: configuration/settings.md
+      - VS Code Commands: features/vscode-commands.md
       - Model Resolution: configuration/model-resolution.md
       - Event Logging: configuration/event-logging.md
   - Architecture:

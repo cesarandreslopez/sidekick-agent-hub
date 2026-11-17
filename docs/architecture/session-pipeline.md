@@ -11,17 +11,18 @@ flowchart TD
     CX["Codex CLI<br/><small>Session files</small>"] --> SP
 
     SP["SessionProvider<br/><small>Normalizes to SessionEvent</small>"]
-    SP --> SM["SessionMonitor<br/><small>Watch files · Aggregate stats · Emit events</small>"]
+    SP --> SM["SessionMonitor (VS Code)<br/><small>Watch files · Aggregate stats · Emit events</small>"]
 
-    SM --> Dashboard["DashboardViewProvider"]
-    SM --> MindMap["MindMapViewProvider"]
-    SM --> Kanban["TaskBoardViewProvider"]
-    SM --> Files["TempFilesTreeProvider"]
-    SM --> Agents["SubagentTreeProvider"]
+    SM --> Views["Webview views<br/><small>Dashboard · Mind Map · Activity Map · Task Board · Plan Board · Project Timeline</small>"]
+    SM --> Panels["Editor panels<br/><small>Activity Map pop-out · Conversation viewer · Tool Inspector</small>"]
+    SM --> Trees["Tree views<br/><small>Temp Files · Subagents · Event Stream</small>"]
     SM --> StatusBar["MonitorStatusBar"]
     SM --> Notify["NotificationTriggerService"]
     SM --> Logger["SessionEventLogger"]
+    SM --> Stores["Session-end persistence<br/><small>History · Error history · Plans · Handoffs</small>"]
 ```
+
+The extension is one host of the shared providers. Non-VS Code consumers read the same canonical `SessionEvent`s through `sidekick-shared`: the UI-independent `SessionMonitor` (one provider reader plus the canonical aggregator, polled by the host), `ObservedSessionCollector` for fingerprint-cached collection across sessions, and the provider watchers behind the CLI dashboard and `sidekick map --follow` (see [CLI Reader Path](#cli-reader-path)).
 
 ## SessionProvider
 
@@ -66,20 +67,33 @@ These systems feed their results into the dashboard, handoffs, notifications, mi
 
 ## UI Consumers
 
-| Consumer                     | Purpose                                 |
-| ---------------------------- | --------------------------------------- |
-| `DashboardViewProvider`      | Token usage, costs, timeline, analytics |
-| `MindMapViewProvider`        | D3.js session structure graph           |
-| `TaskBoardViewProvider`      | Kanban board with task/agent tracking   |
-| `TempFilesTreeProvider`      | Files modified during session           |
-| `SubagentTreeProvider`       | Spawned agent monitoring                |
-| `MonitorStatusBar`           | Status bar metrics                      |
-| `NotificationTriggerService` | Alert system                            |
-| `SessionEventLogger`         | Optional JSONL audit trail              |
+These read from the VS Code `SessionMonitor`. The providers live in `sidekick-vscode/src/providers/`; the status bar, notification, and logging services in `sidekick-vscode/src/services/`.
+
+| Consumer                      | Purpose                                                                                                         |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `DashboardViewProvider`       | Token usage, costs, timeline, analytics                                                                         |
+| `MindMapViewProvider`         | D3.js session structure graph                                                                                   |
+| `ActivityMapViewProvider`     | [Activity map](../features/activity-map.md) of the monitored session in the sidebar                             |
+| `ActivityMapPanel`            | Activity map pop-out with a replay bar: the monitored session live, or a past session of the workspace replayed |
+| `TaskBoardViewProvider`       | Kanban board with task/agent tracking                                                                           |
+| `PlanBoardViewProvider`       | Active and historical plans with step progress                                                                  |
+| `ProjectTimelineViewProvider` | Timeline of the project's sessions, refreshed on session start and end and on token usage                       |
+| `ConversationViewProvider`    | Full-tab conversation viewer; a snapshot read through the monitor's provider, with a Refresh action             |
+| `ToolInspectorProvider`       | Full-tab tool call inspector for the current session                                                            |
+| `TempFilesTreeProvider`       | Files modified during session                                                                                   |
+| `SubagentTreeProvider`        | Spawned agent monitoring                                                                                        |
+| `EventStreamTreeProvider`     | Live list of the session's events (last 200)                                                                    |
+| `MonitorStatusBar`            | Status bar metrics                                                                                              |
+| `NotificationTriggerService`  | Alert system                                                                                                    |
+| `SessionEventLogger`          | Optional JSONL audit trail (`sidekick.enableEventLog`)                                                          |
+
+When a session ends, the extension saves its summary to the historical data store, appends its error rollup to the error history, saves its plan to the plan store, and, unless `sidekick.autoHandoff` is `off` (the default), writes a handoff document.
+
+Some sidebar views sit outside the pipeline. `KnowledgeNoteTreeProvider` and the `KnowledgeNoteDecorationProvider` gutter icons read the per-project store kept by `KnowledgeNoteService`, and `AccountTreeProvider` lists saved Claude Code and Codex accounts with their credential health from the account registry. None of them subscribes to session events.
 
 ## CLI Reader Path
 
-The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) library supplies both the CLI dashboard's live watchers and one-shot readers for history, reports, and context. Shared writers also support CLI task, note, decision, and history-import commands. Third-party tools can consume the same library directly (`npm install sidekick-shared`).
+The [`sidekick-shared`](https://www.npmjs.com/package/sidekick-shared) library supplies both the live watchers (`createWatcher()`) that the CLI dashboard and `sidekick map --follow` use to follow a running session, and one-shot readers for history, reports, and context. Shared writers also support CLI task, note, decision, and history-import commands. Third-party tools can consume the same library directly (`npm install sidekick-shared`).
 
 Codex sessions flow through the same canonical path as the other providers: a `ProviderReaderSessionWatcher` (or a one-shot reader) yields canonical `SessionEvent`s, and `parseTranscriptFromEvents()` turns those into the transcript used by the dashboard, reports, and project timeline. This keeps the CLI and the VS Code extension rendering identical evidence for a given session.
 

@@ -1,6 +1,6 @@
 # Claude Max
 
-Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
+Uses your Claude subscription via the Claude Code CLI — no extra API cost.
 
 !!! note "Plan names"
 
@@ -22,7 +22,7 @@ Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
 
 - Uses `@anthropic-ai/claude-agent-sdk` via Claude Code CLI authentication
 - No API keys needed — authentication is handled by the CLI
-- Completions are covered by your existing Max plan
+- Requests count against your Claude plan's usage limits instead of per-token API billing
 - Each feature passes its effort to Claude Code (`low`, or `medium` for code review and transforms); see [Request Tuning](../configuration/model-resolution.md#request-tuning)
 
 ## Session Monitoring
@@ -37,7 +37,7 @@ If quota data becomes unavailable, Sidekick now keeps the quota surface visible 
 
 ## Peak Hours
 
-Anthropic drains session limits faster on weekdays 13:00–19:00 UTC (see [Peak Hours](../features/peak-hours.md) for the full schedule and per-timezone breakdown). Sidekick surfaces this state subtly — a pill in the dashboard and a `🟠` glyph in the status bar during an active peak window; `sidekick peak`, `sidekick quota`, and `sidekick status` in the CLI. The indicator requires both the Claude Max inference provider and the Claude Code session provider, since API-key, Enterprise, OpenCode, and Codex paths don't share the same session-limit concept.
+Anthropic drains session limits faster on weekdays 13:00–19:00 UTC (see [Peak Hours](../features/peak-hours.md) for the full schedule and per-timezone breakdown). Sidekick surfaces this state subtly — a pill in the dashboard and a `🟠` glyph in the status bar during an active peak window; `sidekick peak`, `sidekick quota`, and `sidekick status` in the CLI. The indicator requires both the Claude Max inference provider and the Claude Code session provider, since API-key, Enterprise, OpenCode, and Codex paths don't share the same session-limit concept. Ultra has no 5-hour limit for peak hours to drain, so `sidekick quota` leaves the peak row out on that plan.
 
 ## Multiple Accounts
 
@@ -72,7 +72,7 @@ Account data is stored in `~/.config/sidekick/accounts/` with `0o700` directory 
 ## Best For
 
 - Heavy daily use of inline completions (no per-token cost)
-- Users already paying for Claude Max ($100-200/month)
+- Users who already have a Claude Pro, Max, or Ultra subscription
 - Teams wanting to consolidate AI tooling costs
 
 ## Troubleshooting

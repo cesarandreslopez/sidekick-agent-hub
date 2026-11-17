@@ -1,16 +1,12 @@
 # Sidekick CLI
 
-The Sidekick CLI provides a full-screen terminal dashboard for monitoring agent sessions — standalone, no VS Code required. It reads from the same `~/.config/sidekick/` data files the VS Code extension writes.
+The Sidekick CLI follows Claude Code, Codex, and OpenCode sessions in a full-screen terminal dashboard, and answers what they cost from one-shot commands such as `sidekick quota`, `sidekick blocks`, and `sidekick daily` — standalone, no VS Code required. It reads and writes the same `~/.config/sidekick/` data files as the VS Code extension (see [Shared Data Layer](#shared-data-layer)).
 
-![Sidekick CLI Dashboard](../images/sidekick-cli.gif)
+![The Sidekick CLI dashboard following a live session](../images/demo/v1/cli-dashboard.gif)
 
 !!! warning "Package name vs binary name"
 
     The npm package is `sidekick-agent-hub`, but the binary it installs is called **`sidekick`**. After installation, run `sidekick dashboard` — not `sidekick-agent-hub`.
-
-## Replay and Recovery
-
-Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.32.0 replay once. A file truncated, rewritten or replaced while the dashboard follows it is also replayed from the start (a truncated Codex file is not counted twice), and once that replay completes the dashboard saves a fresh checkpoint. Otherwise live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Doctor honors `--provider` and treats unused integrations as informational.
 
 ## Installation
 
@@ -47,7 +43,7 @@ Release notes: https://github.com/cesarandreslopez/sidekick-agent-hub/releases/t
 
 1. `cd` into your project directory
 2. Run `sidekick dashboard`
-3. The dashboard auto-detects your project path and session provider
+3. Pick a session from the list; the picker appears when the project already has sessions, and the dashboard auto-detects your project path and session provider
 4. Press `?` to see all keybindings
 
 If you have sessions from multiple providers, the most recently active one is selected automatically. Override with `--provider`.
@@ -188,7 +184,7 @@ sidekick report [options]
 
 Generate a self-contained HTML session report and open it in the default browser. Includes full transcript with collapsible thinking blocks and tool detail, token/cost stats, model breakdown, and tool-use summary — zero external dependencies. The stats cards show "Total (incl. cache)" and the cache hit rate. When the session spawned subagents, the total card becomes the main thread's total and **Subagents (n)** and **Session total (incl. subagents)** cards are added.
 
-![HTML Session Report](../images/session_html_report.png)
+![HTML Session Report](../images/demo/v1/html-report.png)
 
 | Flag              | Description                                      |
 | ----------------- | ------------------------------------------------ |
@@ -222,6 +218,8 @@ sidekick map [options]
 ```
 
 Draws the [activity map](activity-map.md) of a session, live with `--follow` or exported as text, SVG or JSON at any moment (`--at`). Labels carry names, never content.
+
+![sidekick map --follow drawing a live session](../images/demo/v1/map-follow.gif)
 
 | Flag                                | Description                                                                                               |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -348,14 +346,42 @@ jq -r '"5h \(.quota.claude.fiveHour.utilization)% · $\(.session.costUsd)"' ~/.c
 ### Quick capture
 
 ```bash
-sidekick tasks add "Investigate retry spike"
+sidekick tasks add "Investigate retry spike" --tags ops,retries
 sidekick tasks --limit 10        # open tasks first, each with its reference
 sidekick tasks done a1b2c3d4     # the reference `sidekick tasks` printed
-sidekick note add "Migration requires a cache clear" --type gotcha
-sidekick decision add "Use SQLite" --rationale "Local and portable"
+sidekick note add "Migration requires a cache clear" --type gotcha --file db/migrate.ts
+sidekick decision add "Use SQLite" --rationale "Local and portable" --alternatives Postgres,DuckDB
 ```
 
 `sidekick tasks` starts each row with the reference `tasks done` accepts: the first 8 characters of a task added from the CLI, or `<session>:<id>` for a task an agent created (agents reuse short ids such as `5` across sessions). A reference that still matches several tasks lists them instead of guessing. Capture commands refuse blank text.
+
+`tasks add <subject>` options:
+
+| Flag                   | Description             |
+| ---------------------- | ----------------------- |
+| `--description <text>` | Longer task description |
+| `--tags <tags>`        | Comma-separated tags    |
+
+`note add <content>` options:
+
+| Flag                   | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `--file <path>`        | Related project file (default: the whole project)           |
+| `--title <title>`      | Short note title                                            |
+| `--type <type>`        | `gotcha`, `pattern`, `guideline`, or `tip` (default: `tip`) |
+| `--importance <level>` | `critical`, `high`, `medium`, or `low` (default: `medium`)  |
+| `--tags <tags>`        | Comma-separated tags                                        |
+
+`decision add <description>` options:
+
+| Flag                     | Description                                                           |
+| ------------------------ | --------------------------------------------------------------------- |
+| `--rationale <text>`     | Why this choice was made (default: `Captured from the Sidekick CLI.`) |
+| `--chosen <text>`        | The chosen option (default: the description)                          |
+| `--alternatives <items>` | Comma-separated alternatives that were considered                     |
+| `--tags <tags>`          | Comma-separated tags                                                  |
+
+An unknown `--type` or `--importance` value is an error. Repeating `decision add` with the same description (ignoring case) does not add a second entry: the command reports `Decision already exists`, and `--json` prints `"action": "exists"`.
 
 Capture commands atomically merge with the same per-project stores used by VS Code. An open Kanban board refreshes when a CLI write lands, without restarting the extension. With the global `--json` flag each capture command prints the stored record (`{ ok, action, task | note | decision }`) instead of a sentence.
 
@@ -367,11 +393,11 @@ sidekick handoff open \
   --session <session-id>
 ```
 
-Templates accept identifiers only: `{sessionId}`, `{provider}`, and `{projectPath}`. Use `--no-open` to print the rendered URL. VS Code exposes the same behavior through `sidekick.handoffUrlTemplate` and **Sidekick: Open External Session Handoff**.
+Templates accept identifiers only: `{sessionId}`, `{provider}`, and `{projectPath}`. Without `--url-template`, the template comes from `SIDEKICK_HANDOFF_URL_TEMPLATE`. Use `--no-open` to print the rendered URL. VS Code exposes the same behavior through `sidekick.handoffUrlTemplate` and **Sidekick: Open External Session Handoff**.
 
 ### MCP facts server
 
-`sidekick mcp` serves seven read-only facts tools to Claude Code or Codex. See [MCP Facts Server](mcp.md) for registration and the complete tool list.
+`sidekick mcp` serves eight read-only facts tools to Claude Code or Codex. See [MCP Facts Server](mcp.md) for registration and the complete tool list.
 
 ### Tasks
 
@@ -379,11 +405,12 @@ Templates accept identifiers only: `{sessionId}`, `{provider}`, and `{projectPat
 sidekick tasks [options]
 ```
 
-List persisted tasks for the current project. Tasks carry over across sessions from `~/.config/sidekick/tasks/`.
+List persisted tasks for the current project, open tasks (in progress, then pending) first. Tasks carry over across sessions from `~/.config/sidekick/tasks/`. With `--json` the list keeps the store's newest-first order.
 
 | Flag                | Description                                                                        |
 | ------------------- | ---------------------------------------------------------------------------------- |
 | `--status <status>` | Filter by status: `pending`, `in_progress`, `completed`, or `all` (default: `all`) |
+| `--limit <n>`       | Show at most this many tasks (default: all)                                        |
 
 #### Examples
 
@@ -661,6 +688,10 @@ Provider-aware quota and rate-limit display. The command detects the active prov
 
 All providers render in a unified table with aligned `now` (current utilization), `projected` (estimated end-of-window utilization, shown as `—` when it can't be computed), and `resets` columns.
 
+In `sidekick dashboard`, the Summary tab of the Sessions panel shows the same quota beside the open five-hour [billing block](#billing-blocks):
+
+![Quota and the active billing block in the dashboard's Summary tab](../images/demo/v1/cli-quota.png)
+
 When quota data is unavailable, the command emits structured failure output instead of relying on a generic error string. JSON responses can include `failureKind`, `httpStatus`, and `retryAfterMs` so callers can distinguish auth failures, rate limits, transient network/server failures, and unexpected responses. In the CLI dashboard, the Sessions panel keeps a compact inline quota/rate-limit state visible even when data is unavailable, and quota failure toasts only appear when the failure state changes.
 
 Quota commands and the MCP `get_quota_status` tool share these policies:
@@ -735,7 +766,7 @@ sidekick quota history --weeks 8 --provider codex
 sidekick quota history --json
 ```
 
-If no history has accumulated yet for the workspace (or `--workspace`), the command prints a hint pointing at how to seed it (run a Claude Max, Codex, or z.ai/OpenCode session in the workspace, or pass `--workspace <path>`).
+If no history has accumulated yet for the workspace (or `--workspace`), the command prints a hint pointing at how to seed it (run a Claude Code subscription, Codex, or z.ai/OpenCode session in the workspace, or pass `--workspace <path>`).
 
 ### Accounts
 
@@ -760,7 +791,7 @@ Manage Claude Code and Codex accounts: list, add, switch, and run parallel sessi
 | `accounts config auto-switch <pct\|off>`         | Persist the auto-switch quota threshold                                                                                                                                                                                    |
 | `accounts config keep-alive <on\|off\|run>`      | Refresh inactive accounts through the official CLIs (the dashboard runs it hourly); `run` executes one pass now                                                                                                            |
 
-`accounts list` and `accounts config` accept `--provider claude-code|codex|all`; the other subcommands accept `claude-code` or `codex`. All accept the global `--json`. A switch prints `✓ verified` once the live store reads back the new credential, one `!` line per running app that still holds the previous login, and the undo command.
+`sidekick accounts` (the picker) and `accounts list` accept `--provider claude-code|codex|all` (default `all`); the other subcommands accept `claude-code` or `codex`, and `accounts config keep-alive run` refreshes every provider unless `--provider` names one. All accept the global `--json`. A switch prints `✓ verified` once the live store reads back the new credential, one `!` line per running app that still holds the previous login, and the undo command.
 
 #### Examples
 
@@ -872,7 +903,11 @@ Switch panels with number keys `1`–`9`.
 
 ### Sessions (1)
 
-Browse and select from recent agent sessions. The detail pane has seven tabs:
+Browse and select from recent agent sessions.
+
+![The Sessions panel's Summary tab](../images/demo/v1/cli-summary.png)
+
+The detail pane has seven tabs:
 
 | Tab            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -894,6 +929,8 @@ Persisted tasks from `~/.config/sidekick/tasks/` merged with the live session's 
 
 Task board with status columns — a visual view of the same task data.
 
+![Kanban panel](../images/demo/v1/cli-kanban.png)
+
 ### Notes (4)
 
 Knowledge notes attached to files. Each note has Content and Related detail tabs. Notes persist in `~/.config/sidekick/` and can be injected into agent instruction files.
@@ -904,13 +941,21 @@ Architectural decisions extracted from sessions. Stored in `~/.config/sidekick/d
 
 ### Plans (6)
 
-Agent plans persisted in the project store from Claude Code, OpenCode, and Codex sessions; when the store has none, raw plan files from the Claude home's `plans/` are shown. Shows plan steps with completion status.
+Agent plans persisted in the project store from Claude Code, OpenCode, and Codex sessions; when the store has none, raw plan files from the Claude home's `plans/` are shown. The live session's plan is pinned to the top of the list. Press `S` to filter by source and `c` to copy a plan's markdown.
+
+The detail pane has three tabs:
+
+| Tab         | Description                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Steps**   | A progress bar and each step with its status, grouped by phase when the plan has phases                                                                |
+| **Metrics** | Step counts by status and duration; for a saved plan from the store also its tokens, cost, tool calls, source, status, and created and completed times |
+| **Raw**     | The plan's markdown as the agent wrote it                                                                                                              |
 
 ### Events (7)
 
 Live scrollable stream of session events. Each event shows a timestamp, colored type badge (`[USR]`, `[AST]`, `[TOOL]`, `[RES]`), and keyword-highlighted summary text. Events are listed in reverse chronological order with auto-tailing.
 
-![Events Panel](../images/events_cli.png)
+![Events Panel](../images/demo/v1/cli-events.png)
 
 The detail pane has two tabs:
 
@@ -923,7 +968,7 @@ The detail pane has two tabs:
 
 Session analytics visualized as ASCII charts. The side list shows a single "Session Analytics" item; the detail tabs contain the charts.
 
-![Charts Panel](../images/charts_cli.png)
+![Charts Panel](../images/demo/v1/cli-charts.png)
 
 | Tab          | Description                                                                                                                         |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -936,10 +981,14 @@ Session analytics visualized as ASCII charts. The side list shows a single "Sess
 
 The [activity map](activity-map.md) of the session in the terminal: the eleven stations around the agent, with counts, faults, running calls (`×N`) and the context bar, the route the main loop took, and the activity feed. The side list has an Overview item and one item per station; selecting a station highlights it and filters the feed.
 
+![Map panel](../images/demo/v1/cli-map.png)
+
 | Tab          | Description                                                                                                   |
 | ------------ | ------------------------------------------------------------------------------------------------------------- |
 | **Map**      | The map, the current action and the folded activity feed                                                      |
 | **Insights** | Per-station calls, time, errors, denials and context weight; detected retry streaks and alternations; summary |
+
+![The Map panel's Insights tab](../images/demo/v1/cli-insights.png)
 
 ## Keybindings
 
@@ -1050,29 +1099,43 @@ For OpenCode, the CLI reads `opencode.db` via `sqlite3`. If `sqlite3` is missing
 
 By default, the dashboard switches to a session that starts after it opened, and says so in a toast (`Following new session … — p pins`). A session that already existed never takes over just because it was written to more recently, so a session you picked stays on screen. Press `p` to pin the current session — the dashboard stays on it even when new sessions appear. Press `s` to switch to a pending session that arrived while pinned. Starting with `--session <id>` pins that session from the start, as `sidekick map --follow --session` does.
 
+### Replay and Recovery
+
+Selecting a session in the picker loads its history. When starting with `--session <id>`, add `--replay` to include earlier events; without it, the dashboard follows new activity only. Claude Code and Codex resume from a compatible complete-history checkpoint only while the session file is still the same file with the same opening content; a replaced or rewritten file is replayed from the start, and checkpoints saved before 0.32.0 replay once. A file truncated, rewritten or replaced while the dashboard follows it is also replayed from the start (a truncated Codex file is not counted twice), and once that replay completes the dashboard saves a fresh checkpoint. Otherwise live-only runs never replace those checkpoints, and OpenCode replays from the start when history is requested. Checkpoints are kept under `snapshots/` in the [Sidekick config directory](#shared-data-layer).
+
 ### Session Filter
 
 Press `f` to toggle session filtering, which limits the side list to items from the currently selected session. Useful when you have many sessions and want to focus on one.
 
 ## Shared Data Layer
 
-The CLI reads from the same `~/.config/sidekick/` directory as the VS Code extension. `SIDEKICK_CONFIG_DIR` overrides that root for both the CLI and the extension (extension support since 0.24.5), so the paths below are defaults rather than fixed locations:
+The CLI and the VS Code extension share one config directory: `~/.config/sidekick/` on macOS and Linux, `%APPDATA%/sidekick/` on Windows. `SIDEKICK_CONFIG_DIR` overrides that root for both the CLI and the extension (extension support since 0.24.5), and a program using `sidekick-shared` can override it again with `setConfigDir()`. The root is resolved in that order — `setConfigDir()`, then `SIDEKICK_CONFIG_DIR`, then the platform default — so the paths below are relative to it rather than fixed locations:
 
-| File                                          | Contents                                                                                  |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `historical-data.json`                        | Token/cost/tool usage statistics                                                          |
-| `tasks/{projectSlug}.json`                    | Kanban board task data                                                                    |
-| `decisions/{projectSlug}.json`                | Decision log entries                                                                      |
-| `accounts/accounts.json`                      | Multi-provider account registry (v2)                                                      |
-| `accounts/credentials/*.credentials.json`     | Backed-up OAuth credentials per Claude account                                            |
-| `accounts/configs/*.config.json`              | Backed-up account identity per Claude account                                             |
-| `accounts/codex/profiles/*/codex-home/`       | Usable credentials of inactive Codex accounts (the live account keeps none)               |
-| `accounts/codex/backups/<id>.auth.json`       | Private byte-preserved backup per Codex account (never used by `codex`)                   |
-| `accounts/claude/credential-homes.json`       | Ledger of every directory Sidekick put a Claude credential in (read by `accounts doctor`) |
-| `accounts/{claude,codex}/switch-journal.json` | Present only while a switch is in flight; the next sync finishes or rolls it back         |
-| `quota-snapshots.json`                        | Cached rate-limit snapshots per provider/account                                          |
-| `error-history.json`                          | Categorized per-session error rollups for post-mortem forensics                           |
-| `update-check.json`                           | Last npm version check and when the CLI's update notice was shown                         |
+| File                                           | Contents                                                                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `historical-data.json`                         | Token/cost/tool usage statistics and bounded session history                                                  |
+| `tasks/{projectSlug}.json`                     | Kanban board task data                                                                                        |
+| `decisions/{projectSlug}.json`                 | Decision log entries                                                                                          |
+| `knowledge-notes/{projectSlug}.json`           | Knowledge notes, grouped by file                                                                              |
+| `plans/{projectSlug}.json`                     | Agent plans captured from sessions                                                                            |
+| `handoffs/{projectSlug}-latest.md`             | Latest session handoff, beside dated copies (`{projectSlug}-YYYY-MM-DD.md`)                                   |
+| `snapshots/`                                   | Dashboard checkpoints used to resume a session without replaying it                                           |
+| `usage-cache/`                                 | Per-session usage events read from session logs, keyed by size and modification time                          |
+| `quota-history/<workspaceId>/<provider>.jsonl` | Quota samples behind `sidekick quota history`                                                                 |
+| `state.json`                                   | Public, versioned snapshot for external tools (see [State file](#state-file))                                 |
+| `pricing-catalog.json`                         | Cached LiteLLM prices and context windows (refreshed after 24 hours by default)                               |
+| `observed-context-windows.json`                | Context windows providers actually reported, per model                                                        |
+| `cli-config.json`                              | CLI preferences: mouse capture, account auto-switch and keep-alive, custom model prices, activity-map options |
+| `accounts/accounts.json`                       | Multi-provider account registry (v2)                                                                          |
+| `accounts/credentials/*.credentials.json`      | Backed-up OAuth credentials per Claude account                                                                |
+| `accounts/configs/*.config.json`               | Backed-up account identity per Claude account                                                                 |
+| `accounts/codex/profiles/*/codex-home/`        | Usable credentials of inactive Codex accounts (the live account keeps none)                                   |
+| `accounts/codex/backups/<id>.auth.json`        | Private byte-preserved backup per Codex account (never used by `codex`)                                       |
+| `accounts/claude/credential-homes.json`        | Ledger of every directory Sidekick put a Claude credential in (read by `accounts doctor`)                     |
+| `accounts/{claude,codex}/switch-journal.json`  | Present only while a switch is in flight; the next sync finishes or rolls it back                             |
+| `quota-snapshots.json`                         | Cached rate-limit snapshots per provider/account                                                              |
+| `error-history.json`                           | Categorized per-session error rollups for post-mortem forensics                                               |
+| `update-check.json`                            | Last npm version check and when the CLI's update notice was shown                                             |
 
 Any data written by the VS Code extension is visible in the CLI, and vice versa. One-shot commands read the files fresh on every run; the dashboard re-reads persisted project data every 15 seconds, or immediately when you press `R`.
 

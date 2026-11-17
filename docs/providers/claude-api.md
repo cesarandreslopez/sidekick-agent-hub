@@ -22,7 +22,7 @@ Direct API requests do not create CLI session files. Session monitoring is indep
 
 ## Best For
 
-- Users without a Claude Max subscription
+- Users without a Claude subscription that includes Claude Code (Pro, Max, or Ultra)
 - Low-volume usage where per-token cost is acceptable
 - CI/CD or automated workflows
 

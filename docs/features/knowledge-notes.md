@@ -2,8 +2,6 @@
 
 Capture reusable knowledge about your codebase — gotchas, patterns, guidelines, and tips — attached to specific files. Notes persist across sessions and can be injected into your agent's instruction file so it benefits from what you've learned.
 
-![Knowledge Notes](../images/knowledge-notes.gif)
-
 ## Why Knowledge Notes?
 
 AI agents rediscover the same things every session. That configuration file with a subtle gotcha? The pattern you've established for error handling? The guideline about never calling a particular API directly? Without knowledge notes, your agent will stumble into the same problems repeatedly.

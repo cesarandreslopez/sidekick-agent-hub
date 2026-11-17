@@ -2,9 +2,7 @@
 
 Context-aware completions that understand your project. Unlike generic autocomplete, these suggestions factor in surrounding code, imports, and patterns — so you spend less time typing boilerplate and more time thinking about architecture.
 
-Completions appear as ghost text that you can accept with Tab.
-
-![Inline Completions demo](../images/inference.gif)
+Completions are on demand: you ask for one with a keystroke, and it appears as ghost text that you can accept with Tab. Nothing is requested while you type.
 
 ## Usage
 

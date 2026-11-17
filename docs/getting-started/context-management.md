@@ -59,7 +59,14 @@ Sidekick can [generate handoff documents automatically](../features/session-hand
 
 ## CLI Access
 
-The [Sidekick CLI](../features/cli.md) provides a full-screen TUI dashboard for browsing persisted context without VS Code. Run `sidekick dashboard` to view sessions, tasks, decisions, knowledge notes, and more in an interactive terminal UI. The CLI reads from the same `~/.config/sidekick/` data files the extension writes.
+The [Sidekick CLI](../features/cli.md) reads the same `~/.config/sidekick/` data files the extension writes (`%APPDATA%/sidekick/` on Windows), so persisted context is available without VS Code:
+
+- `sidekick dashboard` — browse sessions, tasks, decisions, knowledge notes, and plans in a full-screen terminal UI
+- `sidekick context` — print tasks, decisions, notes, the latest handoff, and usage stats as one document, ready to paste into a prompt; `--fidelity compact` or `brief` shortens it ([reference](../features/cli.md#context))
+- `sidekick handoff` — print the latest handoff document for the project; `sidekick handoff open` opens the session in an external tool through a URL template ([reference](../features/cli.md#handoff))
+- `sidekick tasks add`, `sidekick note add`, and `sidekick decision add` — capture context from the terminal ([quick capture](../features/cli.md#quick-capture))
+
+Agents can read the same context themselves: the `get_project_context` tool of the [MCP facts server](../features/mcp.md) (`sidekick mcp`) returns the composed tasks, decisions, notes, handoff, and project statistics.
 
 ## Learn More
 

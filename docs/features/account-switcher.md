@@ -39,6 +39,8 @@ To sign in to a _second_ account without disturbing the current one, use **Add A
 
 ## VS Code
 
+![The Accounts view in the Agent Hub sidebar](../images/demo/v1/vscode-accounts.png)
+
 **Accounts view.** The Agent Hub sidebar has an **Accounts** view grouped by provider. Each row shows the label, email, plan, and credential health; the current account has a check mark. Hover an account for the exact expiry times. The inline icons switch, sign in again, or open a terminal as that account; right-click for the full menu including remove. The title bar has **Add Account**, **Refresh**, and **Undo** (shown when there is a switch to revert).
 
 **Status bar.** The account badge appears as soon as one account is saved and shows the active account for your inference provider (falling back to Claude, then Codex). It shows a clock icon when the credential is expiring, and a warning icon on a warning-coloured background when it has expired or is missing. Click it for the quick pick: accounts grouped by provider with `(current)` marked, plus **Add account…**, **Open terminal as account…**, **Sign in again…**, and **Undo last switch**. Keyboard: `Ctrl+K Ctrl+Shift+A` (`Cmd+K Cmd+Shift+A` on macOS).
@@ -72,7 +74,7 @@ sidekick accounts config auto-switch 90    # or: off
 sidekick accounts config keep-alive on     # or: off, run
 ```
 
-Every subcommand honours the global `--json` flag and `--provider claude-code|codex|all`. A switch prints a verified summary:
+Every subcommand honours the global `--json` flag. `sidekick accounts` (the picker) and `accounts list` take `--provider claude-code|codex|all` and show both providers by default; the other subcommands take `--provider claude-code` or `--provider codex` to pick one provider when the command could apply to either (`add` asks when it is omitted). A switch prints a verified summary:
 
 ```
 Switched Claude Code → Work (work@example.com)  ✓ verified
@@ -100,6 +102,8 @@ The legacy `sidekick account --…` flags keep working and print the modern equi
 ### Dashboard
 
 Press `A` in `sidekick dashboard` for the accounts overlay: `Enter` switches, `u` undoes. The status bar shows the active account coloured by health. Adding accounts, signing in again, and subshells need the raw terminal, so the overlay points you at the matching `sidekick accounts` command.
+
+![The accounts overlay in sidekick dashboard](../images/demo/v1/cli-accounts.png)
 
 ## Credential health
 

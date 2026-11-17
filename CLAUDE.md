@@ -13,6 +13,7 @@ The repo is a small monorepo:
 - `sidekick-cli/` — Ink-based terminal dashboard and one-shot command suite; published as `sidekick-agent-hub` with the `sidekick` binary
 - `docs/`, `mkdocs.yml`, `assets/`, `images/` — documentation site content and assets
 - `scripts/` — cross-package build, lint, and version helpers
+- `demo/` — private package that records the README/docs GIFs and stills against a sandboxed demo session (Playwright, ttyd, `encode.swift`); see `demo/README.md`. Outputs sync to `assets/demo/v<N>/` and `docs/images/demo/v<N>/`; never delete or rename published `assets/` files, since released READMEs keep loading them
 
 ## Build & Development Commands
 
@@ -154,7 +155,7 @@ For non-VS Code consumers, `sidekick-shared/src/sessionMonitor.ts` provides a UI
 
 ### Request Management
 
-- **Debouncing**: Configurable delay (default 1000ms) before firing inline completion requests
+- **Debouncing**: Inline completions are on demand (`sidekick.triggerCompletion`; `InlineCompletionProvider` ignores automatic triggers). `sidekick.debounceMs` (default 0) delays a triggered request, and a newer trigger within the window replaces the pending one
 - **LRU cache**: `CompletionCache` — 100 entries, 30s TTL
 - **Cancellation**: `AbortController` linked through `CompletionOptions.signal`
 - **Timeouts**: `TimeoutManager` provides per-operation timeouts with context-size scaling
@@ -233,6 +234,8 @@ Releases are triggered by pushing a `v*` tag to `main`. The CI workflow (`.githu
 - `bash scripts/bump-version.sh <version>` bumps the three `package.json` files at once. It does **not** touch lockfiles, so still:
   - `sidekick-vscode/package-lock.json`, `sidekick-cli/package-lock.json`, and `sidekick-shared/package-lock.json` (run `npm install --package-lock-only` in each workspace)
 - If bumping by hand instead, the three `package.json` files are: `sidekick-vscode/`, `sidekick-cli/`, `sidekick-shared/`
+
+**Demos**: when a release changes what the dashboards, the activity map or the VS Code views look like, re-record with `demo/` (a new `v<N>` folder) before tagging.
 
 **Changelogs to update** (five total):
 

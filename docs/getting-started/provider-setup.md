@@ -4,19 +4,19 @@ Sidekick Agent Hub supports four inference providers. You only need to set up on
 
 ## Claude Max (Recommended)
 
-Uses your Claude Max subscription via the Claude Code CLI — no extra API cost.
+Uses your Claude subscription (Pro, Max, or Ultra) via the Claude Code CLI — no extra API cost. The provider is named after the original Max plan, but any Claude plan that includes Claude Code works.
 
 1. Install and authenticate Claude Code CLI:
    ```bash
    npm install -g @anthropic-ai/claude-code
    claude auth login
    ```
-2. Follow the prompts to authenticate with your Claude Max subscription
+2. Follow the prompts to sign in with your Claude account
 3. Start coding — Sidekick auto-detects Claude Code and uses it for inference
 
 !!! tip "Why Claude Max is recommended"
 
-    Sidekick's AI features (completions on request, explanations, commit messages, reviews) all send requests. With an API key, per-token costs add up quickly. With Max, they are covered by your existing plan.
+    Sidekick's AI features (completions on request, explanations, commit messages, reviews) all send requests. With an API key, per-token costs add up quickly. Through Claude Code, they count against your existing subscription's usage limits instead.
 
 ## Claude API
 

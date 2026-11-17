@@ -28,14 +28,16 @@ flowchart LR
 
 ## Inference Providers
 
-Defined as `InferenceProviderId` in `src/types/inferenceProvider.ts`:
+Defined as `InferenceProviderId` in `sidekick-vscode/src/types/inferenceProvider.ts`:
 
-| ID           | Description                 | Client                  |
-| ------------ | --------------------------- | ----------------------- |
-| `claude-max` | Claude via Max subscription | `MaxSubscriptionClient` |
-| `claude-api` | Claude via API key          | `ApiKeyClient`          |
-| `opencode`   | OpenCode local server       | `OpenCodeClient`        |
-| `codex`      | Codex CLI subprocess        | `CodexClient`           |
+| ID           | Description                                                      | Client                  |
+| ------------ | ---------------------------------------------------------------- | ----------------------- |
+| `claude-max` | Claude through Claude Code, on a Pro, Max, or Ultra subscription | `MaxSubscriptionClient` |
+| `claude-api` | Claude via API key                                               | `ApiKeyClient`          |
+| `opencode`   | OpenCode local server                                            | `OpenCodeClient`        |
+| `codex`      | Codex CLI subprocess                                             | `CodexClient`           |
+
+The `claude-max` ID predates Anthropic's plan rename and covers any Claude subscription that includes Claude Code: Max 5x is now Max, Max 20x is now Ultra, and Ultra has no five-hour usage window. See [Claude Max](../providers/claude-max.md).
 
 All inference clients implement the `ClaudeClient` interface:
 
@@ -78,17 +80,17 @@ every diagnostic as a problem should branch on `severity`.
 
 ## Auto-Detection
 
-Both provider types support auto-detection via `ProviderDetector`, which checks:
+Both provider types use the shared detection in `sidekick-shared/src/providers/detect.ts`. The VS Code `ProviderDetector` is a thin adapter over it: session detection honours `sidekick.sessionProvider`, and `AuthService` asks it for an inference provider when `sidekick.inferenceProvider` is `auto`. Detection:
 
-1. Which providers have session data on disk
-2. Which session data has the most recent activity (mtime)
-3. Selects the most recently active provider; explicit settings override detection
+1. Finds which providers have session data on disk
+2. Ranks them by most recent activity (mtime)
+3. Selects the most recently active provider, falling back to `claude-code` when none has data; an explicit setting overrides detection
 
-Detection does not establish that the inference executable is installed or authenticated. The selected inference client checks availability separately.
+For inference, a detected `claude-code` maps to `claude-max`; `opencode` and `codex` keep their IDs. Detection does not establish that the inference executable is installed or authenticated. The selected inference client checks availability separately.
 
 ## Independence
 
-Inference and session providers are independent — you can use Claude Max for inference while monitoring OpenCode sessions, or any other combination.
+Inference and session providers are independent — you can use your Claude subscription (`claude-max`) for inference while monitoring OpenCode sessions, or any other combination.
 
 ## Account Registry
 
