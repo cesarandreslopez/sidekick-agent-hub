@@ -8,7 +8,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { SessionEvent } from '../types/sessionEvent';
 import { classifyActivityShell, classifyActivityTool } from './classify';
 import { createActivityRecorder } from './recorder';
-import { applyActivityRecords, createActivityState, snapshotActivity } from './state';
+import {
+  applyActivityRecord,
+  applyActivityRecords,
+  createActivityState,
+  snapshotActivity,
+} from './state';
 import { isActivityStationId } from './stations';
 import type { ActivityClassifyOptions } from './types';
 
@@ -89,5 +94,40 @@ describe('activity input named after Object.prototype members', () => {
     expect(snapshot.stations.reduce((sum, station) => sum + station.running, 0)).toBe(0);
     expect(({} as Record<string, unknown>).steps).toBeUndefined();
     expect(({} as Record<string, unknown>).lastAt).toBeUndefined();
+  });
+
+  it.each(NAMES)('starts and ends a subagent whose id is %s', (name) => {
+    const state = createActivityState();
+    applyActivityRecord(state, {
+      kind: 'subagentStart',
+      seq: 0,
+      at: 1000,
+      agentId: name,
+      label: 'helper',
+    });
+    const started = snapshotActivity(state).agents;
+    // `__proto__` cannot be a key of the agents map; every other name is recorded.
+    if (name === '__proto__') {
+      expect(started).toEqual([]);
+    } else {
+      expect(started.map((agent) => agent.agentId)).toEqual([name]);
+    }
+    applyActivityRecord(state, {
+      kind: 'subagentEnd',
+      seq: 1,
+      at: 2000,
+      agentId: name,
+      outcome: 'ok',
+    });
+    expect(snapshotActivity(state).agents).toEqual([]);
+    // Ending an agent that never started must not delete anything inherited.
+    applyActivityRecord(state, {
+      kind: 'subagentEnd',
+      seq: 2,
+      at: 3000,
+      agentId: name,
+      outcome: 'ok',
+    });
+    expect(typeof ({} as Record<string, unknown>).toString).toBe('function');
   });
 });

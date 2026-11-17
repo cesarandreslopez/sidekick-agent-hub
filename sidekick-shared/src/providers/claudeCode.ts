@@ -710,7 +710,14 @@ export class ClaudeCodeProvider implements SessionProviderBase {
     } catch {
       return null;
     } finally {
-      if (fd !== null) fs.closeSync(fd);
+      // A label is best-effort: a failed close must not make this throw.
+      if (fd !== null) {
+        try {
+          fs.closeSync(fd);
+        } catch {
+          // Ignore.
+        }
+      }
     }
   }
 
