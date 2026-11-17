@@ -1949,7 +1949,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const sessionPath = sessionMonitor.getSessionPath();
       if (!sessionPath) {
-        vscode.window.showErrorMessage('No active session to dump');
+        vscode.window.showInformationMessage(
+          'No session is attached, so there is nothing to dump. Pick one in Session Analytics first.',
+        );
         return;
       }
 
@@ -2277,6 +2279,12 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
           }
 
+          if (result.notice && result.error) {
+            statusBarManager?.setConnected();
+            void vscode.window.showWarningMessage(result.error);
+            return;
+          }
+
           if (result.error) {
             statusBarManager?.setError(result.error);
             // Not awaited, so the progress closes while the notification is open.
@@ -2381,6 +2389,11 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
           }
 
+          if (result.notice && result.error) {
+            void vscode.window.showWarningMessage(result.error);
+            return;
+          }
+
           if (result.error) {
             void showProviderFailure(`Review failed: ${result.error}`, result.cause, retry);
             return;
@@ -2429,6 +2442,11 @@ export async function activate(context: vscode.ExtensionContext) {
       const result = await prDescriptionService!.generatePrDescription(baseBranch);
 
       if (result.cancelled) {
+        return;
+      }
+
+      if (result.notice && result.error) {
+        void vscode.window.showWarningMessage(result.error);
         return;
       }
 
@@ -2687,6 +2705,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
         if (result.cancelled) {
           statusBarManager?.setConnected();
+          return;
+        }
+
+        if (result.notice && result.error) {
+          statusBarManager?.setConnected();
+          void vscode.window.showWarningMessage(result.error);
           return;
         }
 

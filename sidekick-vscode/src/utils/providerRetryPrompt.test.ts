@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const showErrorMessage = vi.hoisted(() => vi.fn());
+const executeCommand = vi.hoisted(() => vi.fn());
 
-vi.mock('vscode', () => ({ window: { showErrorMessage } }));
+vi.mock('vscode', () => ({ window: { showErrorMessage }, commands: { executeCommand } }));
 
 import { ProviderRequestError } from './providerFailure';
-import { showProviderFailure } from './providerRetryPrompt';
+import { recoveryActionFor, showProviderFailure } from './providerRetryPrompt';
 
 const codexError = (codexErrorInfo: unknown, extra: Record<string, unknown> = {}) =>
   new ProviderRequestError({
@@ -48,7 +49,11 @@ describe('showProviderFailure', () => {
     await showProviderFailure('Failed: denied', codexError('tooManyDenials'), retry);
     await showProviderFailure('Failed: denied', codexError('too_many_denials'), retry);
 
-    expect(showErrorMessage.mock.calls).toEqual([['Failed: denied'], ['Failed: denied']]);
+    // No retry; the recovery button for a policy denial is View Logs.
+    expect(showErrorMessage.mock.calls).toEqual([
+      ['Failed: denied', 'View Logs'],
+      ['Failed: denied', 'View Logs'],
+    ]);
     expect(retry).not.toHaveBeenCalled();
   });
 
@@ -88,18 +93,30 @@ describe('showProviderFailure', () => {
     expect(settled).toBe(true);
   });
 
-  it('shows the plain message without Retry when a retry cannot help', async () => {
+  it('shows the plain message, with no button, for anything but a provider failure', async () => {
     const retry = vi.fn();
 
     await showProviderFailure('Failed: plain', new Error('plain'), retry);
-    await showProviderFailure('Failed: auth', codexError('unauthorized'), retry);
     await showProviderFailure('Failed: none', undefined, retry);
 
-    expect(showErrorMessage.mock.calls).toEqual([
-      ['Failed: plain'],
-      ['Failed: auth'],
-      ['Failed: none'],
-    ]);
+    expect(showErrorMessage.mock.calls).toEqual([['Failed: plain'], ['Failed: none']]);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it('offers the fix a non-retryable provider failure asks for, and runs it on click', async () => {
+    executeCommand.mockReset();
+    const expired = new ProviderRequestError({
+      provider: 'claude-code',
+      credentialKind: 'oauth',
+      error: Object.assign(new Error('OAuth token has expired'), { status: 401 }),
+    });
+    showErrorMessage.mockResolvedValueOnce('Sign In Again');
+    const retry = vi.fn();
+
+    await showProviderFailure('Transform failed: expired', expired, retry);
+
+    expect(showErrorMessage).toHaveBeenCalledWith('Transform failed: expired', 'Sign In Again');
+    expect(executeCommand).toHaveBeenCalledWith('sidekick.accounts.signInAgain');
     expect(retry).not.toHaveBeenCalled();
   });
 
@@ -109,5 +126,33 @@ describe('showProviderFailure', () => {
     await expect(showProviderFailure('Failed', new Error('plain'), vi.fn())).resolves.toBe(
       undefined,
     );
+  });
+});
+
+describe('recoveryActionFor', () => {
+  const diagnosis = (recovery: string, extra: Record<string, unknown> = {}) =>
+    ({ provider: 'claude-code', credentialKind: 'oauth', recovery, ...extra }) as never;
+
+  it('maps each recovery hint to the button that performs it', () => {
+    expect(recoveryActionFor(diagnosis('sign_in')).command).toBe('sidekick.accounts.signInAgain');
+    expect(
+      recoveryActionFor(diagnosis('update_credentials', { credentialKind: 'api-key' })).command,
+    ).toBe('sidekick.setApiKey');
+    expect(recoveryActionFor(diagnosis('choose_model'))).toEqual({
+      title: 'Open Settings',
+      command: 'workbench.action.openSettings',
+      args: ['sidekick model'],
+    });
+    expect(recoveryActionFor(diagnosis('repair_runtime')).command).toBe('sidekick.doctor');
+    expect(recoveryActionFor(diagnosis('inspect_error')).command).toBe('sidekick.showLogs');
+  });
+
+  it('offers Set API Key only for the Claude API key Sidekick manages', () => {
+    expect(
+      recoveryActionFor(
+        diagnosis('update_credentials', { provider: 'codex', credentialKind: 'api-key' }),
+      ).command,
+    ).toBe('sidekick.showLogs');
+    expect(recoveryActionFor(diagnosis('update_credentials')).command).toBe('sidekick.showLogs');
   });
 });

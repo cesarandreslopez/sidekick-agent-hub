@@ -35,6 +35,12 @@ export interface ReviewResult {
   cause?: unknown;
   /** Set when the user cancelled, including declining a timeout retry; report nothing. */
   cancelled?: boolean;
+  /**
+   * Set when `error` describes the user's situation rather than a failure
+   * (nothing to commit, docs already there): show it as a notice, not as
+   * "… failed", and leave the status bar alone.
+   */
+  notice?: boolean;
 }
 
 /**
@@ -89,14 +95,21 @@ export class PreCommitReviewService implements vscode.Disposable {
       log('PreCommitReviewService: Starting review');
 
       if (!this.gitService.getActiveRepository()) {
-        return { issueCount: 0, error: 'No Git repository found' };
+        return { issueCount: 0, notice: true, error: 'No Git repository found' };
       }
 
       // Get diff (staged preferred). Diagnostics are placed under the same
       // repository the diff came from, which may not be the active one.
       const changes = await this.gitService.getChangesForCommit(repoRoot);
+      if (changes === 'cancelled') {
+        return { issueCount: 0, cancelled: true };
+      }
       if (!changes) {
-        return { issueCount: 0, error: 'No changes to review. Stage or modify some files first.' };
+        return {
+          issueCount: 0,
+          notice: true,
+          error: 'No changes to review. Stage or modify some files first.',
+        };
       }
 
       log(`PreCommitReviewService: Got ${changes.type} diff, ${changes.diff.length} characters`);
@@ -106,6 +119,7 @@ export class PreCommitReviewService implements vscode.Disposable {
       if (filtered.trim().length === 0) {
         return {
           issueCount: 0,
+          notice: true,
           error: 'No reviewable changes (only binary/lockfiles/generated code).',
         };
       }

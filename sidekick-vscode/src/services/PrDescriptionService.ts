@@ -44,6 +44,12 @@ export interface PrDescriptionResult {
    * provider failure, so callers offer to choose another base instead.
    */
   noCommits?: boolean;
+  /**
+   * Set when `error` describes the user's situation rather than a failure
+   * (nothing to commit, docs already there): show it as a notice, not as
+   * "… failed", and leave the status bar alone.
+   */
+  notice?: boolean;
   /** GitHub "open a pull request" page for this branch, when the remote is on GitHub */
   compareUrl?: string;
 }
@@ -129,7 +135,7 @@ export class PrDescriptionService implements vscode.Disposable {
       // Get repository
       const repository = this.gitService.getActiveRepository();
       if (!repository) {
-        return { description: null, error: 'No Git repository found' };
+        return { description: null, notice: true, error: 'No Git repository found' };
       }
 
       // Detect base branch; undefined means the user dismissed the prompt

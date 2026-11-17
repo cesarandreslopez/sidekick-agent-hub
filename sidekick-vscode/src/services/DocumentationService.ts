@@ -45,6 +45,12 @@ export interface DocumentationResult {
   cause?: unknown;
   /** Set when the user cancelled, including declining a timeout retry; report nothing. */
   cancelled?: boolean;
+  /**
+   * Set when `error` describes the user's situation rather than a failure
+   * (nothing to commit, docs already there): show it as a notice, not as
+   * "… failed", and leave the status bar alone.
+   */
+  notice?: boolean;
 }
 
 /**
@@ -111,6 +117,7 @@ export class DocumentationService implements vscode.Disposable {
       const detected = this.detectCodeBlock(document, selection.active.line);
       if (!detected) {
         return {
+          notice: true,
           error:
             'Could not detect a function or class at cursor position. Try selecting the code to document.',
         };
@@ -127,12 +134,13 @@ export class DocumentationService implements vscode.Disposable {
       const target = findPythonDocTarget(this.documentLines(document), insertLine);
       if (target.kind === 'oneLiner') {
         return {
+          notice: true,
           error:
             'This definition is on one line, so a docstring has nowhere to go. Move its body to its own line first.',
         };
       }
       if (target.kind === 'documented') {
-        return { error: 'This definition already has a docstring.' };
+        return { notice: true, error: 'This definition already has a docstring.' };
       }
       if (target.kind === 'insert') {
         insertLine = target.insertLine;
@@ -146,7 +154,7 @@ export class DocumentationService implements vscode.Disposable {
     if (pythonIndent === undefined && insertLine > 0) {
       const lineAbove = document.lineAt(insertLine - 1).text.trim();
       if (lineAbove.endsWith('*/') || lineAbove.endsWith('"""') || lineAbove.endsWith("'''")) {
-        return { error: 'Documentation already exists above this code block.' };
+        return { notice: true, error: 'Documentation already exists above this code block.' };
       }
     }
     const anchor = {

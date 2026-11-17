@@ -183,9 +183,10 @@ export class GitService implements vscode.Disposable {
    *
    * @param preferredRoot - A repository the user already picked, such as the
    *   Source Control view a title button was clicked in; used when it exists
-   * @returns Promise resolving to selected repository, or undefined if none available/selected
+   * @returns Promise resolving to the selected repository, `'cancelled'` when
+   *   the user dismissed the picker, or undefined when no repository has changes
    */
-  async selectRepository(preferredRoot?: string): Promise<Repository | undefined> {
+  async selectRepository(preferredRoot?: string): Promise<Repository | 'cancelled' | undefined> {
     if (!this.api || this.api.repositories.length === 0) {
       return undefined;
     }
@@ -249,13 +250,12 @@ export class GitService implements vscode.Disposable {
       placeHolder: 'Multiple repositories have changes. Select one:',
     });
 
-    if (selected) {
-      log(`selectRepository: User selected: ${selected.repo.rootUri.fsPath}`);
-    } else {
+    if (!selected) {
       log('selectRepository: User cancelled selection');
+      return 'cancelled';
     }
-
-    return selected?.repo;
+    log(`selectRepository: User selected: ${selected.repo.rootUri.fsPath}`);
+    return selected.repo;
   }
 
   /**
@@ -336,11 +336,15 @@ export class GitService implements vscode.Disposable {
    * 4. Returns null if no changes exist
    *
    * @param preferredRoot - Repository to use when the caller already knows it
-   * @returns Promise resolving to changes object or null if no changes
+   * @returns Promise resolving to the changes, `'cancelled'` when the user
+   *   dismissed the repository picker, or null if there are no changes
    */
-  async getChangesForCommit(preferredRoot?: string): Promise<ChangesForCommit | null> {
+  async getChangesForCommit(
+    preferredRoot?: string,
+  ): Promise<ChangesForCommit | 'cancelled' | null> {
     try {
       const repository = await this.selectRepository(preferredRoot);
+      if (repository === 'cancelled') return 'cancelled';
       if (!repository) {
         log('No active repository found or no repositories with changes');
         return null;

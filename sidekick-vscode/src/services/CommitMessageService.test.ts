@@ -89,6 +89,15 @@ describe('CommitMessageService failure cause', () => {
       async () => null,
     ).generateCommitMessage();
     expect(none.cause).toBeUndefined();
+    // Nothing to commit is the user's situation, not a failure.
+    expect(none.notice).toBe(true);
+
+    // Escape in the multi-repository picker is a cancel, not "no changes".
+    const picked = await makeService(
+      () => Promise.resolve(''),
+      async () => 'cancelled',
+    ).generateCommitMessage();
+    expect(picked).toEqual({ message: null, cancelled: true });
 
     executeWithTimeout.mockResolvedValueOnce({ success: false, timedOut: true, timeoutMs: 5000 });
     const timedOut = await makeService(() => Promise.resolve('')).generateCommitMessage();

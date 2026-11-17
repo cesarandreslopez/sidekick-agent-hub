@@ -40,6 +40,12 @@ export interface CommitMessageResult {
   cause?: unknown;
   /** Set when the user cancelled, including declining a timeout retry; report nothing. */
   cancelled?: boolean;
+  /**
+   * Set when `error` describes the user's situation rather than a failure
+   * (nothing to commit, docs already there): show it as a notice, not as
+   * "… failed", and leave the status bar alone.
+   */
+  notice?: boolean;
   /** Whether the diff was from staged or unstaged changes */
   diffType?: 'staged' | 'unstaged';
   /** Path to the repository where changes were found */
@@ -108,10 +114,14 @@ export class CommitMessageService implements vscode.Disposable {
 
       // Get diff from GitService
       const changes = await this.gitService.getChangesForCommit();
+      if (changes === 'cancelled') {
+        return { message: null, cancelled: true };
+      }
       if (!changes) {
         log('CommitMessageService: No changes found');
         return {
           message: null,
+          notice: true,
           error: 'No changes to commit. Stage or modify some files first.',
         };
       }
@@ -126,6 +136,7 @@ export class CommitMessageService implements vscode.Disposable {
         log('CommitMessageService: Diff is empty after filtering');
         return {
           message: null,
+          notice: true,
           error: 'No meaningful changes to analyze (only binary/lockfiles/generated code).',
         };
       }
