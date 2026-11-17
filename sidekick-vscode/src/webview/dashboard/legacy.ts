@@ -1963,7 +1963,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         const docsLink = document.getElementById('guidance-docs-link');
         if (docsLink) docsLink.setAttribute('href', targetDocsUrl);
 
-        if (sessionProviderSelect) {
+        // Mid-switch (or while a choice is debouncing) the select shows what the
+        // user picked; settleProviderSwitch sets it once the switch reports.
+        if (sessionProviderSelect && !providerSwitchPending && !providerSwitchTimer) {
           sessionProviderSelect.value = providerId;
         }
 
@@ -2791,6 +2793,7 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
 
           case 'updateSessionProvider':
             updateProviderDisplay(message.providerId, message.displayName);
+            settleProviderSwitch(message.providerId);
             break;
 
           case 'updateHistoricalData':
@@ -3181,19 +3184,64 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         });
       }
 
+      // Provider switches: arrow keys on a closed select fire `change` per step
+      // on some platforms, so the request is debounced (latest wins), and while
+      // one switch runs the next choice waits for it rather than overlapping.
+      // The select stays enabled (disabling a focused control drops focus).
+      let providerSwitchPending = false;
+      let providerSwitchTimer = null;
+      let desiredProviderId = null;
+      const PROVIDER_SWITCH_DEBOUNCE_MS = 250;
+
+      function startProviderSwitch(providerId) {
+        providerSwitchPending = true;
+        if (sessionProviderSelect) sessionProviderSelect.setAttribute('aria-busy', 'true');
+        const option = sessionProviderSelect
+          ? Array.prototype.find.call(sessionProviderSelect.options, function(o) { return o.value === providerId; })
+          : null;
+        const providerLabel = option ? option.text : providerId;
+        if (sessionListEl) {
+          sessionListEl.innerHTML = '<div class="session-list-loading">' +
+            '<span class="session-list-spinner"></span>' +
+            'Loading ' + escapeHtml(providerLabel) + ' sessions…' +
+            '</div>';
+        }
+        vscode.postMessage({ type: 'setSessionProvider', providerId: providerId });
+      }
+
+      function requestProviderSwitch(providerId) {
+        desiredProviderId = providerId;
+        if (providerSwitchPending) return; // sent when the running switch reports back
+        if (providerSwitchTimer) clearTimeout(providerSwitchTimer);
+        providerSwitchTimer = setTimeout(function() {
+          providerSwitchTimer = null;
+          const wanted = desiredProviderId;
+          if (!wanted || wanted === currentProviderId) {
+            desiredProviderId = null;
+            return;
+          }
+          startProviderSwitch(wanted);
+        }, PROVIDER_SWITCH_DEBOUNCE_MS);
+      }
+
+      // The host reports the provider after every switch, failed ones included.
+      function settleProviderSwitch(providerId) {
+        if (!providerSwitchPending) return;
+        providerSwitchPending = false;
+        if (sessionProviderSelect) sessionProviderSelect.removeAttribute('aria-busy');
+        if (desiredProviderId && desiredProviderId !== providerId) {
+          if (sessionProviderSelect) sessionProviderSelect.value = desiredProviderId;
+          startProviderSwitch(desiredProviderId);
+          return;
+        }
+        desiredProviderId = null;
+        if (sessionProviderSelect) sessionProviderSelect.value = providerId;
+      }
+
       if (sessionProviderSelect) {
         sessionProviderSelect.addEventListener('change', function() {
           const nextProvider = sessionProviderSelect.value;
-          if (nextProvider && nextProvider !== currentProviderId) {
-            const providerLabel = sessionProviderSelect.options[sessionProviderSelect.selectedIndex].text;
-            if (sessionListEl) {
-              sessionListEl.innerHTML = '<div class="session-list-loading">' +
-                '<span class="session-list-spinner"></span>' +
-                'Loading ' + escapeHtml(providerLabel) + ' sessions…' +
-                '</div>';
-            }
-            vscode.postMessage({ type: 'setSessionProvider', providerId: nextProvider });
-          }
+          if (nextProvider) requestProviderSwitch(nextProvider);
         });
       }
 

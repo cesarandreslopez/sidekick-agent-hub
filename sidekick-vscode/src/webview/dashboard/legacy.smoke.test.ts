@@ -264,4 +264,38 @@ describe('legacy dashboard script', () => {
     expect(document.getElementById('quota-section')!.classList.contains('visible')).toBe(true);
     expect(errors).toEqual([]);
   });
+
+  it('debounces provider picks and holds the next one until the running switch reports', async () => {
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const select = document.getElementById('session-provider-select') as HTMLSelectElement;
+    const pick = (value: string) => {
+      select.value = value;
+      select.dispatchEvent(new Event('change'));
+    };
+    const switches = () => posted.filter((m) => m.type === 'setSessionProvider');
+    send({ type: 'updateSessionProvider', providerId: 'claude-code', displayName: 'Claude Code' });
+    const before = switches().length;
+
+    // Arrowing through OpenCode to Codex sends one switch, to Codex.
+    pick('opencode');
+    pick('codex');
+    await wait(300);
+    expect(switches().slice(before)).toEqual([{ type: 'setSessionProvider', providerId: 'codex' }]);
+    expect(select.getAttribute('aria-busy')).toBe('true');
+    expect(select.disabled).toBe(false);
+
+    // A pick while that switch runs waits for it instead of overlapping.
+    pick('opencode');
+    await wait(300);
+    expect(switches().length).toBe(before + 1);
+    send({ type: 'updateSessionProvider', providerId: 'codex', displayName: 'Codex CLI' });
+    expect(switches().slice(before)).toEqual([
+      { type: 'setSessionProvider', providerId: 'codex' },
+      { type: 'setSessionProvider', providerId: 'opencode' },
+    ]);
+    send({ type: 'updateSessionProvider', providerId: 'opencode', displayName: 'OpenCode' });
+    expect(select.hasAttribute('aria-busy')).toBe(false);
+    expect(select.value).toBe('opencode');
+    expect(errors).toEqual([]);
+  });
 });
