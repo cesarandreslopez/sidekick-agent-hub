@@ -52,8 +52,8 @@ export function locateEditRange(
  * `insertLine` was computed when the document was at `version`, relative to
  * `anchorLine` (whose text was `anchorText`, e.g. a function signature).
  * Unchanged document: `insertLine`. Otherwise the anchor is looked up again —
- * at its old line, else the closest line with exactly that text — and the same
- * offset applied. `undefined` when the anchor can't be found.
+ * at its old line, else the one line with exactly that text — and the same
+ * offset applied. `undefined` when the anchor can't be found or is ambiguous.
  */
 export function relocateInsertLine(
   document: Pick<vscode.TextDocument, 'version' | 'lineCount' | 'lineAt'>,
@@ -65,15 +65,14 @@ export function relocateInsertLine(
     line >= 0 && line < document.lineCount ? document.lineAt(line).text : undefined;
   if (textAt(capture.anchorLine) === capture.anchorText) return capture.insertLine;
 
-  let best: number | undefined;
+  // Like locateEditRange: only an anchor that occurs exactly once is trusted.
+  // Two identical signatures (say, two `def __init__(self):`) are ambiguous,
+  // and guessing the nearer one can put the docs on the wrong function.
+  let found: number | undefined;
   for (let line = 0; line < document.lineCount; line++) {
     if (document.lineAt(line).text !== capture.anchorText) continue;
-    if (
-      best === undefined ||
-      Math.abs(line - capture.anchorLine) < Math.abs(best - capture.anchorLine)
-    ) {
-      best = line;
-    }
+    if (found !== undefined) return undefined;
+    found = line;
   }
-  return best === undefined ? undefined : best + offset;
+  return found === undefined ? undefined : found + offset;
 }

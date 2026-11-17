@@ -96,8 +96,9 @@ export class InlineCompletionProvider implements vscode.InlineCompletionItemProv
           // Delegate to CompletionService
           const completion = await this.completionService.getCompletion(document, position, token);
 
-          // Check cancellation after async operation
-          if (token.isCancellationRequested) {
+          // Check cancellation after async operation. Cancel in the progress
+          // toast leaves the editor's token untouched, so check both.
+          if (token.isCancellationRequested || progressToken.isCancellationRequested) {
             log('Inline: cancelled after getCompletion');
             return undefined;
           }

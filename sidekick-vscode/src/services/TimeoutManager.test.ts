@@ -414,6 +414,33 @@ describe('TimeoutManager', () => {
       expect(result.error?.name).toBe('AbortError');
     });
 
+    it('stays a cancel when the deadline passes before the client rejects', async () => {
+      vi.useFakeTimers();
+      try {
+        const outer = new AbortController();
+        const pending = manager.executeWithTimeout({
+          operation: 'Test operation',
+          // The client is slow to notice the abort: it rejects only after the
+          // 60 s deadline would have fired.
+          task: (signal) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () =>
+                setTimeout(() => reject(new Error('aborted')), 70_000),
+              );
+            }),
+          config,
+          showProgress: false,
+          externalSignal: outer.signal,
+        });
+        outer.abort();
+        await vi.advanceTimersByTimeAsync(70_000);
+        const result = await pending;
+        expect(result).toMatchObject({ success: false, timedOut: false, cancelled: true });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('still classifies its own deadline as a timeout, not a cancel', async () => {
       const result = await manager.executeWithTimeout({
         operation: 'Test operation',

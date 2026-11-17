@@ -299,8 +299,12 @@ export class TimeoutManager {
     // client throws for it (the Anthropic SDKs' abort errors aren't named
     // AbortError, and a stream that just ends throws something else again).
     let userCancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const cancel = () => {
       userCancelled = true;
+      // A cancel settles the outcome: the deadline must not fire afterwards
+      // (before the task rejects) and turn it into a timeout with a retry prompt.
+      clearTimeout(timeoutId);
       abortController.abort();
     };
 
@@ -315,11 +319,13 @@ export class TimeoutManager {
       }
     }
 
-    // Set up timeout
-    const timeoutId = setTimeout(() => {
-      deadlineExpired = true;
-      abortController.abort();
-    }, timeoutMs);
+    // Set up timeout (unless an already-aborted external signal cancelled us).
+    if (!userCancelled) {
+      timeoutId = setTimeout(() => {
+        deadlineExpired = true;
+        abortController.abort();
+      }, timeoutMs);
+    }
 
     try {
       if (showProgress) {

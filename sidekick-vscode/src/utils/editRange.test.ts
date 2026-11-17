@@ -28,10 +28,18 @@ describe('relocateInsertLine', () => {
     expect(relocateInsertLine(doc('# new\n' + py, 2) as never, pyCapture)).toBe(3);
   });
 
-  it('picks the closest match when the anchor text repeats', () => {
+  it('gives up when the moved anchor text repeats (it could be either function)', () => {
+    // Two identical `def __init__(self):` lines after a paste above: guessing
+    // the nearer one can document the wrong function, so the caller offers Copy.
     const twice = 'function add(a, b) {\n}\n\n\n\n\nfunction add(a, b) {\n}';
     const near = { version: 1, anchorLine: 5, anchorText: 'function add(a, b) {', insertLine: 5 };
-    expect(relocateInsertLine(doc(twice, 2) as never, near)).toBe(6);
+    expect(relocateInsertLine(doc(twice, 2) as never, near)).toBeUndefined();
+  });
+
+  it('still uses the old line when the anchor is unmoved, even if it repeats elsewhere', () => {
+    const twice = 'function add(a, b) {\n}\nfunction add(a, b) {\n}';
+    const here = { version: 1, anchorLine: 2, anchorText: 'function add(a, b) {', insertLine: 2 };
+    expect(relocateInsertLine(doc(twice, 2) as never, here)).toBe(2);
   });
 
   it('gives up when the anchor is gone', () => {

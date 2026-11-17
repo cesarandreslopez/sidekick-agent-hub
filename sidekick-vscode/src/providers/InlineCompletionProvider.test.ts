@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const setStatusBarMessage = vi.hoisted(() => vi.fn());
+const progressToken = vi.hoisted(() => ({
+  isCancellationRequested: false,
+  onCancellationRequested: vi.fn(),
+}));
 
 vi.mock('vscode', () => ({
   InlineCompletionTriggerKind: { Invoke: 0, Automatic: 1 },
@@ -9,7 +13,7 @@ vi.mock('vscode', () => ({
   window: {
     setStatusBarMessage,
     withProgress: (_options: unknown, task: (progress: unknown, token: unknown) => unknown) =>
-      task({ report: vi.fn() }, { onCancellationRequested: vi.fn() }),
+      task({ report: vi.fn() }, progressToken),
     showWarningMessage: vi.fn(() => Promise.resolve(undefined)),
     showErrorMessage: vi.fn(() => Promise.resolve(undefined)),
   },
@@ -29,7 +33,31 @@ const token = { isCancellationRequested: false };
 const invoke = { triggerKind: 0 };
 
 describe('InlineCompletionProvider', () => {
-  beforeEach(() => setStatusBarMessage.mockReset());
+  beforeEach(() => {
+    setStatusBarMessage.mockReset();
+    progressToken.isCancellationRequested = false;
+  });
+
+  it('stays quiet when the user cancelled from the progress toast', async () => {
+    // Cancel in the toast leaves the editor's token untouched.
+    const provider = new InlineCompletionProvider({
+      getCompletion: vi.fn(async () => {
+        progressToken.isCancellationRequested = true;
+        return undefined;
+      }),
+      cancelPending: vi.fn(),
+    } as never);
+
+    const items = await provider.provideInlineCompletionItems(
+      document as never,
+      position as never,
+      invoke as never,
+      token as never,
+    );
+
+    expect(items).toBeUndefined();
+    expect(setStatusBarMessage).not.toHaveBeenCalled();
+  });
 
   it('says so when a manual request produces no suggestion', async () => {
     const provider = new InlineCompletionProvider({
