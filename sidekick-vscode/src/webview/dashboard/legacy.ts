@@ -2056,10 +2056,9 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
         // Update context gauge
         updateContextGauge(state.contextUsagePercent || 0);
 
-        // Update latency display
-        if (state.latencyDisplay) {
-          updateLatency(state.latencyDisplay);
-        }
+        // Update latency display (none hides the section: a new session has
+        // no response times yet, and must not show the last one's)
+        updateLatency(state.latencyDisplay);
 
         // Update model breakdown
         if (modelListEl) {
@@ -2736,6 +2735,14 @@ export function startLegacyDashboard(dashboardInit: DashboardInit, helpers: Lega
             expandedErrorTypes.clear();
             lastToolAnalyticsKey = null;
             lastErrorDetailsKey = null;
+            // The previous session's activity and tools go; the host sends the
+            // new session's lists right after this message.
+            currentTimelineEvents = [];
+            liveTimelineCount = 0;
+            expandedTimelineKeys.clear();
+            renderFilteredTimeline();
+            updateActivityBadge();
+            updateToolAnalytics([]);
             // The Summary tab describes one session: clear it (and any
             // narrative), and rebuild it if it is the tab on screen.
             resetSummaryView();

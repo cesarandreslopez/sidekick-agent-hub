@@ -27,18 +27,26 @@ vi.mock('vscode', () => ({
     }),
   },
   commands: { executeCommand: vi.fn() },
+  ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
+  ProgressLocation: { Notification: 15 },
   extensions: {
     getExtension: () => ({ packageJSON: { version: '0.0.0-test' } }),
   },
   workspace: {
     workspaceFolders: [{ uri: { fsPath: '/workspace' } }],
-    getConfiguration: () => ({ inspect: () => undefined, get: () => undefined }),
+    getConfiguration: vi.fn(() => ({ inspect: () => undefined, get: () => undefined })),
+    onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
   },
   window: {
     createWebviewPanel: vi.fn(),
     // Charts bake colors into the canvas, so the provider subscribes to theme
     // changes to re-resolve them.
     onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
+    withProgress: vi.fn(
+      (_options: unknown, task: (progress: { report: () => void }) => Promise<unknown>) =>
+        task({ report: () => {} }),
+    ),
+    showWarningMessage: vi.fn(async () => undefined),
   },
 }));
 
@@ -48,6 +56,14 @@ const sharedMocks = vi.hoisted(() => ({
   createSessionProviders: vi.fn(),
   writeStateFile: vi.fn(),
   getActiveAccountStatus: vi.fn(() => ({ claude: { present: false }, codex: { present: false } })),
+  resolveQuota: vi.fn(
+    async (_options: unknown): Promise<Record<string, unknown>> => ({
+      available: false,
+      fiveHour: { utilization: 0, resetsAt: '' },
+      sevenDay: { utilization: 0, resetsAt: '' },
+    }),
+  ),
+  collectUsageEvents: vi.fn(async (_options: unknown) => ({ events: [] as unknown[] })),
 }));
 
 vi.mock('sidekick-shared', async (importOriginal) => {
@@ -59,6 +75,8 @@ vi.mock('sidekick-shared', async (importOriginal) => {
     createSessionProviders: sharedMocks.createSessionProviders,
     writeStateFile: sharedMocks.writeStateFile,
     getActiveAccountStatus: sharedMocks.getActiveAccountStatus,
+    resolveQuota: sharedMocks.resolveQuota,
+    collectUsageEvents: sharedMocks.collectUsageEvents,
   };
 });
 
@@ -68,7 +86,7 @@ vi.mock('../services/Logger', () => ({
 }));
 
 import { formatLocalDateKey, normalizeProviderUsage } from 'sidekick-shared';
-import { commands } from 'vscode';
+import { commands, window } from 'vscode';
 import { DashboardViewProvider, displayConfigPath } from './DashboardViewProvider';
 import { addUsageToPricing, type ModelUsageEntry } from '../services/ModelPricingService';
 
@@ -1245,4 +1263,138 @@ it('re-sends Live/Viewing when the attached session wakes up or goes quiet, with
     postMessage.mock.calls.filter((call) => call[0].type === 'updateSessionList'),
   ).toHaveLength(1);
   provider.dispose();
+});
+
+describe('DashboardViewProvider session switches', () => {
+  function switchingProvider(stats: Record<string, unknown>) {
+    const monitor = makeSessionMonitor();
+    monitor.getStats.mockReturnValue(stats as never);
+    monitor.getStatsView.mockReturnValue(stats as never);
+    monitor.isActive.mockReturnValue(true);
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    const host = provider as unknown as {
+      _handleSessionStart(path: string): void;
+      _handleDashboardWebviewMessage(message: unknown): void;
+    };
+    return { monitor, provider, postMessage, host };
+  }
+
+  const pastSession = () => ({
+    ...liveStatsView(),
+    timeline: [
+      { type: 'tool_call', timestamp: new Date().toISOString(), description: 'grep todo' },
+    ],
+    toolAnalytics: new Map([
+      [
+        'Read',
+        {
+          name: 'Read',
+          successCount: 1,
+          failureCount: 0,
+          totalDuration: 5,
+          completedCount: 1,
+          pendingCount: 0,
+        },
+      ],
+    ]),
+  });
+
+  it('sends the attached session timeline and tools after sessionStart and on webviewReady', () => {
+    const { provider, postMessage, host } = switchingProvider(pastSession());
+    host._handleSessionStart('/sessions/past.jsonl');
+    const types = postMessage.mock.calls.map((call) => call[0].type);
+    const started = types.indexOf('sessionStart');
+    expect(started).toBeGreaterThanOrEqual(0);
+    // After sessionStart, which clears the webview's lists.
+    expect(types.indexOf('updateTimeline')).toBeGreaterThan(started);
+    expect(types.indexOf('updateToolAnalytics')).toBeGreaterThan(started);
+    const timeline = postMessage.mock.calls.find((call) => call[0].type === 'updateTimeline')![0];
+    expect(timeline.events).toHaveLength(1);
+    const tools = postMessage.mock.calls.find((call) => call[0].type === 'updateToolAnalytics')![0];
+    expect(tools.analytics).toEqual([expect.objectContaining({ name: 'Read', totalCalls: 1 })]);
+
+    // A reloaded webview gets both lists too.
+    postMessage.mockClear();
+    host._handleDashboardWebviewMessage({ type: 'webviewReady' });
+    const reloaded = postMessage.mock.calls.map((call) => call[0]);
+    expect(reloaded.find((m) => m.type === 'updateTimeline')?.events).toHaveLength(1);
+    expect(reloaded.find((m) => m.type === 'updateToolAnalytics')?.analytics).toHaveLength(1);
+    provider.dispose();
+  });
+
+  it('drops the previous session response times and model on a switch', () => {
+    const { monitor, provider, postMessage, host } = switchingProvider({
+      ...liveStatsView(),
+      lastModelId: 'claude-opus-4-5',
+      latencyStats: {
+        completedCycles: 2,
+        avgFirstTokenLatencyMs: 900,
+        maxFirstTokenLatencyMs: 1200,
+        lastFirstTokenLatencyMs: 800,
+        avgTotalResponseTimeMs: 4000,
+      },
+    });
+    host._handleSessionStart('/sessions/a.jsonl');
+    const first = postMessage.mock.calls.filter((call) => call[0].type === 'updateStats').pop()![0];
+    expect(first.state.latencyDisplay).toMatchObject({ hasData: true });
+
+    monitor.getStats.mockReturnValue(liveStatsView() as never);
+    host._handleSessionStart('/sessions/b.jsonl');
+    const second = postMessage.mock.calls
+      .filter((call) => call[0].type === 'updateStats')
+      .pop()![0];
+    expect(second.state.latencyDisplay).toBeUndefined();
+    expect((provider as unknown as { _lastModelId?: string })._lastModelId).toBeUndefined();
+    provider.dispose();
+  });
+
+  it('drops a narrative that finishes after the user moved to another session', async () => {
+    const monitor = makeSessionMonitor();
+    monitor.getStats.mockReturnValue({ ...liveStatsView(), lastUpdated: new Date() } as never);
+    monitor.isActive.mockReturnValue(true);
+    let sessionPath = '/sessions/a.jsonl';
+    monitor.getSessionPath.mockImplementation(() => sessionPath);
+    const provider = new DashboardViewProvider(
+      { fsPath: '/tmp/sidekick-extension' } as never,
+      monitor as never,
+      undefined,
+      undefined,
+      undefined,
+      { getCachedData: () => ({ errors: [], recoveryPatterns: [] }) } as never,
+      { getProviderDisplayName: () => 'Claude', getProviderId: () => 'claude-max' } as never,
+    );
+    const postMessage = vi.fn();
+    (provider as unknown as { _view: unknown })._view = { visible: true, webview: { postMessage } };
+    const internals = provider as unknown as {
+      _summaryService: {
+        generateSummary: (...args: unknown[]) => unknown;
+        generateNarrative: (...args: unknown[]) => Promise<string>;
+      };
+      _handleGenerateNarrative(): Promise<void>;
+    };
+    vi.spyOn(internals._summaryService, 'generateSummary').mockReturnValue({ id: 1 } as never);
+    let finish!: (text: string) => void;
+    vi.spyOn(internals._summaryService, 'generateNarrative').mockReturnValue(
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+    );
+
+    const pending = internals._handleGenerateNarrative();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    sessionPath = '/sessions/b.jsonl';
+    finish('Session A did things.');
+    await pending;
+
+    const types = postMessage.mock.calls.map((call) => call[0].type);
+    expect(types).not.toContain('sessionNarrative');
+    expect(postMessage).toHaveBeenLastCalledWith({ type: 'narrativeLoading', loading: false });
+    expect(window.withProgress).toHaveBeenCalled();
+    provider.dispose();
+  });
 });

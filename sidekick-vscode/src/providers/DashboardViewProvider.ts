@@ -624,6 +624,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
           this._syncFromSessionMonitor();
         }
         this._sendStateToWebview();
+        // updateStats carries no timeline; a reloaded webview needs both lists,
+        // and a past session sends no live event that would deliver them.
+        this._sendTimelineToWebview();
+        this._sendToolAnalyticsToWebview();
         this._sendPlanState();
         this._sendBurnRateUpdate();
         this._sendSessionList();
@@ -952,6 +956,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
 
     log('Dashboard: Starting session analysis');
     log(`Dashboard: _view exists: ${!!this._view}`);
+    // The analysis takes 30-60 s; its result describes this session only.
+    const sessionPath = this._sessionMonitor.getSessionPath();
     this._postMessage({ type: 'suggestionsLoading', loading: true });
 
     try {
@@ -975,6 +981,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             timeoutOverride ? { timeout: timeoutOverride } : undefined,
           );
 
+          if (this._sessionMonitor.getSessionPath() !== sessionPath) {
+            log('Dashboard: dropping session analysis for a session no longer on screen');
+            return;
+          }
           if (result.success) {
             const suggestions: ClaudeMdSuggestionDisplay[] = result.suggestions.map((s) => ({
               title: s.title,
@@ -1007,12 +1017,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
       }
 
+      logError('Dashboard: Analysis error', error);
+      // A failure for a session no longer on screen is not news about this one.
+      if (this._sessionMonitor.getSessionPath() !== sessionPath) return;
       const message = error instanceof Error ? error.message : 'Unknown error';
       this._postMessage({
         type: 'suggestionsError',
         error: `Analysis failed: ${message}`,
       });
-      logError('Dashboard: Analysis error', error);
     } finally {
       this._postMessage({ type: 'suggestionsLoading', loading: false });
     }
@@ -1186,6 +1198,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     }
 
     this._postMessage({ type: 'narrativeLoading', loading: true });
+    // The narrative takes 15-30 s; it describes this session only.
+    const sessionPath = this._sessionMonitor.getSessionPath();
 
     try {
       const inferenceProvider = this._authService.getProviderDisplayName();
@@ -1206,6 +1220,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
             this._authService!,
             timeoutOverride ? { timeout: timeoutOverride } : undefined,
           );
+          if (this._sessionMonitor.getSessionPath() !== sessionPath) {
+            log('Dashboard: dropping a narrative for a session no longer on screen');
+            return;
+          }
           this._postMessage({ type: 'sessionNarrative', narrative });
         },
       );
@@ -1223,12 +1241,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
         }
       }
 
+      logError('Dashboard: Narrative generation error', error);
+      if (this._sessionMonitor.getSessionPath() !== sessionPath) return;
       const message = error instanceof Error ? error.message : 'Unknown error';
       this._postMessage({
         type: 'narrativeError',
         error: `Narrative generation failed: ${message}`,
       });
-      logError('Dashboard: Narrative generation error', error);
     } finally {
       this._postMessage({ type: 'narrativeLoading', loading: false });
     }
@@ -1785,9 +1804,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._clearSessionDerivedState();
     this._syncFromSessionMonitor();
 
-    // Notify webview
+    // Notify webview. The webview clears its lists on sessionStart, so the
+    // new session's timeline and tools go out after it: a past session
+    // replays without live events and would otherwise keep the old ones.
     this._postMessage({ type: 'sessionStart', sessionPath });
     this._sendStateToWebview();
+    this._sendTimelineToWebview();
+    this._sendToolAnalyticsToWebview();
     this._sendPlanState();
     this._sendBurnRateUpdate();
     this._sendSessionList();
@@ -1823,6 +1846,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state.contextTimeline = [];
     this._state.permissionMode = undefined;
     this._state.subagentTokens = null;
+    // Response times and the context window belong to the previous session's
+    // model; a new session that has not answered yet has neither.
+    this._state.latencyDisplay = undefined;
+    this._lastModelId = undefined;
     this._lastSubagentTokenRefresh = 0;
     this._currentContextSize = 0;
     this._recentUsage = [];
@@ -2382,10 +2409,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
       this._burnRateCalculator.addEvent(event.tokens, event.timestamp);
     }
 
-    // Sync latency stats
-    if (stats.latencyStats) {
-      this._state.latencyDisplay = this._formatLatencyDisplay(stats.latencyStats);
-    }
+    // Sync latency stats (none recorded hides the section rather than
+    // leaving the previous session's numbers)
+    this._state.latencyDisplay = stats.latencyStats
+      ? this._formatLatencyDisplay(stats.latencyStats)
+      : undefined;
 
     // Sync compaction events
     if (stats.compactionEvents && stats.compactionEvents.length > 0) {
@@ -2741,6 +2769,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider, vscode
     this._state.timeline = [];
     this._state.toolAnalytics = [];
     this._state.errorDetails = [];
+    this._state.latencyDisplay = undefined;
+    this._lastModelId = undefined;
 
     this._syncFromSessionMonitor();
     this._sendStateToWebview();

@@ -200,6 +200,8 @@ describe('legacy dashboard script', () => {
       },
       { type: 'healthError', message: 'doctor broke' },
       { type: 'sessionStart', sessionPath: '/s/b' },
+      // The host follows sessionStart with the new session's lists.
+      { type: 'updateToolAnalytics', analytics: state.toolAnalytics },
       { type: 'sessionEnd' },
     ];
     for (const message of messages) send(message);
@@ -228,5 +230,23 @@ describe('legacy dashboard script', () => {
     document.getElementById('health-refresh')!.click();
     expect(posted.filter((m) => m.type === 'requestHistoricalData').length).toBe(before);
     expect(posted[posted.length - 1]).toEqual({ type: 'requestHealth' });
+  });
+
+  it("clears the previous session's activity and tools when another session starts", () => {
+    send({
+      type: 'updateTimeline',
+      events: [{ type: 'tool_call', time: '9:01', description: 'old session call' }],
+    });
+    send({
+      type: 'updateToolAnalytics',
+      analytics: [
+        { name: 'OldTool', totalCalls: 4, successRate: 100, avgDuration: 5, pendingCount: 0 },
+      ],
+    });
+    expect(document.getElementById('timeline-list')!.textContent).toContain('old session call');
+    send({ type: 'sessionStart', sessionPath: '/s/c' });
+    expect(document.getElementById('timeline-list')!.textContent).not.toContain('old session call');
+    expect(document.getElementById('tool-list')!.textContent).not.toContain('OldTool');
+    expect(errors).toEqual([]);
   });
 });
