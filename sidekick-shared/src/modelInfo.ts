@@ -321,6 +321,26 @@ const GPT_6_1_TERRA_TIERS: readonly ModelPricingTier[] = [
     cacheReadCostPerMillion: 0.1,
   },
 ];
+// GPT-6.2 Sol bills exactly like GPT-6.1 Sol, so it shares GPT_6_1_SOL_TIERS.
+const GPT_6_2_ASTRA_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 16,
+    outputCostPerMillion: 60,
+    cacheWriteCostPerMillion: 20,
+    cacheReadCostPerMillion: 0.8,
+  },
+];
+// GPT-6 Astra Law publishes no cache-write rate at either length.
+const GPT_6_ASTRA_LAW_TIERS: readonly ModelPricingTier[] = [
+  {
+    aboveInputTokens: 272_000,
+    inputCostPerMillion: 20,
+    outputCostPerMillion: 75,
+    cacheWriteCostPerMillion: 0,
+    cacheReadCostPerMillion: 2,
+  },
+];
 const GPT_6_CYBER_TIERS: readonly ModelPricingTier[] = [
   {
     aboveInputTokens: 272_000,
@@ -333,10 +353,10 @@ const GPT_6_CYBER_TIERS: readonly ModelPricingTier[] = [
 const GPT_6_ROSALIND_TIERS: readonly ModelPricingTier[] = [
   {
     aboveInputTokens: 272_000,
-    inputCostPerMillion: 30,
-    outputCostPerMillion: 112.5,
-    cacheWriteCostPerMillion: 37.5,
-    cacheReadCostPerMillion: 3,
+    inputCostPerMillion: 20,
+    outputCostPerMillion: 75,
+    cacheWriteCostPerMillion: 25,
+    cacheReadCostPerMillion: 2,
   },
 ];
 const GPT_5_6_SOL_TIERS: readonly ModelPricingTier[] = [
@@ -413,7 +433,8 @@ const GPT_5_4_TIERS: readonly ModelPricingTier[] = [
  * Sources:
  *   - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
  *   - OpenAI: https://developers.openai.com/api/docs/models
- * Current Anthropic and GPT-5.6/6 rates verified: 2026-11-11.
+ * Current Anthropic and GPT-5.6/6 rates verified: 2026-11-11; GPT-6.2 and
+ * the GPT-6 Rosalind / Astra Law promotional rates: 2026-11-19.
  * Runtime LiteLLM hydration refreshes this offline baseline.
  *
  * Anthropic keys appear in both dashed (`claude-opus-4-8`, the real model-ID
@@ -421,10 +442,12 @@ const GPT_5_4_TIERS: readonly ModelPricingTier[] = [
  * prefix matching cannot bridge the two, so both are needed.
  */
 const PRICING_TABLE: Record<string, ModelPricing> = {
-  // Current coding models verified 2026-11-11 (Fable 5.2, Mythos, GPT-6
-  // specialties) and 2026-10-30. DeepSeek uses peak rates. Gemini promotions
-  // end 2026-11-30 (Argon) and 2026-12-31 (Flash). Long-context rates (GPT
-  // above 272K, Haiku 5.5 above 100K) are in `tiers`.
+  // Current coding models verified 2026-11-19 (GPT-6.2), 2026-11-11 (Fable
+  // 5.2, Mythos, GPT-6 specialties) and 2026-10-30. DeepSeek uses peak rates.
+  // Gemini promotions end 2026-11-30 (Argon) and 2026-12-31 (Flash); the GPT-6
+  // Rosalind and GPT-6 / 6.2 Astra Law promotions run at least through
+  // 2026-12-31. Long-context rates (GPT above 272K, Haiku 5.5 above 100K) are
+  // in `tiers`.
   // Sources and estimation limits: docs/configuration/model-resolution.md.
   // Explicit direct-provider keys support offline OpenCode model IDs without
   // stripping arbitrary deployment prefixes or changing alias resolution.
@@ -519,9 +542,11 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 5,
     cacheReadCostPerMillion: 0.2,
   },
-  // GPT-6 specialty models bill above the tier they are named after, so each
-  // needs its own key. Astra Law is flat (no long-context rate) and has no
-  // cache-write rate; without its key it would inherit Astra's.
+  // GPT-6 specialty models bill differently from the tier they are named
+  // after, so each needs its own key. Cyber bills above it; Rosalind's
+  // promotional rates match Astra's today, but it keeps its own key for when
+  // the promotion ends. Astra Law has no cache-write rate; without its key it
+  // would inherit Astra's.
   'gpt-6-cyber': {
     inputCostPerMillion: 20,
     outputCostPerMillion: 100,
@@ -537,17 +562,17 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     tiers: GPT_6_CYBER_TIERS,
   },
   'gpt-6-rosalind': {
-    inputCostPerMillion: 15,
-    outputCostPerMillion: 75,
-    cacheWriteCostPerMillion: 18.75,
-    cacheReadCostPerMillion: 1.5,
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 50,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 1,
     tiers: GPT_6_ROSALIND_TIERS,
   },
   'openai/gpt-6-rosalind': {
-    inputCostPerMillion: 15,
-    outputCostPerMillion: 75,
-    cacheWriteCostPerMillion: 18.75,
-    cacheReadCostPerMillion: 1.5,
+    inputCostPerMillion: 10,
+    outputCostPerMillion: 50,
+    cacheWriteCostPerMillion: 12.5,
+    cacheReadCostPerMillion: 1,
     tiers: GPT_6_ROSALIND_TIERS,
   },
   'gpt-6-astra-law': {
@@ -555,12 +580,14 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     outputCostPerMillion: 50,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 1,
+    tiers: GPT_6_ASTRA_LAW_TIERS,
   },
   'openai/gpt-6-astra-law': {
     inputCostPerMillion: 10,
     outputCostPerMillion: 50,
     cacheWriteCostPerMillion: 0,
     cacheReadCostPerMillion: 1,
+    tiers: GPT_6_ASTRA_LAW_TIERS,
   },
   'openai/gpt-6-astra': {
     inputCostPerMillion: 10,
@@ -623,6 +650,52 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWriteCostPerMillion: 1.25,
     cacheReadCostPerMillion: 0.05,
     tiers: GPT_6_1_TERRA_TIERS,
+  },
+  // GPT-6.2 Astra undercuts GPT-6 Astra ($10/$50, $1.00 cache reads); GPT-6.2
+  // Sol bills like GPT-6.1 Sol. No other key prefixes them, so without these
+  // they would be unpriced offline. Astra Law's promotional rate equals
+  // Astra's; it keeps its own key for when the promotion ends.
+  'gpt-6.2-astra': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.4,
+    tiers: GPT_6_2_ASTRA_TIERS,
+  },
+  'openai/gpt-6.2-astra': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.4,
+    tiers: GPT_6_2_ASTRA_TIERS,
+  },
+  'gpt-6.2-astra-law': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.4,
+    tiers: GPT_6_2_ASTRA_TIERS,
+  },
+  'openai/gpt-6.2-astra-law': {
+    inputCostPerMillion: 8,
+    outputCostPerMillion: 40,
+    cacheWriteCostPerMillion: 10,
+    cacheReadCostPerMillion: 0.4,
+    tiers: GPT_6_2_ASTRA_TIERS,
+  },
+  'gpt-6.2-sol': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.1,
+    tiers: GPT_6_1_SOL_TIERS,
+  },
+  'openai/gpt-6.2-sol': {
+    inputCostPerMillion: 2,
+    outputCostPerMillion: 10,
+    cacheWriteCostPerMillion: 2.5,
+    cacheReadCostPerMillion: 0.1,
+    tiers: GPT_6_1_SOL_TIERS,
   },
   'claude-sonnet-5-5': {
     inputCostPerMillion: 2,

@@ -28,12 +28,13 @@ export interface ModelMapping {
 }
 
 /**
- * Default model per tier per provider (reviewed 2026-11-11). Haiku 5.5 and
- * Sonnet 5.5 think by default, and GPT-6.1 Sol rejects `reasoning_effort:
- * 'none'`, so the clients send per-model settings (`FEATURE_EFFORT`,
- * `anthropicRequestTuning`) that keep fast features fast. Opus 5.5 stays the
- * powerful default: Fable 5.2 costs twice as much and its turns can run for
- * minutes; pick it with a literal `claude-fable-5-2` (or `fable`).
+ * Default model per tier per provider (reviewed 2026-11-11; Codex 2026-11-19).
+ * Haiku 5.5 and Sonnet 5.5 think by default, and GPT-6.2 Sol and Astra reject
+ * `reasoning_effort: 'none'`, so the clients send per-model settings
+ * (`FEATURE_EFFORT`, `anthropicRequestTuning`) that keep fast features fast.
+ * Opus 5.5 stays the powerful default: Fable 5.2 costs twice as much and its
+ * turns can run for minutes; pick it with a literal `claude-fable-5-2` (or
+ * `fable`). GPT-6 Luna stays the Codex fast tier: there is no GPT-6.2 Luna.
  */
 export const DEFAULT_MODEL_MAPPINGS: Record<InferenceProviderId, ModelMapping> = {
   'claude-max': { fast: 'haiku', balanced: 'sonnet', powerful: 'opus' },
@@ -49,8 +50,8 @@ export const DEFAULT_MODEL_MAPPINGS: Record<InferenceProviderId, ModelMapping> =
   },
   codex: {
     fast: 'gpt-6-luna',
-    balanced: 'gpt-6.1-sol',
-    powerful: 'gpt-6-astra',
+    balanced: 'gpt-6.2-sol',
+    powerful: 'gpt-6.2-astra',
   },
 };
 

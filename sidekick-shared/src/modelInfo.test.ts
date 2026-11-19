@@ -1047,6 +1047,11 @@ describe('GPT tier variants', () => {
       variant: 'terra',
     });
     expect(parseModelId('GPT-5.6-Terra')).toMatchObject({ version: '5.6-terra', variant: 'terra' });
+    expect(parseModelId('gpt-6.2-astra-law')).toMatchObject({
+      version: '6.2-astra-law',
+      variant: 'astra',
+      specialty: 'law',
+    });
   });
 
   it('adds no variant key to untiered ids', () => {
@@ -1083,6 +1088,12 @@ describe('GPT tier variants', () => {
       ]),
     ).toEqual(['gpt-6.1-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6.1-luna', 'gpt-6-astra']);
     expect(compareModelIds('gpt-5.6-luna', 'gpt-5.6-sol')).toBeGreaterThan(0);
+    expect(sortModelIds(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.2-sol', 'gpt-6.2-astra'])).toEqual([
+      'gpt-6.2-astra',
+      'gpt-6.2-sol',
+      'gpt-6.1-sol',
+      'gpt-6-astra',
+    ]);
   });
 
   it('leaves orderings that do not compare two variants unchanged', () => {

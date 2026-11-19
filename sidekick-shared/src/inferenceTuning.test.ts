@@ -102,7 +102,16 @@ describe('openAiReasoningEffort', () => {
 
   it('falls back to minimal or low where none is rejected', () => {
     expect(openAiReasoningEffort('gpt-5-mini', 'minimal')).toBe('minimal');
-    for (const id of ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-rosalind', 'gpt-5.5-pro', 'unknown']) {
+    for (const id of [
+      'gpt-6.2-sol',
+      'gpt-6.2-astra',
+      'openai/gpt-6.2-astra-law',
+      'gpt-6.1-sol',
+      'gpt-6-astra',
+      'gpt-6-rosalind',
+      'gpt-5.5-pro',
+      'unknown',
+    ]) {
       expect(openAiReasoningEffort(id, 'minimal'), id).toBe('low');
     }
   });

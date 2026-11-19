@@ -55,6 +55,8 @@ describe('modelLabel', () => {
 
   it('names GPT tiers', () => {
     expect(modelLabel('gpt-6.1-sol')).toBe('GPT-6.1 Sol');
+    expect(modelLabel('gpt-6.2-sol')).toBe('GPT-6.2 Sol');
+    expect(modelLabel('gpt-6.2-astra')).toBe('GPT-6.2 Astra');
     expect(modelLabel('gpt-6-astra')).toBe('GPT-6 Astra');
     expect(modelLabel('gpt-6')).toBe('GPT-6');
     expect(modelLabel('gpt-5.1-codex-max')).toBe('GPT-5.1-codex-max');
@@ -68,6 +70,7 @@ describe('modelLabel', () => {
     expect(modelLabel('claude-mythos-preview')).toBe('Mythos preview');
     expect(modelLabel('gpt-6-cyber')).toBe('GPT-6 Cyber');
     expect(modelLabel('gpt-6-astra-law')).toBe('GPT-6 Astra Law');
+    expect(modelLabel('gpt-6.2-astra-law')).toBe('GPT-6.2 Astra Law');
     expect(modelLabel('gpt-5.6-cyber')).toBe('GPT-5.6 Cyber');
   });
 

@@ -35,10 +35,16 @@ import { ownValue, setOwnValue } from './ownKey';
 const MODEL_CONTEXT_SIZES: Record<string, number> = {
   // Published API limits verified 2026-11-11; GLM's API documents 1M even
   // though local weights may support more. Catalog/observed overrides win.
-  // GPT-5.6, GPT-6 and GPT-6.1 values are the maximum *input* (the 1.05M
-  // total window minus the 128K output cap), as the LiteLLM catalog's
+  // GPT-5.6, GPT-6, GPT-6.1 and GPT-6.2 values are the maximum *input* (the
+  // 1.05M total window minus the 128K output cap), as the LiteLLM catalog's
   // `max_input_tokens` reports them, so offline and online agree and a full
-  // gauge means a larger prompt would be rejected.
+  // gauge means a larger prompt would be rejected. GPT-6.2 verified 2026-11-19.
+  'gpt-6.2-astra': 922_000,
+  'openai/gpt-6.2-astra': 922_000,
+  'gpt-6.2-astra-law': 922_000,
+  'openai/gpt-6.2-astra-law': 922_000,
+  'gpt-6.2-sol': 922_000,
+  'openai/gpt-6.2-sol': 922_000,
   'gpt-6.1-sol': 922_000,
   'openai/gpt-6.1-sol': 922_000,
   'gpt-6.1-terra': 922_000,

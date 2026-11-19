@@ -13,7 +13,8 @@
  * against `max_tokens`, so a model that may think gets headroom.
  *
  * OpenAI reasoning models differ in the lowest `reasoning_effort` they take:
- * `none` (GPT-5.1 onward, except the Pro, Astra and GPT-6.1 Sol models),
+ * `none` (GPT-5.1 onward, except the Pro, Astra, GPT-6.1 Sol and GPT-6.2
+ * models),
  * `minimal` (the original GPT-5 family), else `low`.
  *
  * Pure: no I/O.
