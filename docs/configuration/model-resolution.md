@@ -22,11 +22,11 @@ flowchart TD
 
 ## Tiers
 
-| Tier       | Use Case                                               | Claude Model | Codex Model   |
-| ---------- | ------------------------------------------------------ | ------------ | ------------- |
-| `fast`     | Low latency, frequent calls (inline completions, docs) | Haiku 5.5    | `gpt-6-luna`  |
-| `balanced` | Quality/speed tradeoff (explanations, commits, review) | Sonnet 5.5   | `gpt-6.1-sol` |
-| `powerful` | Highest quality (code transforms)                      | Opus 5.5     | `gpt-6-astra` |
+| Tier       | Use Case                                               | Claude Model | Codex Model     |
+| ---------- | ------------------------------------------------------ | ------------ | --------------- |
+| `fast`     | Low latency, frequent calls (inline completions, docs) | Haiku 5.5    | `gpt-6-luna`    |
+| `balanced` | Quality/speed tradeoff (explanations, commits, review) | Sonnet 5.5   | `gpt-6.2-sol`   |
+| `powerful` | Highest quality (code transforms)                      | Opus 5.5     | `gpt-6.2-astra` |
 
 The Claude column resolves per inference provider: `claude-max` passes the short
 names (`haiku` / `sonnet` / `opus`) to the CLI, while `claude-api` and `opencode`
@@ -82,7 +82,7 @@ models reject.
 - **Claude Max** (`claude-max`): Claude Code's own effort level (`low`, or
   `medium` for review and transforms).
 - **Codex**: `-c model_reasoning_effort="low"` (or `"medium"`). `low` is the
-  floor: GPT-6.1 Sol and GPT-6 Astra reject `none`.
+  floor: GPT-6.2 Sol and Astra, GPT-6.1 Sol and GPT-6 Astra reject `none`.
 - **OpenCode**: no change; OpenCode's own provider settings apply.
 
 ## Legacy Names
@@ -107,10 +107,10 @@ for organizations verified through Anthropic's access programs. Fable and
 Mythos require 30-day data retention, so zero-data-retention organizations
 cannot use them.
 
-To keep the previous defaults, set `claude-haiku-4-5`, `claude-sonnet-5`, or
-`gpt-6-sol` explicitly. The GPT-6 Codex tiers need a Codex CLI that offers
-`gpt-6-luna` and `gpt-6.1-sol`; on an older CLI, set a literal ID such as
-`gpt-6-sol` or `gpt-5.6-terra`.
+To keep the previous defaults, set `claude-haiku-4-5`, `claude-sonnet-5`,
+`gpt-6.1-sol`, or `gpt-6-astra` explicitly. The Codex tiers need a Codex CLI
+that offers `gpt-6-luna`, `gpt-6.2-sol` and `gpt-6.2-astra`; on an older CLI,
+set a literal ID such as `gpt-6.1-sol` or `gpt-6-sol`.
 
 ## CLI Dashboard Summaries
 
@@ -158,17 +158,19 @@ it is still used as it is, without tiers.
 
 ### Offline baseline
 
-The offline baseline was refreshed on November 11, 2026 for Claude Fable 5.2
-and Mythos 5.2 / 5.1 / 5 / preview, GPT-6 Cyber, Rosalind and Astra Law,
-GPT-5.6 and GPT-5.5 Cyber, and o4-mini, with long-context tiers for the
-GPT-5.4+, GPT-6 and Haiku 5.5 models. It was refreshed on October 30, 2026 for
+The offline baseline was refreshed on November 19, 2026 for GPT-6.2 Sol, Astra
+and Astra Law, and for the promotional GPT-6 Rosalind and Astra Law rates (Astra
+Law now has a long-context tier). It was refreshed on November 11, 2026 for
+Claude Fable 5.2 and Mythos 5.2 / 5.1 / 5 / preview, GPT-6 Cyber, Rosalind and
+Astra Law, GPT-5.6 and GPT-5.5 Cyber, and o4-mini, with long-context tiers for
+the GPT-5.4+, GPT-6 and Haiku 5.5 models. It was refreshed on October 30, 2026 for
 GPT-6.1 Sol and Terra, Claude Sonnet 5.5 and Haiku 5.5, Gemini 4 Argon and 3.8
 Flash, DeepSeek Flash and V4 Pro, and GLM-5.3, Flash, and FlashX. It includes
 direct provider-qualified IDs and the accepted legacy DeepSeek Flash names.
 
-GPT-5.6, GPT-6 and GPT-6.1 context windows are their maximum input, 922,000
-tokens (the 1,050,000-token total window minus the 128,000-token output cap),
-which matches the catalog's `max_input_tokens`; GPT-5.5 and GPT-5.4 publish
+GPT-5.6, GPT-6, GPT-6.1 and GPT-6.2 context windows are their maximum input,
+922,000 tokens (the 1,050,000-token total window minus the 128,000-token output
+cap), which matches the catalog's `max_input_tokens`; GPT-5.5 and GPT-5.4 publish
 1,050,000 as their input limit. Codex sessions still show the smaller window
 Codex reports for the account.
 
@@ -181,8 +183,8 @@ Verification sources:
   tokens; Sonnet 5.5 cache reads cost $0.10.
 - [OpenAI pricing](https://developers.openai.com/api/docs/pricing) and
   [latest-model guidance](https://developers.openai.com/api/docs/guides/latest-model):
-  GPT-6 rates and the 272K long-context tier; account-specific Codex limits
-  can be smaller than the published windows.
+  GPT-6 and GPT-6.2 rates and the 272K long-context tier; account-specific
+  Codex limits can be smaller than the published windows.
 - The [LiteLLM catalog](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
   cross-checks every rate and window above.
 - [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing),
@@ -200,7 +202,9 @@ shortest published retention period. DeepSeek baselines use peak rates;
 off-peak rates are half as much. Gemini Argon's introductory $2/$10
 input/output rates ($0.10 cached input) end on November 30, 2026, then double.
 Gemini 3.8 Flash's introductory $0.75/$3.75 rates ($0.075 cached input) end on
-December 31, 2026, then double. These offline baselines do not change with the
+December 31, 2026, then double. GPT-6 Rosalind ($10/$50) and GPT-6 and GPT-6.2
+Astra Law ($10/$50 and $8/$40) are at promotional rates that OpenAI offers at
+least through December 31, 2026. These offline baselines do not change with the
 clock; catalog hydration can refresh rates. Cache-storage charges, request
 tools, service tiers, regional adjustments, and other billing modifiers are
 excluded. Provider-reported costs remain preferred when available.
