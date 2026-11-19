@@ -5,6 +5,24 @@ All notable changes to sidekick-shared will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.5] - 2026-11-19
+
+No exported signature or type changed.
+
+### Added
+
+- **Offline baselines for `gpt-6.2-astra`, `gpt-6.2-astra-law` and `gpt-6.2-sol`,** each with its `openai/` form.
+  - Pricing per million tokens: Astra and Astra Law cost $8 / $40, with $0.40 cache reads and $10 cache writes. Sol costs $2 / $10, with $0.10 cache reads and $2.50 cache writes.
+  - Each has a 272K long-context tier.
+  - Each has a 922K context window, the maximum input.
+
+  Before, `resolveModelPricing()` returned `null` for them offline and `getModelContextWindowSize()` fell back to 200K. `openAiReasoningEffort()` returns `low` for them at `minimal`, because they reject `none`.
+
+### Changed
+
+- **`gpt-6-rosalind` uses OpenAI's promotional rates,** offered at least through December 31, 2026: $10 / $50, with $1.00 cache reads and $12.50 cache writes. Above 272K prompt tokens it bills $20 / $75. It was $15 / $75 and $30 / $112.50.
+- **`gpt-6-astra-law` has a long-context tier:** $20 / $75 with $2.00 cache reads above 272K prompt tokens. It still has no cache-write rate. `resolveModelPricing('gpt-6-astra-law').pricing.tiers` is no longer `undefined`.
+
 ## [0.33.4] - 2026-11-17
 
 A documentation release. No code, exported signature or type changed.

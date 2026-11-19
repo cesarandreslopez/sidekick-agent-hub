@@ -2,7 +2,7 @@
   "name": "sidekick-for-max",
   "displayName": "Sidekick Agent Hub",
   "description": "See what your AI coding agents are doing and what they cost: live activity map, tokens, cost, context and quota for Claude Code, Codex and OpenCode, plus AI completions, transforms and commit messages.",
-  "version": "0.33.4",
+  "version": "0.33.5",
   "publisher": "CesarAndresLopez",
   "author": {
     "name": "Cesar Andres Lopez",

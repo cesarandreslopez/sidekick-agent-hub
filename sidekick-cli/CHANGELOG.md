@@ -5,6 +5,26 @@ All notable changes to the Sidekick Agent Hub CLI will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.5] - 2026-11-19
+
+### Added
+
+- **GPT-6.2 Sol, Astra and Astra Law are priced offline.** The dashboard, usage reports, billing blocks and the status line no longer need the online price catalog for them. Before, they showed as unpriced offline and their context gauge assumed 200K tokens. Per million input / output tokens:
+  - GPT-6.2 Astra: $8 / $40.
+  - GPT-6.2 Sol: $2 / $10, the same as GPT-6.1 Sol.
+  - GPT-6.2 Astra Law: the same as Astra for now.
+
+  All three switch to long-context rates above 272K prompt tokens and take up to 922K input tokens.
+
+### Changed
+
+- **GPT-6 Rosalind and GPT-6 Astra Law follow OpenAI's promotional prices,** offered at least through December 31, 2026. Rosalind is $10 / $50 (was $15 / $75). Astra Law has a long-context rate above 272K prompt tokens. The CLI's own summary models are unchanged.
+
+### Fixed
+
+- **`sidekick accounts config auto-switch` says what it does.** The threshold is saved to `cli-config.json`, but nothing reads it yet: VS Code uses its own `sidekick.accounts.autoSwitchThreshold` setting. The confirmation used to say VS Code or the dashboard would act on it.
+- **README:** `sidekick quota` shows the peak-hours line only on Claude plans with a 5-hour limit, not on Ultra.
+
 ## [0.33.4] - 2026-11-17
 
 A documentation and media release. The CLI behaves exactly as in 0.33.3.

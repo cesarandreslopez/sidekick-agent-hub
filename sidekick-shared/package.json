@@ -1,6 +1,6 @@
 {
   "name": "sidekick-shared",
-  "version": "0.33.4",
+  "version": "0.33.5",
   "description": "Data layer for Sidekick Agent Hub: session providers and parsers, usage and pricing, quota, the activity map, transcripts and schemas for Claude Code, Codex and OpenCode.",
   "keywords": [
     "claude-code",

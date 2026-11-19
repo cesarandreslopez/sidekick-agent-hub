@@ -5,6 +5,22 @@ All notable changes to the Sidekick Agent Hub VS Code extension will be document
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.5] - 2026-11-19
+
+### Added
+
+- **GPT-6.2 Sol, Astra and Astra Law are priced offline.** Session costs and context gauges no longer need the online price catalog for them. Before, they showed as unpriced offline and their gauge assumed 200K tokens. Per million input / output tokens:
+  - GPT-6.2 Astra: $8 / $40.
+  - GPT-6.2 Sol: $2 / $10, the same as GPT-6.1 Sol.
+  - GPT-6.2 Astra Law: the same as Astra for now.
+
+  All three switch to long-context rates above 272K prompt tokens and take up to 922K input tokens.
+
+### Changed
+
+- **Codex tier defaults.** `balanced` is now GPT-6.2 Sol (was GPT-6.1 Sol) and `powerful` is GPT-6.2 Astra (was GPT-6 Astra). `fast` stays GPT-6 Luna. Both new models reject reasoning effort `none`, and Sidekick already sends `low` at the lowest. To keep the previous models, set `gpt-6.1-sol` or `gpt-6-astra` as a literal model ID. Do the same if your Codex CLI does not yet offer the GPT-6.2 models.
+- **GPT-6 Rosalind and GPT-6 Astra Law follow OpenAI's promotional prices,** offered at least through December 31, 2026. Rosalind is $10 / $50 (was $15 / $75). Astra Law has a long-context rate above 272K prompt tokens.
+
 ## [0.33.4] - 2026-11-17
 
 A documentation and media release. The extension behaves exactly as in 0.33.3.

@@ -145,4 +145,4 @@ MIT — see [LICENSE](LICENSE). Portions of the session asset extraction feature
 
 ---
 
-Latest release: **0.33.4**. See the [changelog](CHANGELOG.md) for every release.
+Latest release: **0.33.5**. See the [changelog](CHANGELOG.md) for every release.
