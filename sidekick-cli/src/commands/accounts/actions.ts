@@ -926,7 +926,7 @@ export function configAction(ctx: AccountsContext, key: string, value: string): 
         );
         ctx.out(
           chalk.dim(
-            'Continuous auto-switch runs in a long-running host such as VS Code or the dashboard.',
+            'Saved to cli-config.json. Nothing reads it yet: VS Code uses its own sidekick.accounts.autoSwitchThreshold setting.',
           ),
         );
       }
